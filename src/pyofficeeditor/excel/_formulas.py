@@ -34,7 +34,7 @@ import re
 from dataclasses import dataclass
 
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef
-from pyofficeeditor.excel._tokens import TokenKind, render, tokenize
+from pyofficeeditor.excel._tokens import Token, TokenKind, render, tokenize
 
 #: A cell reference inside formula text.
 #:
@@ -300,6 +300,195 @@ def shift_formula(
     return render(tokens) if changed else formula
 
 
+#: What Excel puts in a formula whose target no longer exists.
+REF_ERROR = "#REF!"
+
+
+@dataclass(frozen=True)
+class Deletion:
+    """Which rows or columns are being removed, and what that does to a
+    reference.
+
+    Deletion is not the inverse of insertion. A reference to something that
+    is gone becomes ``#REF!``, and a *range* that only partly overlaps the
+    deletion shrinks instead, so the two ends have to be decided together.
+    """
+
+    rows_at: int | None = None
+    row_count: int = 0
+    columns_at: int | None = None
+    column_count: int = 0
+
+    @classmethod
+    def rows(cls, at: int, count: int) -> Deletion:
+        return cls(rows_at=at, row_count=count)
+
+    @classmethod
+    def columns(cls, at: int, count: int) -> Deletion:
+        return cls(columns_at=at, column_count=count)
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.row_count and not self.column_count
+
+    def covers_row(self, row: int) -> bool:
+        return (
+            self.rows_at is not None
+            and bool(self.row_count)
+            and self.rows_at <= row < self.rows_at + self.row_count
+        )
+
+    def covers_column(self, column: int) -> bool:
+        return (
+            self.columns_at is not None
+            and bool(self.column_count)
+            and self.columns_at <= column < self.columns_at + self.column_count
+        )
+
+    @staticmethod
+    def _survivor(value: int, at: int | None, count: int) -> int | None:
+        """Where an index lands, or ``None`` when it is one of the deleted."""
+        if at is None or not count:
+            return value
+        if value < at:
+            return value
+        if value < at + count:
+            return None
+        return value - count
+
+    def moved(self, reference: CellRef) -> CellRef | None:
+        """Where a single cell lands, or ``None`` if it is deleted."""
+        row = self._survivor(reference.row, self.rows_at, self.row_count)
+        column = self._survivor(reference.column, self.columns_at, self.column_count)
+        if row is None or column is None:
+            return None
+        return CellRef(row, column, reference.absolute_row, reference.absolute_column)
+
+    def moved_range(self, block: RangeRef) -> RangeRef | None:
+        """Where a block lands, or ``None`` when nothing of it survives.
+
+        A block straddling the deletion shrinks: its deleted rows come out
+        and the rest closes up. One wholly inside it is gone.
+        """
+        rows = self._surviving_span(
+            block.top, block.bottom, self.rows_at, self.row_count
+        )
+        columns = self._surviving_span(
+            block.left, block.right, self.columns_at, self.column_count
+        )
+        if rows is None or columns is None:
+            return None
+        top, bottom = rows
+        left, right = columns
+        return RangeRef(
+            CellRef(top, left, block.start.absolute_row, block.start.absolute_column),
+            CellRef(bottom, right, block.end.absolute_row, block.end.absolute_column),
+        )
+
+    @classmethod
+    def _surviving_span(
+        cls, low: int, high: int, at: int | None, count: int
+    ) -> tuple[int, int] | None:
+        """One axis of a block after the deletion, or ``None`` if it is gone.
+
+        An end that was itself deleted collapses onto the edge of what
+        remains, which is how a range shrinks rather than breaking.
+        """
+        if at is None or not count:
+            return (low, high)
+        if at <= low and high < at + count:
+            return None
+        new_low = cls._survivor(low, at, count)
+        if new_low is None:
+            new_low = at
+        new_high = cls._survivor(high, at, count)
+        if new_high is None:
+            new_high = at - 1
+        if new_high < new_low or new_high < 1:
+            return None
+        return (new_low, new_high)
+
+
+def delete_in_formula(
+    formula: str,
+    deletion: Deletion,
+    *,
+    formula_sheet: str,
+    target_sheet: str,
+) -> str:
+    """Rewrite a formula for a deletion, turning what is gone into ``#REF!``.
+
+    A range is handled as one thing, because ``SUM(A1:A10)`` over a deletion
+    of rows 3 to 4 becomes ``SUM(A1:A8)`` rather than an error: only a range
+    with nothing left becomes ``#REF!``. Single references become ``#REF!``
+    the moment their own cell goes.
+    """
+    if deletion.is_empty:
+        return formula
+    if formula_sheet != target_sheet and "!" not in formula:
+        return formula
+
+    tokens = tokenize(formula)
+    rebuilt: list[Token] = []
+    index = 0
+    changed = False
+
+    while index < len(tokens):
+        token = tokens[index]
+        if token.kind is not TokenKind.REFERENCE or not isinstance(token.value, CellRef):
+            rebuilt.append(token)
+            index += 1
+            continue
+
+        addresses = token.sheet if token.sheet is not None else formula_sheet
+        separator = tokens[index + 1] if index + 1 < len(tokens) else None
+        far = tokens[index + 2] if index + 2 < len(tokens) else None
+        is_range = (
+            separator is not None
+            and separator.kind is TokenKind.TEXT
+            and separator.raw.strip() == ":"
+            and far is not None
+            and far.kind is TokenKind.REFERENCE
+            and isinstance(far.value, CellRef)
+        )
+
+        if addresses != target_sheet:
+            rebuilt.append(token)
+            index += 3 if is_range else 1
+            if is_range and separator is not None and far is not None:
+                rebuilt.extend((separator, far))
+            continue
+
+        if is_range and far is not None and isinstance(far.value, CellRef):
+            block = RangeRef(token.value, far.value)
+            moved_block = deletion.moved_range(block)
+            if moved_block is None:
+                rebuilt.append(Token(TokenKind.TEXT, REF_ERROR))
+            else:
+                # A range that shrank to a single cell keeps its range shape:
+                # Excel writes SUM(A1:A1), not SUM(A1), and a formula whose
+                # argument must be a range would break if it were collapsed.
+                rebuilt.append(Token(TokenKind.REFERENCE, moved_block.start.a1, moved_block.start))
+                rebuilt.append(Token(TokenKind.TEXT, ":"))
+                rebuilt.append(Token(TokenKind.REFERENCE, moved_block.end.a1, moved_block.end))
+            changed = changed or (moved_block is None or moved_block.a1 != block.a1)
+            index += 3
+            continue
+
+        moved = deletion.moved(token.value)
+        if moved is None:
+            rebuilt.append(Token(TokenKind.TEXT, REF_ERROR))
+            changed = True
+        elif moved != token.value:
+            rebuilt.append(Token(TokenKind.REFERENCE, moved.a1, moved))
+            changed = True
+        else:
+            rebuilt.append(token)
+        index += 1
+
+    return render(rebuilt) if changed else formula
+
+
 def shift_range(block: RangeRef, shift: Shift) -> RangeRef:
     """The same shift, applied to a stored range such as a merge or a table.
 
@@ -337,7 +526,10 @@ def shared_formula_for(master: str, master_cell: CellRef, target: CellRef) -> st
 
 
 __all__ = [
+    "REF_ERROR",
+    "Deletion",
     "Shift",
+    "delete_in_formula",
     "quote_sheet_name",
     "rename_sheet_in_formula",
     "shared_formula_for",

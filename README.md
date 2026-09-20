@@ -10,9 +10,10 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > **Status: early, and growing.** The Excel surface reads and writes cells,
 > values, formulas, dates, sheets, formatting, merged ranges, tables, row and
 > column dimensions, frozen panes and defined names, each verified against real
-> Excel. Rows and columns can be inserted, with every reference in the
-> workbook following; deleting them is the next gap. Word, PowerPoint and
-> Access follow, in that order.
+> Excel. Rows and columns can be inserted and deleted, with A1-style
+> references across the workbook following or breaking as Excel breaks them;
+> whole-axis references like `A:A` and `2:4` do not move yet. Word,
+> PowerPoint and Access follow, in that order.
 
 ```python
 import datetime as dt
@@ -47,6 +48,7 @@ with Workbook.open("orders.xlsx") as book:
     sheet.freeze_panes("B2")                     # pins row 1 and column A
 
     sheet.insert_rows(3, 2)                      # every reference follows
+    sheet.delete_columns(5, 1)                   # SUM(E2:E9) -> #REF!
 
     summary = book.add_sheet("Summary", index=0)
     summary["A1"].formula = "=SUM(Data!D2:D5)"
@@ -118,11 +120,13 @@ data descriptors.
 |   _tables     ListObjects: their own parts and wiring  |
 |   _dimensions widths, heights, hiding, frozen panes    |
 |   _names      defined names, and the rules tables share |
-|   _insert     inserting rows and columns, and moving    |
-|               everything that records a cell address    |
+|   _rowcol     inserting and deleting rows and columns,  |
+|               and moving everything that records a     |
+|               cell address                             |
 |   _tokens     a formula, broken into editable pieces    |
-|   _formulas   shifting references, for shared formulas |
-|               and for repointing a renamed sheet       |
+|   _formulas   shifting and breaking references, for    |
+|               shared formulas, a renamed sheet, and    |
+|               the #REF! a deletion leaves behind       |
 |   _sharedstrings   the per-workbook string table       |
 |   _schema     where a child element has to go          |
 +--------------------------------------------------------+

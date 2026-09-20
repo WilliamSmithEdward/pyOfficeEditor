@@ -44,8 +44,13 @@ from pyofficeeditor.excel._formats import (
     Font,
 )
 from pyofficeeditor.excel._formulas import shared_formula_for
-from pyofficeeditor.excel._insert import insert_columns, insert_rows
 from pyofficeeditor.excel._reference import CellRef, RangeRef, column_letter
+from pyofficeeditor.excel._rowcol import (
+    delete_columns,
+    delete_rows,
+    insert_columns,
+    insert_rows,
+)
 from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._tables import (
     CT_TABLE,
@@ -321,6 +326,26 @@ class Worksheet:
         """Insert blank columns, pushing everything at or right of ``at``
         over.  The same shifting and the same refusal as :meth:`insert_rows`."""
         insert_columns(self, at, count)
+
+    def delete_rows(self, at: int, count: int = 1) -> None:
+        """Delete rows, closing the gap behind them.
+
+        Everything that referred to the deleted rows is repointed: a formula
+        reading one of them becomes #REF!, while a range that only partly
+        overlapped shrinks instead. Merges, tables, hyperlinks and defined
+        names shrink or go the same way.
+
+        Refused, like an insertion, when the sheet carries something that
+        addresses cells and this library cannot move. Also refused when it
+        would remove a table's header row, since a table's column names come
+        from there.
+        """
+        delete_rows(self, at, count)
+
+    def delete_columns(self, at: int, count: int = 1) -> None:
+        """Delete columns, closing the gap.  The same repointing and the same
+        refusals as :meth:`delete_rows`."""
+        delete_columns(self, at, count)
 
     # ------------------------------------------------------------------
     # Column and row dimensions

@@ -52,8 +52,9 @@ Each layer knows the layer below it and not the layer above.
 |   _values       the six cell encodings, serial dates    |
 |   _tables       ListObjects: their own parts and wiring  |
 |   _dimensions   widths, heights, hiding, frozen panes    |
-|   _insert       inserting rows and columns, and moving    |
-|                 everything that records a cell address    |
+|   _rowcol       inserting and deleting rows and columns,  |
+|                 and moving everything that records a      |
+|                 cell address                              |
 |   _tokens       a formula, broken into the pieces a        |
 |                 transform may touch                        |
 |   _names        defined names, and the naming rules       |
@@ -275,7 +276,8 @@ tests/
   test_excel_tables.py          ListObjects: parts, columns, wiring
   test_excel_dimensions.py      widths, heights, hiding, frozen panes
   test_excel_names.py           defined names and their scope indices
-  test_excel_insert.py          the tokenizer, shifting, insertion
+  test_excel_rowcol.py          the tokenizer, shifting, insertion
+  test_excel_delete.py          #REF!, shrinking ranges, orphaned groups
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               three committed Excel-authored packages,
                                 plus two built on demand; see its README
@@ -442,7 +444,7 @@ never took.
 
 **Inserting a row is not a local edit.** A cell's address is written into the
 file in a dozen places, and missing one gives a workbook that opens cleanly
-and points at the wrong cells, which no byte comparison catches. `_insert.py`
+and points at the wrong cells, which no byte comparison catches. `_rowcol.py`
 lists them and moves all of them: cell and row `r` attributes, every formula
 in the *workbook* that reads from the sheet, shared-formula `ref`s, merges,
 hyperlinks, the sheet and table filters, table extents, the dimension, page
@@ -460,6 +462,37 @@ addresses this library does not model. Shifting everything else and leaving
 those behind is the silent-corruption case, so `check_shiftable` refuses the
 insertion and names what it found. That list shrinks as those features get
 modelled.
+
+**Deletion is not insertion run backwards.** It reuses the same inventory of
+places a cell address is written, and adds three problems insertion does not
+have.
+
+The first is that a deleted reference does not move, it breaks. `A3` inside a
+deleted row becomes `#REF!`. But `SUM(A1:A10)` over the same deletion becomes
+`SUM(A1:A8)`: a range only *partly* deleted shrinks. So the two ends of a
+range are decided together rather than one at a time, and only a range with
+nothing left at all is replaced by `#REF!`. Deciding each end separately is
+the plausible implementation and it is wrong in both directions, turning
+survivable ranges into errors and breaking the ones that should shrink.
+
+The second is that a shared formula lives once. `<f t="shared" si="0" ref=…>`
+carries the text on the group's first cell and every other member has an
+empty `<f si="0"/>` that derives from it. Delete that first cell and the rest
+point at nothing, so any group about to lose its master is given its own text
+first. The order matters more than it looks: a follower derives *from the
+master's element*, so stripping the master's markers while still walking the
+group leaves the remainder with nothing to derive from and they come out
+blank. Every derived formula is read before anything is written. The live
+gate caught this and the offline tests did not, because reading a formula
+warms a cache that hid the bug; the regression test deletes without reading
+anything first.
+
+The third is that some things do not survive being shrunk. A merge reduced to
+a single cell is not a merge, and Excel drops it. A table whose every column
+is deleted is not a table. Both are removed rather than left behind as
+degenerate. Deleting a table's *header* row is refused outright instead: the
+column names have to equal the text in those cells, and Excel does not offer
+the operation either.
 
 **A defined name's scope is a position, not a name.** `localSheetId="0"`
 means the first sheet in tab order, so adding, removing or moving a sheet

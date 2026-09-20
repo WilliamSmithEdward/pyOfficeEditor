@@ -722,6 +722,165 @@ End Function
     assert seen["E6"] == "3265"
     assert seen["merge"] == "A11:D11", "the merge grew across the insertion"
 
+
+# --------------------------------------------------------------------------
+# Deleting rows and columns
+# --------------------------------------------------------------------------
+
+_DELETE_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+
+    parts = "A2=" & ws.Range("A2").Value
+    parts = parts & "|A3=" & ws.Range("A3").Value
+    parts = parts & "|used=" & ws.UsedRange.Address(False, False)
+
+    ' The total's range shrank by the two deleted rows and still computes.
+    parts = parts & "|D4formula=" & ws.Range("D4").Formula
+    parts = parts & "|D4=" & CStr(ws.Range("D4").Value)
+    parts = parts & "|D3formula=" & ws.Range("D3").Formula
+    parts = parts & "|D3=" & CStr(ws.Range("D3").Value)
+
+    parts = parts & "|merge=" & ws.Range("A9").MergeArea.Address(False, False)
+
+    ' A formula that pointed into the deleted rows. Excel writes #REF! for
+    ' one of its own, so what matters is that it reads back the same way.
+    parts = parts & "|broken=" & wb.Worksheets("Summary").Range("A2").Formula
+    parts = parts & "|brokenText=" & wb.Worksheets("Summary").Range("A2").Text
+    parts = parts & "|shrunk=" & wb.Worksheets("Summary").Range("A1").Formula
+    parts = parts & "|shrunkValue=" & CStr(wb.Worksheets("Summary").Range("A1").Value)
+    parts = parts & "|name=" & wb.Names("Totals").RefersTo
+
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+
+
+def test_excel_accepts_deleted_rows_and_the_references_that_broke(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """Deletion has a failure mode insertion does not: a reference to
+    something gone becomes ``#REF!``, and only Excel can confirm the spelling
+    it reads back is one it accepts."""
+    book = Workbook.open(live_sample_xlsx)
+    summary = book.add_sheet("Summary")
+    summary["A1"].formula = "=SUM(Data!D2:D5)"
+    summary["A2"].formula = "=Data!B3"
+    book.add_defined_name("Totals", "Data!$D$2:$D$5")
+
+    book["Data"].delete_rows(3, 2)
+    target = tmp_path / "deleted.xlsx"
+    book.save(target)
+
+    seen = probe(excel, _DELETE_PROBE, target, "delete")
+
+    assert seen["A2"] == "North", "the row above the deletion stayed"
+    assert seen["A3"] == "West", "row 5 came up to row 3"
+    assert seen["used"] == "A1:F9", "the sheet is two rows shorter"
+
+    # SUM(D2:D5) lost two of its rows, so it shrank rather than breaking.
+    assert seen["D4formula"] == "=SUM(D2:D3)"
+    assert seen["D4"] == "1297.5", "510 + 787.5, the two surviving rows"
+    # The shared formula that was at D5 is now at D3 and reads its new row.
+    assert seen["D3formula"] == "=B3*C3"
+    assert seen["D3"] == "787.5", "210 * 3.75"
+
+    assert seen["merge"] == "A9:C9", "the merge came up two rows"
+
+    assert "#REF!" in seen["broken"], f"Excel reports {seen['broken']}"
+    assert seen["brokenText"] == "#REF!"
+    assert seen["shrunk"] == "=SUM(Data!D2:D3)", "the cross-sheet range shrank"
+    assert seen["shrunkValue"] == "1297.5"
+    assert seen["name"] == "=Data!$D$2:$D$3", "and so did the defined name"
+
+
+def test_excel_accepts_a_deleted_shared_formula_master(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """A shared formula lives once, on its group's first cell. Deleting that
+    cell leaves the rest pointing at nothing unless the group is given its own
+    text first."""
+    book = Workbook.open(live_sample_xlsx)
+    book["Data"].delete_rows(2, 1)
+    target = tmp_path / "orphaned.xlsx"
+    book.save(target)
+
+    source = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+    parts = "D2=" & ws.Range("D2").Formula & "|D2v=" & CStr(ws.Range("D2").Value)
+    parts = parts & "|D3=" & ws.Range("D3").Formula & "|D3v=" & CStr(ws.Range("D3").Value)
+    parts = parts & "|D4=" & ws.Range("D4").Formula & "|D4v=" & CStr(ws.Range("D4").Value)
+    parts = parts & "|D5=" & ws.Range("D5").Formula & "|D5v=" & CStr(ws.Range("D5").Value)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+    seen = probe(excel, source, target, "orphaned")
+
+    # The three survivors each kept a correct formula for their new row.
+    assert seen["D2"] == "=B2*C2"
+    assert seen["D2v"] == "1445", "340 * 4.25, the row that was 3"
+    assert seen["D3"] == "=B3*C3"
+    assert seen["D3v"] == "522.5", "95 * 5.5"
+    assert seen["D4"] == "=B4*C4"
+    assert seen["D4v"] == "787.5", "210 * 3.75"
+    assert seen["D5"] == "=SUM(D2:D4)", "the total lost one row"
+    assert seen["D5v"] == "2755"
+
+
+def test_excel_accepts_deleted_columns(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    book = Workbook.open(live_sample_xlsx)
+    book["Data"].delete_columns(2, 1)
+    target = tmp_path / "deleted_columns.xlsx"
+    book.save(target)
+
+    source = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+    parts = "A1=" & ws.Range("A1").Value
+    parts = parts & "|B1=" & ws.Range("B1").Value
+    parts = parts & "|C2=" & ws.Range("C2").Formula
+    parts = parts & "|C2text=" & ws.Range("C2").Text
+    parts = parts & "|merge=" & ws.Range("A11").MergeArea.Address(False, False)
+    parts = parts & "|used=" & ws.UsedRange.Address(False, False)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+    seen = probe(excel, source, target, "deletecols")
+
+    assert seen["A1"] == "Region"
+    assert seen["B1"] == "Price", "what was in C came to B"
+    # =B2*C2 lost B, so half the formula is gone.
+    assert "#REF!" in seen["C2"], f"Excel reports {seen['C2']}"
+    assert seen["C2text"] == "#REF!"
+    assert seen["merge"] == "A11:B11", "the merge lost a column"
+    assert seen["used"] == "A1:E11"
+
+
 _OPEN_PROBE = r"""
 Public Function Probe(ByVal Target As String) As String
     Dim wb As Workbook

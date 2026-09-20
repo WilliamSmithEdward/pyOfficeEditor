@@ -15,8 +15,8 @@ import pytest
 from pyofficeeditor._xml import Element
 from pyofficeeditor.excel import RangeRef, Workbook
 from pyofficeeditor.excel._formulas import Shift, shift_formula, shift_range
-from pyofficeeditor.excel._insert import UNSHIFTABLE_ELEMENTS, UnshiftableContentError
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW
+from pyofficeeditor.excel._rowcol import UNSHIFTABLE_ELEMENTS, UnshiftableContentError
 from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._tokens import TokenKind, render, tokenize
 
