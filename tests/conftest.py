@@ -33,6 +33,11 @@ LIVE_SAMPLE_XLSX = EXCEL_FIXTURES / "sample.xlsx"
 #: Authored by Excel: two ListObjects, one with a totals row and a calculated
 #: column, plus defined names at both scopes, column widths and a hyperlink.
 LIVE_STRUCTURES_XLSX = EXCEL_FIXTURES / "structures.xlsx"
+#: Authored by Excel: every element that used to make an insertion refuse.
+#: Data validation with formulas, a protected range, a saved sort,
+#: scenarios, a shape in a drawing part, a form control and a comment,
+#: the last two anchored through VML.
+LIVE_REFUSED_XLSX = EXCEL_FIXTURES / "refused.xlsx"
 
 
 @pytest.fixture(scope="session")
@@ -131,3 +136,11 @@ def live_structures_xlsx() -> Path:
     if not LIVE_STRUCTURES_XLSX.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to author structures.xlsx with real Excel")
     return LIVE_STRUCTURES_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_refused_xlsx() -> Path:
+    """The Excel-authored workbook carrying every once-refused element."""
+    if not LIVE_REFUSED_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author refused.xlsx with real Excel")
+    return LIVE_REFUSED_XLSX

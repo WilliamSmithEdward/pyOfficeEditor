@@ -1,8 +1,8 @@
 """Inserting and deleting rows and columns, and everything that moves.
 
-Neither is a local edit. A cell's address is written into the file in a
-dozen places, and every one of them has to move or the workbook is quietly
-wrong rather than broken:
+Neither is a local edit. A cell's address is written into the file in about
+twenty places, and every one of them has to move or the workbook is quietly
+wrong rather than broken. In the worksheet:
 
 - the ``r`` on each ``<row>`` and each ``<c>`` below the insertion
 - every formula on the sheet, and every formula on *other* sheets that
@@ -13,17 +13,31 @@ wrong rather than broken:
 - each table's ``ref`` and its own autofilter
 - the sheet's ``dimension`` and its page breaks
 - defined names, at both scopes
-- every conditional formatting block: its ``sqref``, the condition of any
-  ``cellIs`` or ``expression`` rule, and the compatibility formula of the
-  rest, which is rebuilt from the block's new anchor rather than shifted
-  because it names the top-left of the range by construction
+- every conditional formatting block, and the compatibility formula that
+  makes its rules fire
+- data validation, including the formulas that hold its bounds
+- protected ranges, ignored errors, a saved sort, a data consolidation
+- each scenario's input cells
+- every custom sheet view's own selection, pane, autofilter and breaks
+- the inline anchors of form controls and embedded objects
+- the ``xm:sqref`` and ``xm:f`` of anything in ``extLst``
 
-Anything on the sheet that addresses cells and is *not* in that list makes
-the operation refuse rather than proceed. Data validation, protected ranges,
-drawings and extension content all carry cell addresses this library does
-not model yet, and moving the rest while leaving those behind would produce
-a file that opens cleanly and highlights the wrong cells. A refusal naming
-the element is the honest answer until they are modelled.
+And in parts the worksheet only points at:
+
+- a drawing's ``<xdr:from>``/``<xdr:to>``, holding **zero-based** indices
+- a VML ``<x:Anchor>``, and the ``<x:Row>``/``<x:Column>`` beside it that
+  names a comment's own cell
+- each comment's ``ref`` in the comments part
+
+Nothing is refused. There used to be a list of elements that made the
+operation raise rather than risk moving everything else and leaving them
+behind, which was the honest answer while they were unmodelled. It is empty
+now.
+
+Two of those entries were wrong in opposite directions. A background
+``<picture>`` was refused although it tiles the sheet and names no cell at
+all. Comments and legacy drawings were never on the list, so a sheet with a
+comment shifted its cells and left the comment where it was.
 
 Deletion is not insertion run backwards. Three things only it has to do:
 
@@ -33,17 +47,33 @@ Deletion is not insertion run backwards. Three things only it has to do:
 - A shared formula lives once, on its group's first cell. Delete that cell
   and the rest point at a formula that is not there, so any group about to
   lose its master is given its own text first.
-- A merge that survives as a single cell is not a merge, and a table with
-  no columns left is not a table. Both are removed rather than left behind
-  as degenerate.
+- A merge that survives as a single cell is not a merge, a table with no
+  columns left is not a table, and a wrapper whose last entry went is not
+  something Excel accepts. All three are removed rather than left behind as
+  degenerate.
 """
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterator
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from pyofficeeditor._xml import Element
+from pyofficeeditor.excel._addresses import (
+    collapse_index,
+    delete_cell,
+    delete_index,
+    delete_ref,
+    delete_sqref,
+    delete_vml_anchor,
+    shift_cell,
+    shift_index,
+    shift_ref,
+    shift_sqref,
+    shift_vml_anchor,
+)
 from pyofficeeditor.excel._conditional import (
     CONDITION_FORMULA_TYPES,
     ConditionalFormatting,
@@ -57,54 +87,15 @@ from pyofficeeditor.excel._formulas import (
     shift_range,
 )
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef
+from pyofficeeditor.exceptions import PackageError
 
 if TYPE_CHECKING:
     from pyofficeeditor.excel._tables import Table
     from pyofficeeditor.excel.worksheet import Worksheet
 
-#: Elements that carry cell addresses this library cannot shift yet. Finding
-#: one makes an insertion refuse, because moving everything else and leaving
-#: these behind gives a workbook that opens and is wrong.
-UNSHIFTABLE_ELEMENTS: dict[str, str] = {
-    "dataValidations": "data validation rules",
-    "protectedRanges": "protected ranges",
-    "ignoredErrors": "ignored-error markers",
-    "customSheetViews": "custom sheet views",
-    "sortState": "a saved sort",
-    "dataConsolidate": "a data consolidation",
-    "scenarios": "scenarios",
-    "drawing": "a drawing, chart or image anchored to cells",
-    "oleObjects": "embedded OLE objects",
-    "controls": "form controls",
-    "picture": "a background picture",
-    "extLst": "extension content, which may hold newer rules that address cells",
-}
-
-
-class UnshiftableContentError(ValueError):
-    """The sheet carries something addressing cells that cannot be moved."""
-
-
-def check_shiftable(sheet: Worksheet) -> None:
-    """Refuse an insertion the sheet's contents would survive incorrectly."""
-    found = [
-        description
-        for name, description in UNSHIFTABLE_ELEMENTS.items()
-        if sheet.document.root.child(name) is not None
-    ]
-    if found:
-        raise UnshiftableContentError(
-            f"{sheet.name!r} carries {', '.join(found)}, which address cells this library "
-            f"cannot move yet. Shifting everything else and leaving those behind would "
-            f"produce a workbook that opens cleanly and points at the wrong cells, so the "
-            f"insertion is refused instead."
-        )
-
-
 def insert_rows(sheet: Worksheet, at: int, count: int) -> None:
     """Insert blank rows, pushing everything at or below ``at`` down."""
     _check_bounds(at, count, MAX_ROW, "row")
-    check_shiftable(sheet)
     highest = sheet.max_row
     if highest + count > MAX_ROW:
         raise ValueError(
@@ -119,7 +110,6 @@ def insert_rows(sheet: Worksheet, at: int, count: int) -> None:
 def insert_columns(sheet: Worksheet, at: int, count: int) -> None:
     """Insert blank columns, pushing everything at or right of ``at`` over."""
     _check_bounds(at, count, MAX_COLUMN, "column")
-    check_shiftable(sheet)
     highest = sheet.max_column
     if highest + count > MAX_COLUMN:
         raise ValueError(
@@ -135,7 +125,6 @@ def insert_columns(sheet: Worksheet, at: int, count: int) -> None:
 def delete_rows(sheet: Worksheet, at: int, count: int) -> None:
     """Delete rows, closing the gap and repointing what referred to them."""
     _check_bounds(at, count, MAX_ROW, "row")
-    check_shiftable(sheet)
     deletion = Deletion.rows(at, count)
     _check_table_headers(sheet, deletion)
     _expand_orphaned_shared_formulas(sheet, deletion)
@@ -143,6 +132,10 @@ def delete_rows(sheet: Worksheet, at: int, count: int) -> None:
     _remove_rows(sheet, at, count)
     _delete_sheet_ranges(sheet, deletion)
     _delete_conditional_formats(sheet, deletion)
+    _delete_sheet_addresses(sheet, deletion)
+    _move_custom_views(sheet, shift=None, deletion=deletion)
+    _move_extensions(sheet, shift=None, deletion=deletion)
+    _move_related_parts(sheet, shift=None, deletion=deletion)
     _delete_tables(sheet, deletion)
     _delete_breaks(sheet, deletion)
     _delete_defined_names(sheet, deletion)
@@ -152,7 +145,6 @@ def delete_rows(sheet: Worksheet, at: int, count: int) -> None:
 def delete_columns(sheet: Worksheet, at: int, count: int) -> None:
     """Delete columns, closing the gap and repointing what referred to them."""
     _check_bounds(at, count, MAX_COLUMN, "column")
-    check_shiftable(sheet)
     deletion = Deletion.columns(at, count)
     _check_table_headers(sheet, deletion)
     _expand_orphaned_shared_formulas(sheet, deletion)
@@ -161,6 +153,10 @@ def delete_columns(sheet: Worksheet, at: int, count: int) -> None:
     _delete_column_entries(sheet, at, count)
     _delete_sheet_ranges(sheet, deletion)
     _delete_conditional_formats(sheet, deletion)
+    _delete_sheet_addresses(sheet, deletion)
+    _move_custom_views(sheet, shift=None, deletion=deletion)
+    _move_extensions(sheet, shift=None, deletion=deletion)
+    _move_related_parts(sheet, shift=None, deletion=deletion)
     _delete_tables(sheet, deletion)
     _delete_breaks(sheet, deletion)
     _delete_defined_names(sheet, deletion)
@@ -661,6 +657,10 @@ def _shift_everything_else(sheet: Worksheet, shift: Shift) -> None:
     _shift_shared_formula_refs(sheet, shift)
     _shift_sheet_ranges(sheet, shift)
     _shift_conditional_formats(sheet, shift)
+    _shift_sheet_addresses(sheet, shift)
+    _move_custom_views(sheet, shift=shift, deletion=None)
+    _move_extensions(sheet, shift=shift, deletion=None)
+    _move_related_parts(sheet, shift=shift, deletion=None)
     _shift_tables(sheet, shift)
     _shift_breaks(sheet, shift)
     _shift_defined_names(sheet, shift)
@@ -834,11 +834,546 @@ def _shift_attribute(element: Element, name: str, shift: Shift) -> None:
 
 
 __all__ = [
-    "UNSHIFTABLE_ELEMENTS",
-    "UnshiftableContentError",
-    "check_shiftable",
     "delete_columns",
     "delete_rows",
     "insert_columns",
     "insert_rows",
 ]
+
+
+#: Where a worksheet records a cell address outside the cells themselves,
+#: as (container, entry, attribute, notation). Driving the shifting from a
+#: table rather than a function per feature is what keeps this list
+#: reviewable: adding a feature means adding a row.
+#:
+#: ``container`` is the wrapper element, or ``None`` when the entries sit
+#: directly under ``<worksheet>``. An entry whose address is wholly deleted
+#: is removed, which is why the notation matters: an ``sqref`` naming
+#: several ranges survives as long as one of them does.
+SHEET_ADDRESSES: tuple[tuple[str | None, str, str, str], ...] = (
+    ("dataValidations", "dataValidation", "sqref", "sqref"),
+    ("protectedRanges", "protectedRange", "sqref", "sqref"),
+    ("ignoredErrors", "ignoredError", "sqref", "sqref"),
+    (None, "sortState", "ref", "ref"),
+    ("sortState", "sortCondition", "ref", "ref"),
+    ("dataConsolidate", "dataRef", "ref", "ref"),
+    ("scenarios", "scenario", "sqref", "sqref"),
+)
+
+#: The same, for entries whose address is a single cell.
+SHEET_CELL_ADDRESSES: tuple[tuple[str, str, str], ...] = (
+    ("scenarios/scenario", "inputCells", "r"),
+)
+
+
+def _address_entries(
+    root: Element, container: str | None, entry: str
+) -> list[tuple[Element, Element]]:
+    """Every element a row of :data:`SHEET_ADDRESSES` points at."""
+    if container is None:
+        found = root.child(entry)
+        return [] if found is None else [(root, found)]
+    holder = root.child(container)
+    if holder is None:
+        return []
+    if entry == container:
+        return [(root, holder)]
+    return [(holder, node) for node in list(holder.children_named(entry))]
+
+
+def _shift_sheet_addresses(sheet: Worksheet, shift: Shift) -> None:
+    """Move every stored address the table names."""
+    root = sheet.document.root
+    for container, entry, attribute, notation in SHEET_ADDRESSES:
+        for _parent, element in _address_entries(root, container, entry):
+            raw = element.get(attribute)
+            if raw is None:
+                continue
+            moved = shift_sqref(raw, shift) if notation == "sqref" else shift_ref(raw, shift)
+            element.set(attribute, moved)
+
+    for path, entry, attribute in SHEET_CELL_ADDRESSES:
+        for element in _nested(root, path, entry):
+            raw = element.get(attribute)
+            if raw is not None:
+                element.set(attribute, shift_cell(raw, shift))
+
+    _shift_inline_anchors(root, shift)
+    _move_validation_formulas(sheet, shift=shift, deletion=None)
+
+
+def _delete_sheet_addresses(sheet: Worksheet, deletion: Deletion) -> None:
+    """Shrink every stored address, and drop what is left with nothing."""
+    root = sheet.document.root
+    for container, entry, attribute, notation in SHEET_ADDRESSES:
+        for parent, element in _address_entries(root, container, entry):
+            raw = element.get(attribute)
+            if raw is None:
+                continue
+            moved = (
+                delete_sqref(raw, deletion)
+                if notation == "sqref"
+                else delete_ref(raw, deletion)
+            )
+            if moved is None:
+                parent.remove(element)
+                continue
+            element.set(attribute, moved)
+        _drop_if_empty(root, container, entry)
+
+    for path, entry, attribute in SHEET_CELL_ADDRESSES:
+        for element in _nested(root, path, entry):
+            raw = element.get(attribute)
+            if raw is None:
+                continue
+            moved = delete_cell(raw, deletion)
+            parent = element.parent
+            if moved is None:
+                if parent is not None:
+                    parent.remove(element)
+                continue
+            element.set(attribute, moved)
+
+    _delete_inline_anchors(root, deletion)
+    _move_validation_formulas(sheet, shift=None, deletion=deletion)
+
+
+def _nested(root: Element, path: str, entry: str) -> list[Element]:
+    """Every ``entry`` under a slash-separated path of single children."""
+    current: list[Element] = [root]
+    for name in path.split("/"):
+        following: list[Element] = []
+        for node in current:
+            following.extend(node.children_named(name))
+        current = following
+    found: list[Element] = []
+    for node in current:
+        found.extend(node.children_named(entry))
+    return found
+
+
+def _drop_if_empty(root: Element, container: str | None, entry: str) -> None:
+    """Remove a wrapper whose entries have all gone, and fix its count.
+
+    ``<dataValidations count="0"/>`` with no children is not something Excel
+    accepts, so the wrapper goes with its last entry.
+    """
+    if container is None or container == entry:
+        return
+    holder = root.child(container)
+    if holder is None:
+        return
+    remaining = sum(1 for _ in holder.children_named(entry))
+    if not remaining:
+        root.remove(holder)
+    elif holder.get("count") is not None:
+        holder.set("count", str(remaining))
+
+
+def _anchor_ends(root: Element) -> Iterator[Element]:
+    """Every ``<from>``/``<to>`` that carries a cell index.
+
+    The element wrapping them differs by feature and none of the names is
+    worth enumerating: a drawing uses ``<xdr:twoCellAnchor>`` or
+    ``<xdr:oneCellAnchor>``, a form control a bare ``<anchor>`` nested inside
+    ``mc:AlternateContent``. Looking for the wrapper by name missed every
+    drawing, so the ends are found directly and a ``<from>`` with no ``col``
+    or ``row`` child is simply skipped.
+    """
+    for name in ("from", "to"):
+        for end in _descendants(root, name):
+            if _anchor_index(end, "col") is not None or _anchor_index(end, "row") is not None:
+                yield end
+
+
+def _descendants(element: Element, name: str) -> Iterator[Element]:
+    for child in element.children:
+        if not isinstance(child, Element):
+            continue
+        if child.name == name or child.name.endswith(f":{name}"):
+            yield child
+        yield from _descendants(child, name)
+
+
+def _anchor_index(end: Element, axis: str) -> Element | None:
+    for child in end.children:
+        if isinstance(child, Element) and (
+            child.name == axis or child.name.endswith(f":{axis}")
+        ):
+            return child
+    return None
+
+
+def _shift_inline_anchors(root: Element, shift: Shift) -> None:
+    for end in _anchor_ends(root):
+        for axis, is_row in (("col", False), ("row", True)):
+            node = _anchor_index(end, axis)
+            if node is None or not node.text:
+                continue
+            try:
+                value = int(node.text)
+            except ValueError:
+                continue
+            node.set_text(str(shift_index(value, shift, is_row=is_row)))
+
+
+def _delete_inline_anchors(root: Element, deletion: Deletion) -> None:
+    for end in _anchor_ends(root):
+        for axis, is_row in (("col", False), ("row", True)):
+            node = _anchor_index(end, axis)
+            if node is None or not node.text:
+                continue
+            try:
+                value = int(node.text)
+            except ValueError:
+                continue
+            node.set_text(str(collapse_index(value, deletion, is_row=is_row)))
+
+
+#: Relationship types of the sheet's own parts that record cell addresses.
+RT_DRAWING = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"
+RT_VML = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing"
+RT_COMMENTS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+
+
+def _related_parts(sheet: Worksheet, relationship_type: str) -> list[str]:
+    """The part names a sheet relates to by type."""
+    package = sheet.workbook.package
+    try:
+        relationships = package.relationships(sheet.part_name)
+    except PackageError:
+        return []
+    found: list[str] = []
+    for relationship in relationships.by_type(relationship_type):
+        if relationship.is_external:
+            continue
+        name = relationship.target_part
+        if package.has_part(name):
+            found.append(name)
+    return found
+
+
+def _move_related_parts(sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | None) -> None:
+    """Move the addresses in a sheet's drawing, VML and comment parts.
+
+    Three kinds live outside the worksheet, and none of them is reachable
+    from the sheet's own XML:
+
+    - a drawing's ``<xdr:from>``/``<xdr:to>`` hold **zero-based** column and
+      row indices, so a shape sits one cell off if they are treated as
+      one-based, and the file stays perfectly valid
+    - a VML ``<x:Anchor>`` is eight comma-separated numbers, the first,
+      third, fifth and seventh being zero-based column and row; this is how
+      a comment and a form control say which cell they sit on
+    - a comment part addresses its cell with an ordinary ``ref``
+
+    Comments and legacy drawings were on neither the shifted list nor the
+    refused one before this, so inserting a row on a sheet with a comment
+    moved the cells and left the comment behind.
+    """
+    for name in _related_parts(sheet, RT_DRAWING):
+        document = sheet.workbook.package.xml(name)
+        _move_anchor_ends(document.root, shift=shift, deletion=deletion)
+
+    for name in _related_parts(sheet, RT_COMMENTS):
+        document = sheet.workbook.package.xml(name)
+        _move_comments(document.root, shift=shift, deletion=deletion)
+
+    for name in _related_parts(sheet, RT_VML):
+        _move_vml(sheet, name, shift=shift, deletion=deletion)
+
+
+def _move_anchor_ends(
+    root: Element, *, shift: Shift | None, deletion: Deletion | None
+) -> bool:
+    """Move every ``<from>``/``<to>`` in a drawing part."""
+    changed = False
+    for end in _anchor_ends(root):
+        for axis, is_row in (("col", False), ("row", True)):
+            node = _anchor_index(end, axis)
+            if node is None or not node.text:
+                continue
+            try:
+                value = int(node.text)
+            except ValueError:
+                continue
+            moved = (
+                shift_index(value, shift, is_row=is_row)
+                if shift is not None
+                else collapse_index(value, deletion, is_row=is_row)  # type: ignore[arg-type]
+            )
+            if moved != value:
+                node.set_text(str(moved))
+                changed = True
+    return changed
+
+
+def _move_comments(root: Element, *, shift: Shift | None, deletion: Deletion | None) -> bool:
+    """Move each comment onto its cell's new address.
+
+    A comment whose cell is deleted goes with it, which is what Excel does.
+    """
+    container = root.child("commentList")
+    if container is None:
+        return False
+    changed = False
+    for comment in list(container.children_named("comment")):
+        raw = comment.get("ref")
+        if raw is None:
+            continue
+        moved = (
+            shift_cell(raw, shift) if shift is not None
+            else delete_cell(raw, deletion)  # type: ignore[arg-type]
+        )
+        if moved is None:
+            container.remove(comment)
+            changed = True
+            continue
+        if moved != raw:
+            comment.set("ref", moved)
+            changed = True
+    return changed
+
+
+def _move_vml(
+    sheet: Worksheet, name: str, *, shift: Shift | None, deletion: Deletion | None
+) -> None:
+    """Move every ``<x:Anchor>`` in a VML part.
+
+    VML is not XML this library parses: it is an HTML-ish dialect with
+    unquoted attributes and unclosed tags, and the ``<xml>`` root would be
+    refused. The anchors are rewritten in the raw text instead, which is
+    safe because an anchor is a self-contained run of eight numbers.
+    """
+    package = sheet.workbook.package
+    raw = package.read(name)
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return
+
+    def move(match: re.Match[str]) -> str:
+        body = match.group(1)
+        moved = (
+            shift_vml_anchor(body, shift)
+            if shift is not None
+            else delete_vml_anchor(body, deletion)  # type: ignore[arg-type]
+        )
+        return match.group(0).replace(body, moved, 1)
+
+    rewritten = re.sub(r"<x:Anchor>(.*?)</x:Anchor>", move, text, flags=re.S)
+    rewritten = _move_vml_owner(rewritten, shift=shift, deletion=deletion)
+    if rewritten != text:
+        package.write(name, rewritten.encode("utf-8"))
+
+
+def _move_vml_owner(
+    text: str, *, shift: Shift | None, deletion: Deletion | None
+) -> str:
+    """Move the ``<x:Row>``/``<x:Column>`` that names a note's own cell.
+
+    This is not the ``<x:Anchor>``: the anchor is where the note's box is
+    drawn, and this is the cell it belongs to, zero-based. Excel refuses to
+    open a workbook whose VML and comments part disagree about that cell, so
+    the two move together or neither does.
+    """
+
+    def rewrite(tag: str, is_row: bool) -> str:
+        def move(match: re.Match[str]) -> str:
+            try:
+                value = int(match.group(1))
+            except ValueError:
+                return match.group(0)
+            moved = (
+                shift_index(value, shift, is_row=is_row)
+                if shift is not None
+                else collapse_index(value, deletion, is_row=is_row)  # type: ignore[arg-type]
+            )
+            return f"<x:{tag}>{moved}</x:{tag}>"
+
+        return move  # type: ignore[return-value]
+
+    text = re.sub(r"<x:Row>(\d+)</x:Row>", rewrite("Row", True), text)
+    return re.sub(r"<x:Column>(\d+)</x:Column>", rewrite("Column", False), text)
+
+
+def _move_validation_formulas(
+    sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | None
+) -> None:
+    """Move the references inside ``<formula1>`` and ``<formula2>``.
+
+    A validation's bounds are formulas: ``$B$5`` for a whole-number limit,
+    ``=$E$1:$E$2`` for a list's source, ``ISNUMBER($A2)`` for a custom rule.
+    Moving the sqref and leaving these behind gives a range that validates
+    against the wrong cells, which Excel reports no error for.
+    """
+    container = sheet.document.root.child("dataValidations")
+    if container is None:
+        return
+    for entry in container.children_named("dataValidation"):
+        for name in ("formula1", "formula2"):
+            node = entry.child(name)
+            if node is None or not node.text:
+                continue
+            moved = (
+                shift_formula(
+                    node.text, shift, formula_sheet=sheet.name, target_sheet=sheet.name
+                )
+                if shift is not None
+                else delete_in_formula(
+                    node.text,
+                    deletion,  # type: ignore[arg-type]
+                    formula_sheet=sheet.name,
+                    target_sheet=sheet.name,
+                )
+            )
+            if moved != node.text:
+                node.set_text(moved)
+
+#: Inside a ``<customSheetView>``, which repeats a slice of the sheet's own
+#: structure per saved view: each attribute with the notation it uses.
+CUSTOM_VIEW_ADDRESSES: tuple[tuple[str, str, str], ...] = (
+    ("selection", "sqref", "sqref"),
+    ("selection", "activeCell", "cell"),
+    ("pane", "topLeftCell", "cell"),
+    ("autoFilter", "ref", "ref"),
+)
+
+
+def _move_custom_views(
+    sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | None
+) -> None:
+    """Move the addresses each saved view keeps.
+
+    A custom sheet view stores its own selection, frozen pane, autofilter
+    and page breaks, so every one of them is a second copy of an address the
+    sheet also holds. Leaving them puts a user who switches to that view
+    back on the cells that used to be there.
+    """
+    container = sheet.document.root.child("customSheetViews")
+    if container is None:
+        return
+    for view in container.children_named("customSheetView"):
+        for entry, attribute, notation in CUSTOM_VIEW_ADDRESSES:
+            for node in view.children_named(entry):
+                raw = node.get(attribute)
+                if raw is None:
+                    continue
+                moved = _move_address(raw, notation, shift=shift, deletion=deletion)
+                if moved is None:
+                    node.unset(attribute)
+                elif moved != raw:
+                    node.set(attribute, moved)
+        for axis, is_row in (("rowBreaks", True), ("colBreaks", False)):
+            breaks = view.child(axis)
+            if breaks is not None:
+                _move_break_entries(breaks, is_row=is_row, shift=shift, deletion=deletion)
+
+
+def _move_break_entries(
+    breaks: Element, *, is_row: bool, shift: Shift | None, deletion: Deletion | None
+) -> None:
+    """Move a ``<brk id=...>``, whose id is a one-based row or column."""
+    for entry in list(breaks.children_named("brk")):
+        raw = entry.get("id")
+        if raw is None:
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            continue
+        if shift is not None:
+            moved = shift_index(value - 1, shift, is_row=is_row) + 1
+        else:
+            survivor = delete_index(value - 1, deletion, is_row=is_row)  # type: ignore[arg-type]
+            if survivor is None:
+                breaks.remove(entry)
+                continue
+            moved = survivor + 1
+        entry.set("id", str(moved))
+    remaining = sum(1 for _ in breaks.children_named("brk"))
+    if breaks.get("count") is not None:
+        breaks.set("count", str(remaining))
+
+
+def _move_address(
+    raw: str, notation: str, *, shift: Shift | None, deletion: Deletion | None
+) -> str | None:
+    """One address in whichever notation it is written in."""
+    if shift is not None:
+        if notation == "sqref":
+            return shift_sqref(raw, shift)
+        if notation == "cell":
+            return shift_cell(raw, shift)
+        return shift_ref(raw, shift)
+    if notation == "sqref":
+        return delete_sqref(raw, deletion)  # type: ignore[arg-type]
+    if notation == "cell":
+        return delete_cell(raw, deletion)  # type: ignore[arg-type]
+    return delete_ref(raw, deletion)  # type: ignore[arg-type]
+
+
+def _move_extensions(
+    sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | None
+) -> None:
+    """Move the addresses inside the sheet's ``<extLst>``.
+
+    Everything newer than the 2006 schema lives here, and it spells its
+    addresses in one consistent way whatever the feature: an ``<xm:sqref>``
+    holding ranges and an ``<xm:f>`` holding a formula. A modern data bar,
+    an x14 data validation and a sparkline group all use that pair, so one
+    rule covers them rather than one per feature.
+
+    An element whose ranges are all deleted is removed together with the
+    ``x14`` rule that owns it, because a rule with no ``xm:sqref`` is not
+    something Excel accepts.
+    """
+    extensions = sheet.document.root.child("extLst")
+    if extensions is None:
+        return
+    for node in list(_descendants(extensions, "sqref")):
+        if not node.text:
+            continue
+        moved = (
+            shift_sqref(node.text, shift)
+            if shift is not None
+            else delete_sqref(node.text, deletion)  # type: ignore[arg-type]
+        )
+        if moved is None:
+            _drop_extension_owner(node)
+            continue
+        if moved != node.text:
+            node.set_text(moved)
+
+    for node in _descendants(extensions, "f"):
+        if not node.text:
+            continue
+        moved = (
+            shift_formula(node.text, shift, formula_sheet=sheet.name, target_sheet=sheet.name)
+            if shift is not None
+            else delete_in_formula(
+                node.text,
+                deletion,  # type: ignore[arg-type]
+                formula_sheet=sheet.name,
+                target_sheet=sheet.name,
+            )
+        )
+        if moved != node.text:
+            node.set_text(moved)
+
+
+def _drop_extension_owner(node: Element) -> None:
+    """Remove the element an emptied ``<xm:sqref>`` belongs to.
+
+    The sqref sits beside the rule it applies to rather than inside it, so
+    the parent goes: an ``x14:conditionalFormatting`` whose range is gone
+    takes its ``x14:cfRule`` with it.
+    """
+    owner = node.parent
+    if owner is None:
+        return
+    grandparent = owner.parent
+    if grandparent is None:
+        owner.remove(node)
+        return
+    grandparent.remove(owner)

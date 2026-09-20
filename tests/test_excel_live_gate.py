@@ -1029,6 +1029,74 @@ End Function
     assert seen["bold"] == "True", "the dxf's font reached the cell too"
 
 
+def test_excel_agrees_where_the_once_refused_content_landed(
+    excel: object, live_refused_xlsx: Path, tmp_path: Path
+) -> None:
+    """The gate for an empty refusal list.
+
+    Every element that used to make an insertion raise is on this sheet:
+    data validation with its formulas, a protected range, a saved sort,
+    scenarios, a shape, a form control and a comment. Each of them records a
+    cell address somewhere the worksheet XML does not reach, and Excel is
+    the only thing that can say whether they all landed together.
+
+    It caught two real defects while it was being written. The drawing part
+    was never touched, because the anchor search looked for a wrapper called
+    ``<anchor>`` and a drawing calls it ``<xdr:twoCellAnchor>``. And a
+    comment's VML shape names its own cell in ``<x:Row>``/``<x:Column>``,
+    separate from its ``<x:Anchor>``; moving one and not the other left the
+    VML and the comments part disagreeing, and Excel refused to open the
+    workbook at all rather than repairing it.
+    """
+    book = Workbook.open(live_refused_xlsx)
+    book["R"].insert_rows(3, 2)
+    target = tmp_path / "once_refused.xlsx"
+    book.save(target)
+
+    source = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("R")
+    parts = "dvList=" & ws.Range("G4").Validation.Formula1
+    parts = parts & "|dvBound=" & ws.Range("H4").Validation.Formula2
+    parts = parts & "|dvCustom=" & ws.Range("I4").Validation.Formula1
+    parts = parts & "|protected=" & ws.Protection.AllowEditRanges(1).Range.Address(False, False)
+    parts = parts & "|sortRange=" & ws.Sort.Rng.Address(False, False)
+    parts = parts & "|sortKey=" & ws.Sort.SortFields(1).Key.Address(False, False)
+    parts = parts & "|scenario=" & ws.Scenarios(1).ChangingCells.Address(False, False)
+    parts = parts & "|shape=" & ws.Shapes(1).TopLeftCell.Address(False, False)
+    parts = parts & "|button=" & ws.Shapes(2).TopLeftCell.Address(False, False)
+    parts = parts & "|comment=" & ws.Comments(1).Parent.Address(False, False)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+    seen = probe(excel, source, target, "oncerefused")
+
+    # A range starting at row 2 keeps its start, which is above the
+    # insertion, and only its far end moves.
+    assert seen["protected"] == "B2:B11"
+    assert seen["sortRange"] == "A2:C11"
+    assert seen["sortKey"] == "B2:B11"
+    # A2 stays and A3 becomes A5, so the two are no longer contiguous.
+    assert seen["scenario"] == "A2,A5"
+
+    # A validation's bounds are formulas and carry references of their own.
+    assert seen["dvList"] == "=$E$1:$E$2", "above the insertion, so unmoved"
+    assert seen["dvBound"] == "=$B$7", "was $B$5"
+    assert seen["dvCustom"] == "=ISNUMBER($A4)", "relative, was $A2"
+
+    # Zero-based anchors, in a drawing part and in VML respectively.
+    assert seen["shape"] == "E8", "anchored at zero-based row 5, so row 6"
+    assert seen["button"] == "E12", "zero-based row 9, so row 10"
+    assert seen["comment"] == "C5", "was C3, in two places that must agree"
+
+
 _OPEN_PROBE = r"""
 Public Function Probe(ByVal Target As String) As String
     Dim wb As Workbook

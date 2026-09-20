@@ -13,8 +13,9 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > Excel. Conditional formatting reads and writes every rule family Excel has.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
-> included. Data validation is the next gap. Word, PowerPoint and Access
-> follow, in that order.
+> included. Nothing about a sheet makes that refuse any more: validation,
+> protected ranges, sorts, scenarios, shapes, form controls and comments all
+> move with it. Word, PowerPoint and Access follow, in that order.
 
 ```python
 import datetime as dt
@@ -130,6 +131,8 @@ data descriptors.
 |   _conditional  cfRules, and the compatibility formula |
 |                 that makes them fire                   |
 |   _dxf        differential formats: what a rule paints |
+|   _addresses  the five notations an address is spelled  |
+|               in, two of them zero-based                |
 |   _rowcol     inserting and deleting rows and columns,  |
 |               and moving everything that records a     |
 |               cell address                             |

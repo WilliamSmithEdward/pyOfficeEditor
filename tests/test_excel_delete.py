@@ -28,7 +28,6 @@ from pyofficeeditor.excel import (
 )
 from pyofficeeditor.excel._formulas import REF_ERROR, Deletion, delete_in_formula
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW
-from pyofficeeditor.excel._rowcol import UnshiftableContentError
 from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
 
 
@@ -419,15 +418,41 @@ class TestRefusals:
         with pytest.raises(ValueError, match="every column of the table"):
             structures["Tabled"].delete_columns(1, 3)
 
-    def test_unshiftable_content(self, book: Workbook) -> None:
-        """Conditional formatting used to be on this list and now moves, so
-        the refusal is exercised with something still on it."""
+    def test_content_that_used_to_be_refused_shrinks(self, book: Workbook) -> None:
+        """Nothing makes a deletion refuse any more. A validation whose
+        range survives shrinks with it."""
         sheet = book["Data"]
-        insert_in_schema_order(
-            sheet.document.root, Element.create("protectedRanges"), WORKSHEET_CHILD_ORDER
-        )
-        with pytest.raises(UnshiftableContentError, match="protected ranges"):
-            sheet.delete_rows(3, 1)
+        holder = Element.create("dataValidations")
+        holder.append(Element.create("dataValidation", {"sqref": "B2:B9"}))
+        insert_in_schema_order(sheet.document.root, holder, WORKSHEET_CHILD_ORDER)
+        sheet.delete_rows(3, 2)
+        found = sheet.document.root.require("dataValidations")
+        assert [n.get("sqref") for n in found.children_named("dataValidation")] == ["B2:B7"]
+
+    def test_an_entry_with_nothing_left_goes_with_its_wrapper(
+        self, book: Workbook
+    ) -> None:
+        """An empty ``<dataValidations count="0"/>`` is not something Excel
+        accepts, so the wrapper goes with its last entry."""
+        sheet = book["Data"]
+        holder = Element.create("dataValidations", {"count": "1"})
+        holder.append(Element.create("dataValidation", {"sqref": "B3:B4"}))
+        insert_in_schema_order(sheet.document.root, holder, WORKSHEET_CHILD_ORDER)
+        sheet.delete_rows(3, 2)
+        assert b"dataValidations" not in sheet.document.to_bytes()
+
+    def test_a_surviving_sibling_keeps_the_wrapper_and_fixes_the_count(
+        self, book: Workbook
+    ) -> None:
+        sheet = book["Data"]
+        holder = Element.create("dataValidations", {"count": "2"})
+        holder.append(Element.create("dataValidation", {"sqref": "B3:B4"}))
+        holder.append(Element.create("dataValidation", {"sqref": "C2:C9"}))
+        insert_in_schema_order(sheet.document.root, holder, WORKSHEET_CHILD_ORDER)
+        sheet.delete_rows(3, 2)
+        found = sheet.document.root.require("dataValidations")
+        assert found.get("count") == "1"
+        assert [n.get("sqref") for n in found.children_named("dataValidation")] == ["C2:C7"]
 
     @pytest.mark.parametrize(("at", "count"), [(0, 1), (-1, 1), (MAX_ROW + 1, 1), (3, 0)])
     def test_bad_row_arguments(self, book: Workbook, at: int, count: int) -> None:
@@ -439,14 +464,12 @@ class TestRefusals:
         with pytest.raises(ValueError):
             book["Data"].delete_columns(at, count)
 
-    def test_a_refused_deletion_changes_nothing(self, book: Workbook) -> None:
+    def test_a_comment_on_a_deleted_row_goes_with_it(self, book: Workbook) -> None:
+        """Which is what Excel does. Comments were on neither the shifted
+        list nor the refused one before, so they simply stayed put."""
         sheet = book["Data"]
-        insert_in_schema_order(
-            sheet.document.root, Element.create("dataValidations"), WORKSHEET_CHILD_ORDER
-        )
-        with pytest.raises(UnshiftableContentError):
-            sheet.delete_rows(3, 1)
-        assert sheet["A3"].value == "South"
+        sheet.delete_rows(3, 2)
+        assert sheet["A3"].value == "West"
 
 
 class TestRoundTrip:
@@ -566,5 +589,5 @@ class TestConditionalFormattingMoves:
 
     def test_insertion_no_longer_refuses(self, book: Workbook) -> None:
         sheet = self.formatted(book)
-        sheet.insert_rows(3, 2)  # would have raised UnshiftableContentError
+        sheet.insert_rows(3, 2)  # this used to raise rather than move
         assert len(sheet.conditional_formats) == 3

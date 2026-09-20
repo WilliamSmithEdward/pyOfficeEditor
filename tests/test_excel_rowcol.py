@@ -16,7 +16,6 @@ from pyofficeeditor._xml import Element
 from pyofficeeditor.excel import RangeRef, Workbook
 from pyofficeeditor.excel._formulas import Shift, shift_formula, shift_range
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW
-from pyofficeeditor.excel._rowcol import UNSHIFTABLE_ELEMENTS, UnshiftableContentError
 from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._tokens import TokenKind, render, tokenize
 
@@ -437,36 +436,126 @@ class TestInsertingColumns:
         assert reopened["E2"].formula == "C2*D2"
 
 
-class TestRefusals:
-    @pytest.mark.parametrize("element", sorted(UNSHIFTABLE_ELEMENTS))
-    def test_unshiftable_content_refuses_the_insertion(
-        self, book: Workbook, element: str
+class TestNothingIsRefused:
+    """Every element that used to make an insertion raise now moves.
+
+    The refusal list is empty and the machinery is gone, so these assert the
+    replacement rather than the absence: each element's address has to come
+    out somewhere new, not merely fail to raise.
+    """
+
+    @pytest.mark.parametrize(
+        ("container", "entry", "attribute", "before", "after"),
+        [
+            ("dataValidations", "dataValidation", "sqref", "B2:B9", "B2:B11"),
+            ("protectedRanges", "protectedRange", "sqref", "B2:B9", "B2:B11"),
+            ("ignoredErrors", "ignoredError", "sqref", "B2:B9", "B2:B11"),
+            ("dataConsolidate", "dataRef", "ref", "B2:B9", "B2:B11"),
+        ],
+    )
+    def test_a_wrapped_address_moves(
+        self, book: Workbook, container: str, entry: str, attribute: str, before: str, after: str
     ) -> None:
-        """Shifting everything else and leaving these behind gives a workbook
-        that opens cleanly and points at the wrong cells."""
         sheet = book["Data"]
-        insert_in_schema_order(sheet.document.root, Element.create(element), WORKSHEET_CHILD_ORDER)
-        with pytest.raises(UnshiftableContentError, match="cannot move yet"):
-            sheet.insert_rows(3, 1)
+        holder = Element.create(container)
+        holder.append(Element.create(entry, {attribute: before}))
+        insert_in_schema_order(sheet.document.root, holder, WORKSHEET_CHILD_ORDER)
+        sheet.insert_rows(3, 2)
+        found = sheet.document.root.require(container).children_named(entry)
+        assert [node.get(attribute) for node in found] == [after]
 
-    def test_the_message_names_what_it_found(self, book: Workbook) -> None:
+    def test_a_sort_state_and_its_condition(self, book: Workbook) -> None:
         sheet = book["Data"]
-        insert_in_schema_order(
-            sheet.document.root, Element.create("dataValidations"), WORKSHEET_CHILD_ORDER
-        )
-        with pytest.raises(UnshiftableContentError, match="data validation rules"):
-            sheet.insert_rows(3, 1)
+        state = Element.create("sortState", {"ref": "A2:C9"})
+        state.append(Element.create("sortCondition", {"ref": "B2:B9"}))
+        insert_in_schema_order(sheet.document.root, state, WORKSHEET_CHILD_ORDER)
+        sheet.insert_rows(3, 2)
+        moved = sheet.document.root.require("sortState")
+        assert moved.get("ref") == "A2:C11"
+        assert moved.require("sortCondition").get("ref") == "B2:B11"
 
-    def test_a_refused_insertion_changes_nothing(self, book: Workbook, live_sample_xlsx: Path) -> None:
+    def test_a_scenarios_input_cells(self, book: Workbook) -> None:
         sheet = book["Data"]
-        before = sheet["A3"].value
-        insert_in_schema_order(
-            sheet.document.root, Element.create("dataValidations"), WORKSHEET_CHILD_ORDER
-        )
-        with pytest.raises(UnshiftableContentError):
-            sheet.insert_rows(3, 1)
-        assert sheet["A3"].value == before
+        holder = Element.create("scenarios")
+        scenario = Element.create("scenario", {"name": "High"})
+        scenario.append(Element.create("inputCells", {"r": "A2", "val": "1"}))
+        scenario.append(Element.create("inputCells", {"r": "A5", "val": "2"}))
+        holder.append(scenario)
+        insert_in_schema_order(sheet.document.root, holder, WORKSHEET_CHILD_ORDER)
+        sheet.insert_rows(3, 2)
+        cells = sheet.document.root.require("scenarios").require("scenario")
+        assert [node.get("r") for node in cells.children_named("inputCells")] == ["A2", "A7"]
 
+    def test_a_custom_sheet_views_selection(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        holder = Element.create("customSheetViews")
+        view = Element.create("customSheetView", {"guid": "{0}"})
+        view.append(Element.create("selection", {"sqref": "B5:B9", "activeCell": "B5"}))
+        holder.append(view)
+        insert_in_schema_order(sheet.document.root, holder, WORKSHEET_CHILD_ORDER)
+        sheet.insert_rows(3, 2)
+        selection = sheet.document.root.require("customSheetViews").require(
+            "customSheetView"
+        ).require("selection")
+        assert selection.get("sqref") == "B7:B11"
+        assert selection.get("activeCell") == "B7"
+
+    def test_an_inline_control_anchor(self, book: Workbook) -> None:
+        """Zero-based, so row 9 is the tenth row and lands on the twelfth."""
+        sheet = book["Data"]
+        holder = Element.create("controls")
+        anchor = Element.create("anchor")
+        for end, row in (("from", "9"), ("to", "10")):
+            node = Element.create(end)
+            node.append(_indexed("xdr:col", "4"))
+            node.append(_indexed("xdr:row", row))
+            anchor.append(node)
+        holder.append(anchor)
+        insert_in_schema_order(sheet.document.root, holder, WORKSHEET_CHILD_ORDER)
+        sheet.insert_rows(3, 2)
+        ends = sheet.document.root.require("controls").require("anchor")
+        rows = [
+            ends.require(end).require("xdr:row").text for end in ("from", "to")
+        ]
+        assert rows == ["11", "12"]
+
+    def test_an_extension_sqref(self, book: Workbook) -> None:
+        """Everything newer than the 2006 schema addresses cells through an
+        ``xm:sqref``, whatever the feature, so one rule covers them all."""
+        sheet = book["Data"]
+        extensions = Element.create("extLst")
+        ext = Element.create("ext", {"uri": "{78C0D931-6437-407d-A8EE-F0AAD7539E65}"})
+        block = Element.create("x14:conditionalFormatting")
+        sqref = Element.create("xm:sqref")
+        sqref.set_text("D2:D9")
+        block.append(sqref)
+        ext.append(block)
+        extensions.append(ext)
+        insert_in_schema_order(sheet.document.root, extensions, WORKSHEET_CHILD_ORDER)
+        sheet.insert_rows(3, 2)
+        rendered = sheet.document.to_bytes().decode()
+        assert "<xm:sqref>D2:D11</xm:sqref>" in rendered
+
+    def test_an_extension_formula(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        extensions = Element.create("extLst")
+        ext = Element.create("ext", {"uri": "{05C60535-1F16-4fd2-B633-F4F36F0B64E0}"})
+        formula = Element.create("xm:f")
+        formula.set_text("SUM(B2:B9)")
+        ext.append(formula)
+        extensions.append(ext)
+        insert_in_schema_order(sheet.document.root, extensions, WORKSHEET_CHILD_ORDER)
+        sheet.insert_rows(3, 2)
+        assert "<xm:f>SUM(B2:B11)</xm:f>" in sheet.document.to_bytes().decode()
+
+
+def _indexed(name: str, value: str) -> Element:
+    node = Element.create(name)
+    node.set_text(value)
+    return node
+
+
+class TestRefusals:
     @pytest.mark.parametrize(("at", "count"), [(0, 1), (-1, 1), (MAX_ROW + 1, 1), (3, 0), (3, -1)])
     def test_bad_arguments(self, book: Workbook, at: int, count: int) -> None:
         with pytest.raises(ValueError):

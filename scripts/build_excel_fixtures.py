@@ -198,6 +198,67 @@ def build(session: object, source: str, target: Path, label: str, *, force: bool
     print(f"  wrote {target.relative_to(FIXTURES.parent.parent.parent)} ({target.stat().st_size} bytes)")
 
 
+
+#: Every element that used to make an insertion refuse, on one sheet.
+#: Between them they cover all five address notations, including the two
+#: zero-based ones and the two cases where an address is stored twice and
+#: Excel refuses the workbook if the copies disagree.
+_BUILD_REFUSED = r"""
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim i As Long
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "R"
+
+    For i = 1 To 12
+        ws.Cells(i, 1).Value = i
+        ws.Cells(i, 2).Value = i * 3
+        ws.Cells(i, 3).Value = "n" & i
+    Next i
+    ws.Range("E1").Value = "alpha"
+    ws.Range("E2").Value = "beta"
+
+    ' Data validation: a list from a range, a bound that is a reference,
+    ' and a custom formula with a relative reference.
+    With ws.Range("G2:G9").Validation
+        .Delete
+        .Add Type:=3, AlertStyle:=1, Operator:=1, Formula1:="=$E$1:$E$2"
+    End With
+    With ws.Range("H2:H9").Validation
+        .Delete
+        .Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="1", Formula2:="=$B$5"
+    End With
+    With ws.Range("I2:I9,K2:K4").Validation
+        .Delete
+        .Add Type:=7, AlertStyle:=1, Operator:=1, Formula1:="=ISNUMBER($A2)"
+    End With
+
+    ws.Protection.AllowEditRanges.Add Title:="Editable", Range:=ws.Range("B2:B9")
+
+    With ws.Sort
+        .SortFields.Clear
+        .SortFields.Add Key:=ws.Range("B2:B9"), Order:=2
+        .SetRange ws.Range("A1:C9")
+        .Header = 1
+        .Apply
+    End With
+
+    ws.Scenarios.Add Name:="High", ChangingCells:=ws.Range("A2:A3"), Values:=Array(99, 98)
+
+    ' A shape, whose anchor lives in a drawing part.
+    ws.Shapes.AddShape 1, ws.Range("E6").Left, ws.Range("E6").Top, 80, 40
+    ' A form control, anchored inline and again in VML.
+    ws.Buttons.Add ws.Range("E10").Left, ws.Range("E10").Top, 70, 24
+    ' A comment, whose cell is in the comments part and again in VML.
+    ws.Range("C3").AddComment "note here"
+
+    Build = "ok"
+End Function
+"""
+
 def main() -> int:
     try:
         from pyvbaharness import ExcelSession
@@ -214,6 +275,7 @@ def main() -> int:
         ("empty.xlsx", _BUILD_EMPTY),
         ("sample.xlsx", _BUILD_SAMPLE),
         ("structures.xlsx", _BUILD_STRUCTURES),
+        ("refused.xlsx", _BUILD_REFUSED),
     ]
     if not force and all((FIXTURES / name).exists() for name, _ in wanted):
         print("every fixture is already there; nothing to do (pass --force to rebuild)")

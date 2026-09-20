@@ -55,6 +55,8 @@ Each layer knows the layer below it and not the layer above.
 |   _rowcol       inserting and deleting rows and columns,  |
 |                 and moving everything that records a      |
 |                 cell address                              |
+|   _addresses    the five notations an address is spelled  |
+|                 in, two of them zero-based                |
 |   _tokens       a formula, broken into the pieces a        |
 |                 transform may touch                        |
 |   _names        defined names, and the naming rules       |
@@ -487,12 +489,31 @@ corruption case in miniature: after deleting rows 2 to 4, an untouched
 tokenizer tries a cell reference first, so `A1:A4` is still two cells, and
 a lookaround keeps `TIME(2,4,0)`, `"2:4"` and `Table1[Units]` out.
 
-**What cannot be shifted is refused.** Data validation, protected ranges,
-drawings and extension content all carry cell addresses this library does not
-model. Shifting everything else and leaving those behind is the
-silent-corruption case, so `check_shiftable` refuses the insertion and names
-what it found. That list shrinks as those features get modelled; conditional
-formatting came off it once its rules were.
+**Nothing is refused.** There used to be a list of elements that made an
+insertion raise rather than move everything else and leave them behind, which
+was the honest answer while they were unmodelled. It is empty, and the
+machinery is gone with it.
+
+Two entries on it were wrong in opposite directions, which is the argument
+for measuring rather than reasoning about a format. A background `<picture>`
+was refused even though it tiles the sheet and names no cell at all.
+Comments and legacy drawings were never on the list at all, so inserting a
+row on a sheet with a comment moved the cells and left the comment behind.
+
+`_addresses.py` holds the five notations a worksheet uses for an address:
+`sqref` (space-separated ranges), `ref` (one range), `r` (one cell), a
+drawing anchor's `<xdr:col>`/`<xdr:row>` pair, and a VML `<x:Anchor>`'s eight
+numbers. The last two are **zero-based**, so treating them as one-based puts
+every shape and comment one cell off and leaves the file perfectly valid.
+`_rowcol.py` then drives most of the shifting from a table of
+(container, entry, attribute, notation) rather than a function per feature.
+
+**Some addresses are stored twice, and Excel checks.** A comment's cell is
+in the comments part as a `ref` and again in its VML shape as
+`<x:Row>`/`<x:Column>`, which is not the same thing as its `<x:Anchor>`.
+Moving one and not the other does not produce a repair prompt: Excel refuses
+to open the workbook. A modern data bar is the same shape of problem, with
+its range in the `sqref` and again in an `x14` twin's `xm:sqref`.
 
 **Conditional formatting is three things moving together.** The `sqref`, the
 condition of a `cellIs` or `expression` rule (a real formula with real
