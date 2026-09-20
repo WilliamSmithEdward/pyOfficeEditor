@@ -325,6 +325,65 @@ def test_excel_renders_the_formatting_this_library_writes(
 
 
 # --------------------------------------------------------------------------
+# Merged ranges
+# --------------------------------------------------------------------------
+
+_MERGE_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+
+    parts = "A20merged=" & CStr(ws.Range("A20").MergeCells)
+    parts = parts & "|A20area=" & ws.Range("A20").MergeArea.Address(False, False)
+    parts = parts & "|A20value=" & ws.Range("A20").Value
+    parts = parts & "|B20empty=" & CStr(IsEmpty(ws.Range("B20").Value))
+    parts = parts & "|H1area=" & ws.Range("H1").MergeArea.Address(False, False)
+    parts = parts & "|A11merged=" & CStr(ws.Range("A11").MergeCells)
+    parts = parts & "|D11merged=" & CStr(ws.Range("D11").MergeCells)
+    ' Range.MergeCells over a mixed block returns Null, which CStr refuses,
+    ' so ask cell by cell rather than over UsedRange.
+    parts = parts & "|A11area=" & ws.Range("A11").MergeArea.Address(False, False)
+
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+
+
+def test_excel_renders_the_merges_this_library_writes(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """Overlapping merges make Excel repair a worksheet, so the only way to
+    know a merge is well formed is to let Excel open it."""
+    book = Workbook.open(live_sample_xlsx)
+    sheet = book["Data"]
+    sheet["A20"].value = "wide heading"
+    sheet["B20"].value = "this is discarded"
+    sheet.merge("A20:C20")
+    sheet["H1"].value = "tall"
+    sheet.merge("H1:H4")
+    target = tmp_path / "merged.xlsx"
+    book.save(target)
+
+    seen = probe(excel, _MERGE_PROBE, target, "merges")
+
+    assert seen["A20merged"] == "True"
+    assert seen["A20area"] == "A20:C20", "Excel agrees on the extent"
+    assert seen["A20value"] == "wide heading", "the anchor kept its value"
+    assert seen["B20empty"] == "True", "the covered value was discarded"
+    assert seen["H1area"] == "H1:H4", "a vertical merge too"
+    assert seen["A11merged"] == "True", "the fixture's own merge survived"
+    assert seen["A11area"] == "A11:C11", "at its original extent"
+    assert seen["D11merged"] == "False", "and a cell outside it is not merged"
+
+
+# --------------------------------------------------------------------------
 # The no-op case
 # --------------------------------------------------------------------------
 

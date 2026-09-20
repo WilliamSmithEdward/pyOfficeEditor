@@ -274,6 +274,114 @@ class Worksheet:
         self._invalidate()
 
     # ------------------------------------------------------------------
+    # Merged ranges
+    # ------------------------------------------------------------------
+
+    @property
+    def merged_ranges(self) -> list[RangeRef]:
+        """Every merged block on the sheet, in the order the part lists them."""
+        container = self._root.child("mergeCells")
+        if container is None:
+            return []
+        found: list[RangeRef] = []
+        for entry in container.children_named("mergeCell"):
+            reference = entry.get("ref")
+            if reference is None:
+                continue
+            try:
+                found.append(RangeRef.parse(reference).normalized)
+            except ValueError:
+                continue
+        return found
+
+    def merged_range_at(self, reference: CellRef) -> RangeRef | None:
+        """The merged block covering a cell, if any.
+
+        Worth asking before concluding a cell is empty: every cell of a merge
+        but the top left reads as ``None``, because the value lives on the
+        anchor.
+        """
+        for block in self.merged_ranges:
+            if reference in block:
+                return block
+        return None
+
+    def merge(self, reference: str | RangeRef) -> RangeRef:
+        """Merge a block so it displays as one cell.
+
+        The top-left cell keeps its value and every other cell in the block
+        is cleared, which is what Excel does: the covered cells are not
+        displayed, so data left in them would be invisible and misleading.
+        Check :attr:`merged_ranges` or read the cells first if that matters.
+
+        The covered cells are still written, carrying the anchor's style,
+        because that is how a border renders across a merge.
+        """
+        block = (RangeRef.parse(reference) if isinstance(reference, str) else reference).normalized
+        if block.is_single_cell:
+            raise ValueError(f"{block.a1} is one cell; there is nothing to merge it with.")
+        for existing in self.merged_ranges:
+            if existing.intersects(block):
+                raise ValueError(
+                    f"{block.a1} overlaps the merged range {existing.a1}. Excel repairs a "
+                    f"worksheet whose merges overlap rather than rendering it; unmerge "
+                    f"{existing.a1} first."
+                )
+
+        anchor = CellRef(block.top, block.left)
+        anchor_style = self.style_index(anchor)
+        for cell in block.cells():
+            if cell.sort_key == anchor.sort_key:
+                continue
+            element = self._ensure_cell(cell)
+            self._drop_children(element, "v")
+            self._drop_children(element, "is")
+            self._drop_children(element, "f")
+            element.unset("t")
+            if anchor_style is not None:
+                element.set("s", str(anchor_style))
+
+        container = self._root.child("mergeCells")
+        if container is None:
+            container = Element.create("mergeCells")
+            insert_in_schema_order(self._root, container, WORKSHEET_CHILD_ORDER)
+        container.append(Element.create("mergeCell", {"ref": block.a1}))
+        container.set("count", str(sum(1 for _ in container.children_named("mergeCell"))))
+        self._invalidate()
+        return block
+
+    def unmerge(self, reference: str | RangeRef) -> RangeRef:
+        """Split a merged block apart again.
+
+        Accepts the block's own reference or any cell inside it, the way
+        Excel's own command works on a selection.
+        """
+        wanted = (RangeRef.parse(reference) if isinstance(reference, str) else reference).normalized
+        container = self._root.child("mergeCells")
+        if container is not None:
+            for entry in list(container.children_named("mergeCell")):
+                raw = entry.get("ref")
+                if raw is None:
+                    continue
+                try:
+                    block = RangeRef.parse(raw).normalized
+                except ValueError:
+                    continue
+                if block.a1 == wanted.a1 or (
+                    wanted.is_single_cell and CellRef(wanted.top, wanted.left) in block
+                ):
+                    container.remove(entry)
+                    remaining = sum(1 for _ in container.children_named("mergeCell"))
+                    if remaining:
+                        container.set("count", str(remaining))
+                    else:
+                        # Excel omits the element rather than writing count="0".
+                        self._root.remove(container)
+                    self._invalidate()
+                    return block
+        raise ValueError(f"{wanted.a1} is not a merged range on {self._name!r}.")
+
+    # ------------------------------------------------------------------
     # Extent
     # ------------------------------------------------------------------
 
@@ -604,6 +712,24 @@ class Cell:
     @alignment.setter
     def alignment(self, alignment: Alignment) -> None:
         self._sheet.set_format(self._reference, replace(self.format, alignment=alignment))
+
+    @property
+    def merged_range(self) -> RangeRef | None:
+        """The merged block this cell belongs to, if any."""
+        return self._sheet.merged_range_at(self._reference)
+
+    @property
+    def is_merged(self) -> bool:
+        return self.merged_range is not None
+
+    @property
+    def is_merge_anchor(self) -> bool:
+        """Whether this is the top-left cell of a merge, the one that holds
+        the value the whole block displays."""
+        block = self.merged_range
+        if block is None:
+            return False
+        return self._reference.sort_key == (block.top, block.left)
 
     def clear(self) -> None:
         self._sheet.clear_cell(self._reference)

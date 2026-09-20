@@ -263,6 +263,29 @@ class RangeRef:
         for row in range(self.top, self.bottom + 1):
             yield [CellRef(row, column) for column in range(self.left, self.right + 1)]
 
+    def intersects(self, other: RangeRef) -> bool:
+        """Whether two blocks share any cell.
+
+        Two merged ranges may not overlap, and Excel repairs a worksheet
+        where they do rather than rendering it, so this is checked before a
+        merge is recorded.
+        """
+        return not (
+            self.right < other.left
+            or other.right < self.left
+            or self.bottom < other.top
+            or other.bottom < self.top
+        )
+
+    def contains(self, other: RangeRef) -> bool:
+        """Whether this block covers all of another."""
+        return (
+            self.top <= other.top
+            and self.left <= other.left
+            and self.bottom >= other.bottom
+            and self.right >= other.right
+        )
+
     def expanded(self, cell: CellRef) -> RangeRef:
         """The smallest range covering this block and one more cell."""
         return RangeRef(

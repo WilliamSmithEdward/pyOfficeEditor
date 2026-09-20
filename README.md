@@ -31,6 +31,10 @@ with Workbook.open("orders.xlsx") as book:
     sheet["B2"].fill = "FFFF00"
     sheet["B3"].border = Border.all_sides("thin", "FF0000")
 
+    sheet["A20"].value = "wide heading"
+    sheet.merge("A20:C20")
+    sheet["B20"].merged_range                    # RangeRef('A20:C20')
+
     summary = book.add_sheet("Summary", index=0)
     summary["A1"].formula = "=SUM(Data!D2:D5)"
     book.rename_sheet("Data", "Q1 Data")     # the formula follows the rename

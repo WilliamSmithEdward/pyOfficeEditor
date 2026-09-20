@@ -263,6 +263,7 @@ tests/
   test_excel_workbook.py        the Excel surface end to end
   test_excel_sheets.py          adding, removing, renaming, reordering
   test_excel_formats.py         fonts, fills, borders, alignment
+  test_excel_merges.py          merged ranges and range intersection
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               three committed Excel-authored packages,
                                 plus two built on demand; see its README
@@ -374,6 +375,16 @@ both into every workbook whether or not anything uses them. A new fill is
 appended from index 2, and the reserved pair is only created when the table
 is empty: inserting them in front of existing entries would shift every
 `fillId` in the workbook and repaint every cell.
+
+**A merged range is two things.** An entry in `<mergeCells>`, and a block
+where only the top-left cell holds a value. The covered cells are still
+written, empty and carrying the anchor's style, because that is how a border
+renders across the merge. Merging discards the covered values, which is what
+Excel does: a covered cell is not displayed, so data left in one would be
+invisible. Merges may not overlap, and Excel repairs such a worksheet rather
+than rendering it, so an overlap is refused before anything is recorded.
+Reading a covered cell gives `None`, so `Cell.merged_range` is how a caller
+tells an empty cell from a covered one.
 
 ### 8.3 The live gate
 
