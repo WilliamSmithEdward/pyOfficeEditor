@@ -296,6 +296,13 @@ RUN_LIVE_EXCEL=1 python -m pytest -m live -p no:randomly
 
 Windows and Excel only. Everything else in the suite runs anywhere.
 
+## Built with this
+
+[xlide-mcp](https://github.com/WilliamSmithEdward/xlide_mcp)
+is an MCP server built on this. This library is what answers when an
+agent asks it for a cell, a formula, a table or a conditional rule, and
+what writes the change back with the rest of the package left alone.
+
 ## License
 
 MIT. See [LICENSE.md](LICENSE.md).
