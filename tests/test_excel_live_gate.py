@@ -384,6 +384,91 @@ def test_excel_renders_the_merges_this_library_writes(
 
 
 # --------------------------------------------------------------------------
+# Tables
+# --------------------------------------------------------------------------
+
+_TABLE_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim lo As ListObject
+    Dim parts As String
+    Dim i As Long
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Tabled")
+
+    parts = "count=" & CStr(ws.ListObjects.Count)
+    For i = 1 To ws.ListObjects.Count
+        parts = parts & "," & ws.ListObjects(i).Name
+    Next i
+
+    Set lo = ws.ListObjects("NewTable")
+    parts = parts & "|newRange=" & lo.Range.Address(False, False)
+    parts = parts & "|newHeaders=" & lo.HeaderRowRange.Address(False, False)
+    parts = parts & "|newData=" & lo.DataBodyRange.Address(False, False)
+    parts = parts & "|newStyle=" & lo.TableStyle
+    parts = parts & "|newCols="
+    For i = 1 To lo.ListColumns.Count
+        parts = parts & lo.ListColumns(i).Name & ";"
+    Next i
+    parts = parts & "|newRows=" & CStr(lo.ListRows.Count)
+    ' A table name is a defined name, so a formula must resolve through it.
+    parts = parts & "|structured=" & CStr(Application.Evaluate("SUM(NewTable[Qty])"))
+
+    ' The fixture's own table, with its totals row, must be untouched.
+    Set lo = ws.ListObjects("SalesTable")
+    parts = parts & "|salesRange=" & lo.Range.Address(False, False)
+    parts = parts & "|salesTotals=" & CStr(lo.ShowTotals)
+    parts = parts & "|salesTotal=" & CStr(lo.TotalsRowRange.Cells(1, 2).Value)
+
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+
+
+def test_excel_accepts_a_table_this_library_created(
+    excel: object, live_structures_xlsx: Path, tmp_path: Path
+) -> None:
+    """A table is four wired-together pieces, and Excel ignores or refuses a
+    table whose wiring is wrong, so only Excel can confirm it."""
+    from pyofficeeditor.excel._tables import TableStyle
+
+    book = Workbook.open(live_structures_xlsx)
+    sheet = book["Tabled"]
+    sheet["A10"].value = "Product"
+    sheet["B10"].value = "Qty"
+    sheet["A11"].value = "widget"
+    sheet["B11"].value = 5
+    sheet["A12"].value = "gadget"
+    sheet["B12"].value = 9
+    sheet.add_table("NewTable", "A10:B12", style=TableStyle(name="TableStyleLight9"))
+    target = tmp_path / "tabled.xlsx"
+    book.save(target)
+
+    seen = probe(excel, _TABLE_PROBE, target, "tables")
+
+    assert seen["count"].startswith("2"), f"Excel sees {seen['count']}"
+    assert "NewTable" in seen["count"] and "SalesTable" in seen["count"]
+
+    assert seen["newRange"] == "A10:B12"
+    assert seen["newHeaders"] == "A10:B10"
+    assert seen["newData"] == "A11:B12"
+    assert seen["newStyle"] == "TableStyleLight9"
+    assert seen["newCols"] == "Product;Qty;"
+    assert seen["newRows"] == "2"
+    # A structured reference only resolves if Excel registered the name.
+    assert seen["structured"] == "14", "SUM(NewTable[Qty]) is 5 + 9"
+
+    assert seen["salesRange"] == "A1:C5", "the fixture's table is untouched"
+    assert seen["salesTotals"] == "True"
+    assert seen["salesTotal"] == "555", "its totals row still sums 120+340+95"
+
+
+# --------------------------------------------------------------------------
 # The no-op case
 # --------------------------------------------------------------------------
 

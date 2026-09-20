@@ -35,6 +35,10 @@ with Workbook.open("orders.xlsx") as book:
     sheet.merge("A20:C20")
     sheet["B20"].merged_range                    # RangeRef('A20:C20')
 
+    table = sheet.add_table("Sales", "A1:F20", totals_row=True)
+    table.column_names                           # from the header row
+    table.data_range                             # excludes header and totals
+
     summary = book.add_sheet("Summary", index=0)
     summary["A1"].formula = "=SUM(Data!D2:D5)"
     book.rename_sheet("Data", "Q1 Data")     # the formula follows the rename
@@ -101,6 +105,7 @@ data descriptors.
 |               told from a number                       |
 |   _formats    fonts, fills, borders, alignment, as     |
 |               immutable values                         |
+|   _tables     ListObjects: their own parts and wiring  |
 |   _formulas   shifting references, for shared formulas |
 |               and for repointing a renamed sheet       |
 |   _sharedstrings   the per-workbook string table       |

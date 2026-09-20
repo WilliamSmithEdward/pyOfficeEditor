@@ -32,10 +32,20 @@ fixtures to refresh.
 
 `scripts/build_excel_fixtures.py` drives real Excel through
 [pyvbaharness](https://github.com/WilliamSmithEdward/pyVBAharness) to author
-`empty.xlsx` (9 parts) and `sample.xlsx` (12 parts, with shared strings,
-formulas, dates, booleans, an error cell, a merged range and a second
-sheet). Run it on a Windows machine with Excel; tests that need them skip
+three more. Run it on a Windows machine with Excel; tests that need them skip
 when they are absent.
+
+| File | What it carries |
+|------|-----------------|
+| `empty.xlsx` | The smallest thing Excel will save as `.xlsx`. |
+| `sample.xlsx` | Shared strings, formulas, dates, booleans, an error cell, a merged range, escaped and space-padded text, two sheets. |
+| `structures.xlsx` | Two ListObjects, one with a totals row and a calculated column; defined names at workbook and sheet scope; column widths; a hyperlink with its own external relationship. |
+
+A fixture that already exists is left alone, because Excel stamps every part
+with a fresh revision GUID and so never produces the same bytes twice.
+Rebuilding a committed fixture churns it for nothing and buries the real
+change in the diff. Pass `--force` when a fixture's *content* needs to change,
+which is a deliberate act.
 
 Two things `sample.xlsx` taught us, both of which would have produced a
 quietly wrong cell layer. `test_opc.py` pins each one.

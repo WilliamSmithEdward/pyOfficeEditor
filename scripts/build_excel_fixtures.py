@@ -9,11 +9,17 @@ generated without Office.
 Run this on a Windows machine with Excel installed:
 
     python -m pip install -e ".[dev,live]"
-    python scripts/build_excel_fixtures.py
+    python scripts/build_excel_fixtures.py          # only what is missing
+    python scripts/build_excel_fixtures.py --force  # rebuild everything
 
-It is idempotent: it overwrites the fixtures it owns and touches nothing
-else.  Excel runs hidden and the harness terminates it by recorded process
-id even if a step wedges.
+A fixture that already exists is left alone. Excel does not produce the same
+bytes twice, since it stamps every part with a fresh revision GUID, so
+rebuilding a committed fixture churns it for no benefit and buries the real
+change in a diff. ``--force`` is there for when a fixture's *content* needs to
+change, which is a deliberate act.
+
+Excel runs hidden and the harness terminates the instance it owns by recorded
+process id even if a step wedges.
 """
 
 from __future__ import annotations
@@ -112,12 +118,76 @@ Public Function Build(ByVal Target As String) As String
 End Function
 """
 
+_BUILD_STRUCTURES = r"""
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim lo As ListObject
 
-def build(session: object, source: str, target: Path, label: str) -> None:
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Tabled"
+
+    ws.Range("A1").Value = "Region"
+    ws.Range("B1").Value = "Units"
+    ws.Range("C1").Value = "Revenue"
+    ws.Range("A2").Value = "North"
+    ws.Range("B2").Value = 120
+    ws.Range("C2").Formula = "=B2*10"
+    ws.Range("A3").Value = "South"
+    ws.Range("B3").Value = 340
+    ws.Range("C3").Formula = "=B3*10"
+    ws.Range("A4").Value = "East"
+    ws.Range("B4").Value = 95
+    ws.Range("C4").Formula = "=B4*10"
+
+    ' A real ListObject, with a totals row so the shape is complete.
+    Set lo = ws.ListObjects.Add(xlSrcRange, ws.Range("A1:C4"), , xlYes)
+    lo.Name = "SalesTable"
+    lo.TableStyle = "TableStyleMedium2"
+    lo.ShowTotals = True
+    lo.ListColumns("Units").TotalsCalculation = xlTotalsCalculationSum
+
+    ' A second, plainer table on another sheet, so two table parts exist.
+    wb.Worksheets.Add After:=ws
+    wb.Worksheets(2).Name = "Second"
+    wb.Worksheets(2).Range("A1").Value = "Key"
+    wb.Worksheets(2).Range("A2").Value = "k1"
+    wb.Worksheets(2).ListObjects.Add(xlSrcRange, _
+        wb.Worksheets(2).Range("A1:A2"), , xlYes).Name = "KeyTable"
+
+    ' A workbook-scoped defined name and a sheet-scoped one, since renaming a
+    ' sheet has to repoint both.
+    wb.Names.Add Name:="TotalUnits", RefersTo:="=Tabled!$B$2:$B$4"
+    ws.Names.Add Name:="LocalRegion", RefersTo:="=Tabled!$A$2"
+
+    ' Column widths and a row height, which live outside sheetData.
+    ws.Columns("A").ColumnWidth = 18
+    ws.Rows(1).RowHeight = 24
+
+    ' A hyperlink, which needs its own relationship from the sheet part.
+    ws.Hyperlinks.Add Anchor:=ws.Range("E1"), Address:="https://example.invalid/", _
+        TextToDisplay:="a link"
+
+    ws.Activate
+    ws.Range("A1").Select
+
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = wb.FullName
+End Function
+"""
+
+
+def build(session: object, source: str, target: Path, label: str, *, force: bool) -> None:
     from pyvbaharness import ExcelSession
 
     assert isinstance(session, ExcelSession)
     if target.exists():
+        if not force:
+            print(f"  kept  {target.name} (already there; pass --force to rebuild)")
+            return
         target.unlink()
     session.reset_sheets()
     result = session.run_vba(source, proc="Build", args=(str(target),), timeout=180)
@@ -139,13 +209,22 @@ def main() -> int:
         )
         return 2
 
+    force = "--force" in sys.argv
+    wanted = [
+        ("empty.xlsx", _BUILD_EMPTY),
+        ("sample.xlsx", _BUILD_SAMPLE),
+        ("structures.xlsx", _BUILD_STRUCTURES),
+    ]
+    if not force and all((FIXTURES / name).exists() for name, _ in wanted):
+        print("every fixture is already there; nothing to do (pass --force to rebuild)")
+        return 0
+
     FIXTURES.mkdir(parents=True, exist_ok=True)
     print(f"authoring fixtures in {FIXTURES}")
     with ExcelSession() as excel:
-        excel.new_workbook()
-        build(excel, _BUILD_EMPTY, FIXTURES / "empty.xlsx", "empty.xlsx")
-        excel.new_workbook()
-        build(excel, _BUILD_SAMPLE, FIXTURES / "sample.xlsx", "sample.xlsx")
+        for name, source in wanted:
+            excel.new_workbook()
+            build(excel, source, FIXTURES / name, name, force=force)
     print("done")
     return 0
 

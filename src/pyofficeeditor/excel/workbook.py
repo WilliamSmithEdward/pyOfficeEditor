@@ -36,6 +36,7 @@ from pyofficeeditor.excel._sharedstrings import (
     SharedStrings,
 )
 from pyofficeeditor.excel._styles import Styles
+from pyofficeeditor.excel._tables import Table, check_table_name
 from pyofficeeditor.excel.worksheet import Worksheet
 from pyofficeeditor.exceptions import PackageError, UnsupportedFormatError
 from pyofficeeditor.opc import OpcPackage
@@ -443,6 +444,53 @@ class Workbook:
             return
         if current >= len(self._order):
             view.set("activeTab", str(max(0, len(self._order) - 1)))
+
+    # ------------------------------------------------------------------
+    # Tables, whose names and ids are workbook-wide
+    # ------------------------------------------------------------------
+
+    @property
+    def tables(self) -> list[Table]:
+        """Every table in the workbook, sheet by sheet in tab order."""
+        return [table for sheet in self.sheets for table in sheet.tables]
+
+    @property
+    def table_names(self) -> list[str]:
+        return [table.name for table in self.tables]
+
+    def table(self, name: str) -> Table:
+        """One table, by name, from wherever in the workbook it lives.
+
+        Names are unique across the workbook, not per sheet, so there is no
+        ambiguity to resolve.
+        """
+        for table in self.tables:
+            if table.name.casefold() == name.casefold():
+                return table
+        available = ", ".join(self.table_names) or "none"
+        raise KeyError(f"no table named {name!r} in this workbook. It has: {available}")
+
+    def check_new_table_name(self, name: str) -> None:
+        """Refuse a table name Excel would refuse, or one already in use."""
+        check_table_name(name, taken=set(self.table_names))
+
+    def next_table_id(self) -> int:
+        """An unused table id.
+
+        Ids are workbook-wide rather than per sheet, so allocating from one
+        sheet's tables alone would collide.
+        """
+        used = {table.id for table in self.tables}
+        candidate = 1
+        while candidate in used:
+            candidate += 1
+        return candidate
+
+    def free_table_part_name(self) -> str:
+        number = 1
+        while self._package.has_part(f"xl/tables/table{number}.xml"):
+            number += 1
+        return f"xl/tables/table{number}.xml"
 
     # ------------------------------------------------------------------
     # Shared parts

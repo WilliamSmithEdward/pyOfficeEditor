@@ -50,6 +50,7 @@ Each layer knows the layer below it and not the layer above.
 |   workbook      sheets, shared parts, recalculation     |
 |   worksheet     cells, rows, ranges, ordering rules     |
 |   _values       the six cell encodings, serial dates    |
+|   _tables       ListObjects: their own parts and wiring  |
 |   _styles       the five style tables; is this a date?   |
 |   _formats      fonts, fills, borders, alignment, as     |
 |                 immutable values                         |
@@ -264,6 +265,7 @@ tests/
   test_excel_sheets.py          adding, removing, renaming, reordering
   test_excel_formats.py         fonts, fills, borders, alignment
   test_excel_merges.py          merged ranges and range intersection
+  test_excel_tables.py          ListObjects: parts, columns, wiring
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               three committed Excel-authored packages,
                                 plus two built on demand; see its README
@@ -385,6 +387,29 @@ invisible. Merges may not overlap, and Excel repairs such a worksheet rather
 than rendering it, so an overlap is refused before anything is recorded.
 Reading a covered cell gives `None`, so `Cell.merged_range` is how a caller
 tells an empty cell from a covered one.
+
+**A table is four wired-together pieces.** Its own part, a content-type
+override, a relationship from the sheet, and a `<tablePart>` entry. Excel
+ignores a table whose wiring is incomplete, or refuses the file, so none of
+the four is optional. Three more details:
+
+- `ref` spans the whole table *including* the totals row, while the
+  `autoFilter` spans only the header and the data. Equal extents put a filter
+  dropdown on the totals row.
+- Whether a totals row exists is spelled two ways: `totalsRowCount="1"` when
+  there is one, `totalsRowShown="0"` when there is not. Writing neither leaves
+  Excel to guess.
+- A column's name has to equal the text in its header cell. Excel reconciles
+  the two on open by rewriting the part, so a mismatch looks like the
+  library's edit being silently undone. `add_table` writes the resolved names
+  back into the header cells for that reason, filling blanks with `Column1`
+  and disambiguating duplicates the way Excel does.
+
+Table names and ids are workbook-wide rather than per sheet, so both are
+allocated from `Workbook` rather than from the sheet doing the adding. A
+headerless table is not supported: Excel makes one by inserting a row above
+the block, which shifts every row below it and every formula referring to
+them, and that belongs with row insertion.
 
 ### 8.3 The live gate
 

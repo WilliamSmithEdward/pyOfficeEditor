@@ -30,6 +30,9 @@ BINARY_XLSB = EXCEL_FIXTURES / "excel_authored_binary.xlsb"
 #: these skip when scripts/build_excel_fixtures.py has not been run.
 LIVE_EMPTY_XLSX = EXCEL_FIXTURES / "empty.xlsx"
 LIVE_SAMPLE_XLSX = EXCEL_FIXTURES / "sample.xlsx"
+#: Authored by Excel: two ListObjects, one with a totals row and a calculated
+#: column, plus defined names at both scopes, column widths and a hyperlink.
+LIVE_STRUCTURES_XLSX = EXCEL_FIXTURES / "structures.xlsx"
 
 
 @pytest.fixture(scope="session")
@@ -120,3 +123,11 @@ def live_sample_xlsx() -> Path:
     if not LIVE_SAMPLE_XLSX.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to author sample.xlsx with real Excel")
     return LIVE_SAMPLE_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_structures_xlsx() -> Path:
+    """The Excel-authored workbook carrying tables and defined names."""
+    if not LIVE_STRUCTURES_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author structures.xlsx with real Excel")
+    return LIVE_STRUCTURES_XLSX

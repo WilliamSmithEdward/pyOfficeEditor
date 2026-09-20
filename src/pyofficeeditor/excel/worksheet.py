@@ -40,7 +40,16 @@ from pyofficeeditor.excel._formats import (
 from pyofficeeditor.excel._formulas import shared_formula_for
 from pyofficeeditor.excel._reference import CellRef, RangeRef, column_letter
 from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
+from pyofficeeditor.excel._tables import (
+    CT_TABLE,
+    RT_TABLE,
+    Table,
+    TableStyle,
+    build_table_part,
+    unique_column_names,
+)
 from pyofficeeditor.excel._values import CellValue, read_value, write_value
+from pyofficeeditor.exceptions import PackageError
 
 if TYPE_CHECKING:
     from pyofficeeditor.excel.workbook import Workbook
@@ -271,6 +280,147 @@ class Worksheet:
     def clear_cell(self, reference: CellRef) -> None:
         """Remove a cell, leaving the sheet as if it were never set."""
         self._remove_cell(reference)
+        self._invalidate()
+
+    # ------------------------------------------------------------------
+    # Tables
+    # ------------------------------------------------------------------
+
+    @property
+    def tables(self) -> list[Table]:
+        """Every table on this sheet, in the order ``<tableParts>`` lists them."""
+        container = self._root.child("tableParts")
+        if container is None:
+            return []
+        package = self._workbook.package
+        relationships = package.relationships(self._part_name)
+        found: list[Table] = []
+        for entry in container.children_named("tablePart"):
+            relationship_id = entry.get("r:id") or entry.get("id")
+            if relationship_id is None:
+                continue
+            try:
+                part = relationships.by_id(relationship_id).target_part
+            except PackageError:
+                continue
+            if not package.has_part(part):
+                continue
+            found.append(Table(self, part, package.xml(part)))
+        return found
+
+    def table(self, name: str) -> Table:
+        """One table, by name."""
+        for table in self.tables:
+            if table.name.casefold() == name.casefold():
+                return table
+        available = ", ".join(t.name for t in self.tables) or "none"
+        raise KeyError(f"{self._name!r} has no table {name!r}. It has: {available}")
+
+    def add_table(
+        self,
+        name: str,
+        reference: str | RangeRef,
+        *,
+        totals_row: bool = False,
+        style: TableStyle | None = None,
+    ) -> Table:
+        """Turn a block into a table.
+
+        The block's first row must already hold the column names, because a
+        table's column names have to equal the text in its header cells and
+        Excel reconciles the two by rewriting the part. A blank header is
+        filled with ``Column1``-style names and a duplicate gets a digit,
+        which is what Excel does rather than refusing the table.
+
+        A headerless table is not supported: Excel makes one by inserting a
+        row above the block, which shifts every row below it and every
+        formula that referred to them. That is a different operation and
+        belongs with row insertion.
+        """
+        block = (
+            RangeRef.parse(reference) if isinstance(reference, str) else reference
+        ).normalized
+        self._workbook.check_new_table_name(name)
+
+        for existing in self.tables:
+            if existing.ref.intersects(block):
+                raise ValueError(
+                    f"{block.a1} overlaps the table {existing.name!r} at {existing.ref.a1}. "
+                    f"Excel does not allow two tables to share a cell."
+                )
+
+        header_row = block.top
+        headers = [
+            str(self.get_value(CellRef(header_row, column)) or "")
+            for column in range(block.left, block.right + 1)
+        ]
+        names = unique_column_names(headers)
+        for offset, column_name in enumerate(names):
+            reference_cell = CellRef(header_row, block.left + offset)
+            if self.get_value(reference_cell) != column_name:
+                self.set_value(reference_cell, column_name)
+
+        if totals_row and block.height < 3:
+            raise ValueError(
+                f"{block.a1} is {block.height} rows, which leaves no data between the "
+                f"header and a totals row."
+            )
+
+        package = self._workbook.package
+        identifier = self._workbook.next_table_id()
+        part_name = self._workbook.free_table_part_name()
+        document = build_table_part(
+            identifier=identifier,
+            name=name,
+            ref=block,
+            column_names=names,
+            has_totals_row=totals_row,
+            style=style or TableStyle(),
+        )
+        package.write(part_name, document.to_bytes(), content_type=CT_TABLE)
+        relationship = package.relationships(self._part_name).add_part(RT_TABLE, part_name)
+
+        container = self._root.child("tableParts")
+        if container is None:
+            container = Element.create("tableParts")
+            insert_in_schema_order(self._root, container, WORKSHEET_CHILD_ORDER)
+        container.append(Element.create("tablePart", {"r:id": relationship.id}))
+        container.set("count", str(sum(1 for _ in container.children_named("tablePart"))))
+
+        self._invalidate()
+        return Table(self, part_name, package.xml(part_name))
+
+    def remove_table(self, name: str) -> None:
+        """Delete a table, leaving the cells and their values in place.
+
+        Which is what Excel's "Convert to Range" does: the table stops being
+        a table and the data stays.
+        """
+        table = self.table(name)
+        package = self._workbook.package
+        relationships = package.relationships(self._part_name)
+
+        container = self._root.child("tableParts")
+        if container is not None:
+            for entry in list(container.children_named("tablePart")):
+                relationship_id = entry.get("r:id") or entry.get("id")
+                if relationship_id is None:
+                    continue
+                try:
+                    if relationships.by_id(relationship_id).target_part != table.part_name:
+                        continue
+                except PackageError:
+                    continue
+                container.remove(entry)
+                relationships.remove(relationship_id)
+                break
+            remaining = sum(1 for _ in container.children_named("tablePart"))
+            if remaining:
+                container.set("count", str(remaining))
+            else:
+                self._root.remove(container)
+
+        package.remove_part(table.part_name)
         self._invalidate()
 
     # ------------------------------------------------------------------
