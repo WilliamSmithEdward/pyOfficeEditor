@@ -8,7 +8,7 @@ generated without Office.
 
 Run this on a Windows machine with Excel installed:
 
-    python -m pip install -e ".[dev,live]"
+    python -m pip install -e ".[dev]" --group live
     python scripts/build_excel_fixtures.py          # only what is missing
     python scripts/build_excel_fixtures.py --force  # rebuild everything
 
@@ -204,7 +204,7 @@ def main() -> int:
     except ImportError:
         print(
             'pyvbaharness is not installed. Install the live extra:\n'
-            '    python -m pip install -e ".[dev,live]"',
+            '    python -m pip install -e ".[dev]" --group live',
             file=sys.stderr,
         )
         return 2

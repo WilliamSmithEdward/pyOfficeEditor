@@ -237,8 +237,13 @@ Rules:
 
 ## 7. Conventions and house rules
 
-- **No runtime dependencies.** The stdlib only. `pytest`, `pyright` and
-  `openpyxl` are dev extras; `pyvbaharness` is a `live` extra.
+- **No runtime dependencies.** The stdlib only. `pytest`, `pyright`, `ruff`
+  and `openpyxl` are dev extras. `pyvbaharness` is deliberately *not* an
+  extra: it sits in the PEP 735 `live` dependency group, which never reaches
+  the built wheel's metadata. It drives a real Excel over COM, and a library
+  whose first promise is no Office installation and no dependencies must not
+  advertise it as something a consumer can install. Install it with
+  `pip install -e ".[dev]" --group live`.
 - **Python 3.10+.** `|` unions, `match` where natural, dataclasses for
   record types.
 - **No silent corruption.** Any path that could leave a document

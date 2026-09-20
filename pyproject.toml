@@ -60,17 +60,23 @@ dev = [
     # the interop tests are for.
     "openpyxl>=3.1",
 ]
-# Opt-in live gates: drive real Excel / Word / PowerPoint / Access and read
-# the surface back through the host itself.  Windows and Office only.
-live = [
-    "pyvbaharness>=1.1.2",
-]
-
 [project.urls]
 Homepage = "https://github.com/WilliamSmithEdward/pyOfficeEditor"
 Repository = "https://github.com/WilliamSmithEdward/pyOfficeEditor"
 Issues = "https://github.com/WilliamSmithEdward/pyOfficeEditor/issues"
 Documentation = "https://github.com/WilliamSmithEdward/pyOfficeEditor#readme"
+
+# A PEP 735 dependency group, deliberately not an extra: a group never
+# reaches the built wheel's metadata, and an extra does.  pyvbaharness drives
+# a real Excel over COM, so a library whose first promise is no Office
+# installation, no COM and no dependencies must not advertise it as
+# something a consumer can install.  It is test equipment, not a feature.
+#
+#     python -m pip install -e ".[dev]" --group live
+[dependency-groups]
+live = [
+    "pyvbaharness>=1.1.2",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pyofficeeditor"]

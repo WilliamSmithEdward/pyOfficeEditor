@@ -1,9 +1,9 @@
-# pyvbaharness ships no type stubs and is an optional extra, so strict
+# pyvbaharness ships no type stubs and is installed only on demand, so strict
 # inference cannot see through it here. The suppressions are scoped to this
 # file, which is the only one that imports it. reportMissingImports is among
-# them because the extra is Windows-and-Office only: CI installs [dev] alone,
-# where the import genuinely is not resolvable and the try/except around it
-# is what makes that fine.
+# them because the live group is Windows-and-Office only: CI installs [dev]
+# alone, where the import genuinely is not resolvable and the try/except
+# around it is what makes that fine.
 # pyright: reportMissingTypeStubs=false, reportUnknownMemberType=false
 # pyright: reportMissingImports=false
 # pyright: reportAttributeAccessIssue=false, reportUnknownArgumentType=false
@@ -25,7 +25,8 @@ It is the strongest available check on things nothing else can prove:
   the wrong cell rather than erroring
 
 Opt in with ``RUN_LIVE_EXCEL=1``. It needs Windows, Excel, and the ``live``
-extra.
+dependency group, which is not a published extra: pyvbaharness is test
+equipment and must not be installable from the released package.
 
 **One session, shared.** The harness holds a machine-wide mutex and acquires
 it with a zero timeout, so creating a session per test races against the
@@ -62,7 +63,7 @@ def excel() -> Iterator[object]:
     try:
         from pyvbaharness import ExcelSession, SessionLockHeld
     except ImportError:  # pragma: no cover - depends on the environment
-        pytest.skip('pyvbaharness is not installed; pip install -e ".[dev,live]"')
+        pytest.skip('pyvbaharness is not installed; pip install -e ".[dev]" --group live')
 
     try:
         session = ExcelSession()

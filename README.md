@@ -268,7 +268,7 @@ accepts what this library writes. It drives real Excel through
 edited workbook, and reads the cells back through Excel's own object model:
 
 ```bash
-python -m pip install -e ".[dev,live]"
+python -m pip install -e ".[dev]" --group live
 python scripts/build_excel_fixtures.py
 RUN_LIVE_EXCEL=1 python -m pytest -m live -p no:randomly
 ```
