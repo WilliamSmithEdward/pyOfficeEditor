@@ -81,6 +81,7 @@ include = [
     "LICENSE.md",
     "pyproject.toml",
     "docs/architecture.md",
+    "docs/changelog.md",
 ]
 
 [tool.pytest.ini_options]
