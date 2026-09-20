@@ -46,6 +46,7 @@ from pyofficeeditor.excel._formats import (
     Font,
 )
 from pyofficeeditor.excel._formulas import quote_sheet_name, shared_formula_for
+from pyofficeeditor.excel._hyperlinks import RT_HYPERLINK, Hyperlink
 from pyofficeeditor.excel._names import PRINT_AREA, PRINT_TITLES, DefinedName
 from pyofficeeditor.excel._pagesetup import (
     HeaderFooter,
@@ -933,6 +934,259 @@ class Worksheet:
             view.set(name, "1" if value else "0")
         self._invalidate()
 
+
+
+    # ------------------------------------------------------------------
+    # Hyperlinks
+    # ------------------------------------------------------------------
+
+    @property
+    def hyperlinks(self) -> list[Hyperlink]:
+        """Every link on the sheet, with external targets resolved.
+
+        A link that leaves the workbook keeps its address in a relationship
+        rather than in the element, so reading one means following ``r:id``.
+        """
+        container = self._root.child("hyperlinks")
+        if container is None:
+            return []
+        targets = self._external_targets()
+        found: list[Hyperlink] = []
+        for element in container.children_named("hyperlink"):
+            relationship_id = element.get("r:id")
+            found.append(
+                Hyperlink.read(
+                    element,
+                    target=None if relationship_id is None else targets.get(relationship_id),
+                )
+            )
+        return found
+
+    def hyperlink_at(self, reference: str | CellRef) -> Hyperlink | None:
+        """The link covering a cell, if any."""
+        cell = CellRef.parse(reference) if isinstance(reference, str) else reference
+        for link in self.hyperlinks:
+            if cell in link.ref:
+                return link
+        return None
+
+    def add_hyperlink(
+        self,
+        reference: str | RangeRef,
+        target: str | None = None,
+        *,
+        location: str | None = None,
+        display: str | None = None,
+        tooltip: str | None = None,
+    ) -> Hyperlink:
+        """Link a cell or a range.
+
+        ``target`` is an address outside the workbook, such as a URL or a
+        ``mailto:``; it is written as an external relationship because that
+        is where Excel keeps it. ``location`` points inside the workbook,
+        such as ``Sheet1!A1`` or a defined name. Give both for a URL with a
+        fragment.
+
+        The cell's own value is untouched: a hyperlink decorates whatever is
+        there, and Excel shows ``display`` only when it is set.
+        """
+        if target is None and location is None:
+            raise ValueError(
+                "a hyperlink needs somewhere to go: pass target for an address outside "
+                "the workbook, or location for a cell inside it."
+            )
+        block = (
+            RangeRef.parse(reference) if isinstance(reference, str) else reference
+        ).normalized
+
+        self.remove_hyperlink(block)
+
+        relationship_id: str | None = None
+        if target is not None:
+            relationship = self._workbook.package.relationships(self._part_name).add(
+                RT_HYPERLINK, target, external=True
+            )
+            relationship_id = relationship.id
+
+        link = Hyperlink(
+            ref=block,
+            target=target,
+            location=location,
+            display=display,
+            tooltip=tooltip,
+            relationship_id=relationship_id,
+        )
+        container = self._root.child("hyperlinks")
+        if container is None:
+            container = Element.create("hyperlinks")
+            insert_in_schema_order(self._root, container, WORKSHEET_CHILD_ORDER)
+        container.append(link.write())
+        self._invalidate()
+        return link
+
+    def remove_hyperlink(self, reference: str | RangeRef) -> int:
+        """Remove the links overlapping a range, and their relationships.
+
+        Reports how many went. A link left pointing at a relationship that
+        is gone, or a relationship with nothing pointing at it, is the kind
+        of thing Excel repairs rather than opens.
+        """
+        container = self._root.child("hyperlinks")
+        if container is None:
+            return 0
+        block = (
+            RangeRef.parse(reference) if isinstance(reference, str) else reference
+        ).normalized
+        relationships = self._workbook.package.relationships(self._part_name)
+        removed = 0
+        for element in list(container.children_named("hyperlink")):
+            existing = Hyperlink.read(element)
+            if not existing.ref.intersects(block):
+                continue
+            if existing.relationship_id is not None:
+                try:
+                    relationships.remove(existing.relationship_id)
+                except (KeyError, PackageError):
+                    pass
+            container.remove(element)
+            removed += 1
+        if removed:
+            if not any(container.children_named("hyperlink")):
+                self._root.remove(container)
+            self._invalidate()
+        return removed
+
+    def _external_targets(self) -> dict[str, str]:
+        """Every external relationship this sheet has, by id."""
+        try:
+            relationships = self._workbook.package.relationships(self._part_name)
+        except PackageError:
+            return {}
+        return {
+            relationship.id: relationship.target
+            for relationship in relationships.by_type(RT_HYPERLINK)
+        }
+
+    # ------------------------------------------------------------------
+    # Outline grouping
+    # ------------------------------------------------------------------
+
+    def group_rows(self, first: int, last: int, *, collapsed: bool = False) -> None:
+        """Group rows into an outline, one level deeper than they were.
+
+        ``collapsed`` hides them, which is what the outline's minus button
+        does; the summary row itself stays visible.
+        """
+        if first < 1 or last < first:
+            raise ValueError(f"rows {first} to {last} are not a range to group.")
+        for number in range(first, last + 1):
+            row = self._ensure_row(number)
+            row.set("outlineLevel", str(self._level_of(row) + 1))
+            if collapsed:
+                row.set("hidden", "1")
+        self._invalidate()
+
+    def ungroup_rows(self, first: int, last: int) -> None:
+        """Take one level of grouping off, and show them again."""
+        for number in range(first, last + 1):
+            row = self.rows_by_number().get(number)
+            if row is None:
+                continue
+            level = self._level_of(row) - 1
+            if level > 0:
+                row.set("outlineLevel", str(level))
+            else:
+                row.unset("outlineLevel")
+                row.unset("hidden")
+        self._invalidate()
+
+    def row_outline_level(self, number: int) -> int:
+        """How deep a row is in the outline. 0 when it is not grouped."""
+        row = self.rows_by_number().get(number)
+        return 0 if row is None else self._level_of(row)
+
+    def group_columns(self, first: int, last: int, *, collapsed: bool = False) -> None:
+        """Group columns into an outline, one level deeper."""
+        if first < 1 or last < first:
+            raise ValueError(f"columns {first} to {last} are not a range to group.")
+        for number in range(first, last + 1):
+            entry = isolate_column(self._ensure_cols(), number)
+            entry.set("outlineLevel", str(self._level_of(entry) + 1))
+            if collapsed:
+                entry.set("hidden", "1")
+        self._invalidate()
+
+    def ungroup_columns(self, first: int, last: int) -> None:
+        for number in range(first, last + 1):
+            entry = isolate_column(self._ensure_cols(), number)
+            level = self._level_of(entry) - 1
+            if level > 0:
+                entry.set("outlineLevel", str(level))
+            else:
+                entry.unset("outlineLevel")
+                entry.unset("hidden")
+        self._invalidate()
+
+    def column_outline_level(self, number: int) -> int:
+        """How deep a column is in the outline. 0 when it is not grouped."""
+        container = self._root.child("cols")
+        if container is None:
+            return 0
+        for entry in container.children_named("col"):
+            first = _as_number(entry.get("min"))
+            last = _as_number(entry.get("max"))
+            if first is not None and last is not None and first <= number <= last:
+                return self._level_of(entry)
+        return 0
+
+    @property
+    def summary_below(self) -> bool:
+        """Whether a group's summary row sits below it, as Excel defaults."""
+        return self._outline_flag("summaryBelow")
+
+    @summary_below.setter
+    def summary_below(self, value: bool) -> None:
+        self._set_outline_flag("summaryBelow", value)
+
+    @property
+    def summary_right(self) -> bool:
+        """Whether a group's summary column sits to its right."""
+        return self._outline_flag("summaryRight")
+
+    @summary_right.setter
+    def summary_right(self, value: bool) -> None:
+        self._set_outline_flag("summaryRight", value)
+
+    @staticmethod
+    def _level_of(element: Element) -> int:
+        return _as_number(element.get("outlineLevel")) or 0
+
+    def _outline_flag(self, name: str) -> bool:
+        properties = self._root.child("sheetPr")
+        if properties is None:
+            return True
+        outline = properties.child("outlinePr")
+        if outline is None:
+            return True
+        raw = outline.get(name)
+        return True if raw is None else raw in ("1", "true")
+
+    def _set_outline_flag(self, name: str, value: bool) -> None:
+        properties = self._sheet_properties()
+        outline = properties.child("outlinePr")
+        if value:
+            if outline is not None:
+                outline.unset(name)
+                if not outline.attributes:
+                    properties.remove(outline)
+                self._tidy_sheet_properties(properties)
+                self._invalidate()
+            return
+        if outline is None:
+            outline = Element.create("outlinePr")
+            insert_in_schema_order(properties, outline, SHEET_PR_CHILD_ORDER)
+        outline.set(name, "0")
+        self._invalidate()
 
     # ------------------------------------------------------------------
     # Printing
@@ -1916,3 +2170,12 @@ class Range:
 
 
 __all__ = ["Cell", "Range", "Worksheet", "column_letter"]
+
+
+def _as_number(raw: str | None) -> int | None:
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None

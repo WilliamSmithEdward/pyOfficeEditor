@@ -323,6 +323,49 @@ Public Function Build(ByVal Target As String) As String
 End Function
 """
 
+
+#: Hyperlinks of every kind, an autofilter, and outline grouping.
+_BUILD_LINKS = r"""
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim i As Long
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "L"
+    ws.Range("A1").Value = "Region"
+    ws.Range("B1").Value = "Units"
+    ws.Range("C1").Value = "When"
+    For i = 2 To 12
+        ws.Cells(i, 1).Value = "r" & i
+        ws.Cells(i, 2).Value = i * 2
+        ws.Cells(i, 3).Value = DateSerial(2026, 1, i)
+    Next i
+
+    ws.Hyperlinks.Add Anchor:=ws.Range("E2"), Address:="https://example.com/a", _
+        ScreenTip:="go there", TextToDisplay:="Example"
+    ws.Hyperlinks.Add Anchor:=ws.Range("E3"), Address:="", SubAddress:="L!A1", _
+        TextToDisplay:="top"
+    ws.Hyperlinks.Add Anchor:=ws.Range("E4"), Address:="mailto:a@b.c", TextToDisplay:="mail"
+    ws.Hyperlinks.Add Anchor:=ws.Range("E5"), Address:="https://example.com/b", _
+        SubAddress:="frag", TextToDisplay:="both"
+    ws.Hyperlinks.Add Anchor:=ws.Range("G2:G4"), Address:="https://example.com/c"
+
+    ws.Range("A1:C12").AutoFilter Field:=1, Criteria1:=Array("r2", "r3"), Operator:=7
+    ws.Range("A1:C12").AutoFilter Field:=2, Criteria1:=">=10"
+
+    ws.Rows("5:8").Group
+    ws.Rows("9:11").Group
+    ws.Rows("5:8").EntireRow.Hidden = True
+    ws.Columns("B:C").Group
+    ws.Outline.SummaryRow = 0
+    ws.Outline.SummaryColumn = 0
+
+    Build = "ok"
+End Function
+"""
+
 def main() -> int:
     try:
         from pyvbaharness import ExcelSession
@@ -341,6 +384,7 @@ def main() -> int:
         ("structures.xlsx", _BUILD_STRUCTURES),
         ("refused.xlsx", _BUILD_REFUSED),
         ("settings.xlsx", _BUILD_SETTINGS),
+        ("links.xlsx", _BUILD_LINKS),
     ]
     if not force and all((FIXTURES / name).exists() for name, _ in wanted):
         print("every fixture is already there; nothing to do (pass --force to rebuild)")

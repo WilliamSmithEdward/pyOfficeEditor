@@ -41,6 +41,9 @@ LIVE_REFUSED_XLSX = EXCEL_FIXTURES / "refused.xlsx"
 #: Authored by Excel: protection with and without a password, a tab colour,
 #: view settings, grouping, page setup and three visibility states.
 LIVE_SETTINGS_XLSX = EXCEL_FIXTURES / "settings.xlsx"
+#: Authored by Excel: hyperlinks of every kind, an autofilter with two
+#: sorts of criteria, and outline grouping on rows and columns.
+LIVE_LINKS_XLSX = EXCEL_FIXTURES / "links.xlsx"
 
 
 @pytest.fixture(scope="session")
@@ -155,3 +158,11 @@ def live_settings_xlsx() -> Path:
     if not LIVE_SETTINGS_XLSX.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to author settings.xlsx with real Excel")
     return LIVE_SETTINGS_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_links_xlsx() -> Path:
+    """The Excel-authored workbook carrying links and grouping."""
+    if not LIVE_LINKS_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author links.xlsx with real Excel")
+    return LIVE_LINKS_XLSX
