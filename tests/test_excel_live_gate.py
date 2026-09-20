@@ -46,7 +46,17 @@ from pathlib import Path
 
 import pytest
 
-from pyofficeeditor.excel import Alignment, Border, CellError, Workbook
+from pyofficeeditor.excel import (
+    Alignment,
+    Border,
+    CellError,
+    Dxf,
+    Workbook,
+    cell_is,
+    contains_text,
+    duplicates,
+    expression,
+)
 
 pytestmark = [
     pytest.mark.live,
@@ -948,6 +958,75 @@ End Function
     assert seen["D3"] == "=SUM(Data!3:4)"
     assert seen["D4"] == "=SUM(Data!B:B)"
     assert seen["D5"] == "=SUM(8:9)"
+
+
+def test_excel_paints_the_conditional_formats_this_library_writes(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """The only check that catches an inert rule.
+
+    A conditional formatting rule can be present, schema-valid, counted by
+    ``FormatConditions.Count`` and still never fire: that is what happens
+    when the compatibility ``<formula>`` beside an attribute-driven rule is
+    left out. Nothing offline detects it, because the file looks right.
+    ``DisplayFormat`` is what Excel actually renders, so a rule that does
+    nothing shows up here as an unpainted cell.
+    """
+    book = Workbook.open(live_sample_xlsx)
+    sheet = book["Data"]
+    pink = Dxf.of(fill="FFC7CE", color="9C0006", bold=True)
+
+    for row in range(1, 8):
+        sheet.cell(row, 12).value = row * 10  # L: 10..70
+        sheet.cell(row, 13).value = f"item {row}"  # M
+        sheet.cell(row, 14).value = row % 3  # N: repeats
+
+    sheet.add_conditional_format("L1:L7", cell_is("greaterThan", 50), dxf=pink)
+    sheet.add_conditional_format("M1:M7", contains_text("item 3"), dxf=pink)
+    sheet.add_conditional_format("N1:N7", duplicates(), dxf=pink)
+    sheet.add_conditional_format("O1:O7", expression("=MOD($L1,20)=0"), dxf=pink)
+
+    target = tmp_path / "conditional.xlsx"
+    book.save(target)
+
+    source = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+    parts = "count=" & CStr(ws.Cells.FormatConditions.Count)
+    parts = parts & "|cellIs_hit=" & CStr(ws.Range("L6").DisplayFormat.Interior.Color)
+    parts = parts & "|cellIs_miss=" & CStr(ws.Range("L2").DisplayFormat.Interior.Color)
+    parts = parts & "|text_hit=" & CStr(ws.Range("M3").DisplayFormat.Interior.Color)
+    parts = parts & "|text_miss=" & CStr(ws.Range("M1").DisplayFormat.Interior.Color)
+    parts = parts & "|dupe_hit=" & CStr(ws.Range("N1").DisplayFormat.Interior.Color)
+    parts = parts & "|expr_hit=" & CStr(ws.Range("O2").DisplayFormat.Interior.Color)
+    parts = parts & "|expr_miss=" & CStr(ws.Range("O1").DisplayFormat.Interior.Color)
+    parts = parts & "|bold=" & CStr(ws.Range("L6").DisplayFormat.Font.Bold)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+    seen = probe(excel, source, target, "conditional")
+
+    painted = "13551615"  # FFC7CE, as VBA reports a colour: blue-green-red
+    unpainted = "16777215"  # plain white
+
+    assert seen["count"] == "4", "every rule reached the file"
+    assert seen["cellIs_hit"] == painted, "60 is greater than 50"
+    assert seen["cellIs_miss"] == unpainted, "20 is not"
+    # The one that needs the compatibility formula. Without it this is white
+    # while the rule still counts above, which is the whole point of the gate.
+    assert seen["text_hit"] == painted, "'item 3' contains 'item 3'"
+    assert seen["text_miss"] == unpainted, "'item 1' does not"
+    assert seen["dupe_hit"] == painted, "1 appears more than once in N"
+    assert seen["expr_hit"] == painted, "MOD(20,20) is 0"
+    assert seen["expr_miss"] == unpainted, "MOD(10,20) is not"
+    assert seen["bold"] == "True", "the dxf's font reached the cell too"
 
 
 _OPEN_PROBE = r"""

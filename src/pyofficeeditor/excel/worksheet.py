@@ -24,17 +24,19 @@ address that reads nicely; everything it does, the worksheet exposes too.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._conditional import ConditionalFormatting, ConditionalRule
 from pyofficeeditor.excel._dimensions import (
     COLUMN_ATTRIBUTES,
     Freeze,
     column_entry,
     isolate_column,
 )
+from pyofficeeditor.excel._dxf import Dxf
 from pyofficeeditor.excel._formats import (
     Alignment,
     Border,
@@ -72,6 +74,27 @@ def _format_dimension(value: float) -> str:
     if value == int(value):
         return str(int(value))
     return repr(value)
+
+
+def _as_ranges(
+    reference: str | RangeRef | Sequence[str | RangeRef],
+) -> tuple[RangeRef, ...]:
+    """One range, several, or a space-separated ``sqref`` string.
+
+    A plain string may itself name several areas, because that is how an
+    ``sqref`` spells a rule applied to a multi-area selection.
+    """
+    if isinstance(reference, RangeRef):
+        return (reference.normalized,)
+    if isinstance(reference, str):
+        pieces = reference.split()
+        if not pieces:
+            return ()
+        return tuple(RangeRef.parse(piece).normalized for piece in pieces)
+    found: list[RangeRef] = []
+    for item in reference:
+        found.extend(_as_ranges(item))
+    return tuple(found)
 
 
 class Worksheet:
@@ -698,6 +721,107 @@ class Worksheet:
             except ValueError:
                 continue
         return found
+
+    # ------------------------------------------------------------------
+    # Conditional formatting
+    # ------------------------------------------------------------------
+
+    @property
+    def conditional_formats(self) -> list[ConditionalFormatting]:
+        """Every ``<conditionalFormatting>`` block, in document order."""
+        return [
+            ConditionalFormatting.read(element)
+            for element in self._root.children_named("conditionalFormatting")
+        ]
+
+    def conditional_rules_at(self, reference: str | CellRef) -> list[ConditionalRule]:
+        """The rules covering a cell, most important first.
+
+        Excel applies rules in ascending ``priority``, so that is the order
+        they come back in, and a lower number wins.
+        """
+        cell = CellRef.parse(reference) if isinstance(reference, str) else reference
+        found: list[ConditionalRule] = []
+        for block in self.conditional_formats:
+            if any(cell in area for area in block.ranges):
+                found.extend(block.rules)
+        return sorted(found, key=lambda rule: rule.priority)
+
+    def add_conditional_format(
+        self,
+        reference: str | RangeRef | Sequence[str | RangeRef],
+        rule: ConditionalRule,
+        *,
+        dxf: Dxf | None = None,
+        priority: int | None = None,
+    ) -> ConditionalRule:
+        """Apply a rule to a range, or to several ranges as one block.
+
+        ``dxf`` is the formatting the rule paints; it is added to the
+        workbook's table and the rule's ``dxfId`` set to point at it. A rule
+        that paints nothing, such as a colour scale or data bar, needs none.
+
+        The rule's compatibility formula is rebuilt for wherever it lands,
+        which is not optional: see :mod:`pyofficeeditor.excel._conditional`.
+        A ``cellIs`` or ``expression`` rule keeps the formula it was given,
+        because there that formula is the condition.
+
+        ``priority`` defaults to one past the highest already on the sheet,
+        so a rule added later loses to one added earlier, which is what
+        Excel's own "New Rule" does.
+        """
+        ranges = _as_ranges(reference)
+        if not ranges:
+            raise ValueError("a conditional format needs at least one range.")
+
+        resolved = rule
+        if dxf is not None and not dxf.is_empty:
+            styles = self._workbook.styles
+            if styles is None:
+                raise ValueError(
+                    "this workbook has no styles part, so a conditional format has "
+                    "nowhere to record what it paints."
+                )
+            resolved = replace(resolved, dxf_id=styles.ensure_dxf(dxf))
+        resolved = replace(resolved, priority=priority if priority is not None else self._next_priority())
+        resolved = resolved.anchored_at(ranges[0].start)
+
+        block = ConditionalFormatting(ranges=ranges, rules=(resolved,))
+        insert_in_schema_order(self._root, block.write(), WORKSHEET_CHILD_ORDER)
+        self._invalidate()
+        return resolved
+
+    def clear_conditional_formats(self, reference: str | RangeRef | None = None) -> int:
+        """Remove conditional formatting, and report how many blocks went.
+
+        With no argument every block on the sheet goes. With a range, only
+        the blocks whose ranges all fall inside it: a block that also covers
+        cells outside the range is left alone rather than silently narrowed,
+        because narrowing it would change what the rest of the sheet shows.
+        """
+        block_range = (
+            None
+            if reference is None
+            else (RangeRef.parse(reference) if isinstance(reference, str) else reference).normalized
+        )
+        removed = 0
+        for element in list(self._root.children_named("conditionalFormatting")):
+            if block_range is not None:
+                covered = ConditionalFormatting.read(element).ranges
+                if not covered or not all(block_range.contains(area) for area in covered):
+                    continue
+            self._root.remove(element)
+            removed += 1
+        if removed:
+            self._invalidate()
+        return removed
+
+    def _next_priority(self) -> int:
+        highest = 0
+        for block in self.conditional_formats:
+            for rule in block.rules:
+                highest = max(highest, rule.priority)
+        return highest + 1
 
     def merged_range_at(self, reference: CellRef) -> RangeRef | None:
         """The merged block covering a cell, if any.
