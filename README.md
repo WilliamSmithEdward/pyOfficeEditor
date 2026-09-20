@@ -10,10 +10,10 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > **Status: early, and growing.** The Excel surface reads and writes cells,
 > values, formulas, dates, sheets, formatting, merged ranges, tables, row and
 > column dimensions, frozen panes and defined names, each verified against real
-> Excel. Rows and columns can be inserted and deleted, with A1-style
-> references across the workbook following or breaking as Excel breaks them;
-> whole-axis references like `A:A` and `2:4` do not move yet. Word,
-> PowerPoint and Access follow, in that order.
+> Excel. Rows and columns can be inserted and deleted, with every reference
+> in the workbook following or breaking exactly as Excel breaks it,
+> `A:A` and `2:4` included. Conditional formatting and data validation are
+> the next gap. Word, PowerPoint and Access follow, in that order.
 
 ```python
 import datetime as dt

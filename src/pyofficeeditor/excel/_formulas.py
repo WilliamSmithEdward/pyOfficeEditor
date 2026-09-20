@@ -33,7 +33,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef
+from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, AxisRef, CellRef, RangeRef
 from pyofficeeditor.excel._tokens import Token, TokenKind, render, tokenize
 
 #: A cell reference inside formula text.
@@ -248,6 +248,25 @@ class Shift:
             return None
         return CellRef(row, column, reference.absolute_row, reference.absolute_column)
 
+    def moved_axis(self, span: AxisRef) -> AxisRef | None:
+        """Where a whole-row or whole-column reference lands.
+
+        ``None`` when an end would leave the sheet. The insertion is on the
+        other axis for half of these, in which case nothing moves.
+        """
+        at = self.rows_at if span.is_row else self.columns_at
+        count = self.row_count if span.is_row else self.column_count
+        limit = MAX_ROW if span.is_row else MAX_COLUMN
+        if at is None or not count:
+            return span
+        low = span.low + count if span.low >= at else span.low
+        high = span.high + count if span.high >= at else span.high
+        if low == span.low and high == span.high:
+            return span
+        if high > limit:
+            return None
+        return span.with_span(low, high)
+
 
 def shift_formula(
     formula: str,
@@ -279,6 +298,18 @@ def shift_formula(
     tokens = tokenize(formula)
     changed = False
     for token in tokens:
+        if token.kind is TokenKind.AXIS and isinstance(token.value, AxisRef):
+            addresses = token.sheet if token.sheet is not None else formula_sheet
+            if addresses != target_sheet:
+                continue
+            moved_span = shift.moved_axis(token.value)
+            if moved_span is None or moved_span == token.value:
+                continue
+            token.raw = moved_span.a1
+            token.value = moved_span
+            changed = True
+            continue
+
         if token.kind is not TokenKind.REFERENCE or not isinstance(token.value, CellRef):
             continue
         addresses = token.sheet if token.sheet is not None else formula_sheet
@@ -385,6 +416,22 @@ class Deletion:
             CellRef(bottom, right, block.end.absolute_row, block.end.absolute_column),
         )
 
+    def moved_axis(self, span: AxisRef) -> AxisRef | None:
+        """Where a whole-axis reference lands, or ``None`` when it is gone.
+
+        Excel shrinks these the same way it shrinks a range: deleting rows
+        2 to 4 turns ``1:6`` into ``1:3`` and ``2:4`` into ``#REF!``.
+        """
+        at = self.rows_at if span.is_row else self.columns_at
+        count = self.row_count if span.is_row else self.column_count
+        surviving = self._surviving_span(span.low, span.high, at, count)
+        if surviving is None:
+            return None
+        low, high = surviving
+        if low == span.low and high == span.high:
+            return span
+        return span.with_span(low, high)
+
     @classmethod
     def _surviving_span(
         cls, low: int, high: int, at: int | None, count: int
@@ -435,6 +482,24 @@ def delete_in_formula(
 
     while index < len(tokens):
         token = tokens[index]
+
+        if token.kind is TokenKind.AXIS and isinstance(token.value, AxisRef):
+            addresses = token.sheet if token.sheet is not None else formula_sheet
+            if addresses != target_sheet:
+                rebuilt.append(token)
+            else:
+                moved_span = deletion.moved_axis(token.value)
+                if moved_span is None:
+                    rebuilt.append(Token(TokenKind.TEXT, REF_ERROR))
+                    changed = True
+                elif moved_span != token.value:
+                    rebuilt.append(Token(TokenKind.AXIS, moved_span.a1, moved_span))
+                    changed = True
+                else:
+                    rebuilt.append(token)
+            index += 1
+            continue
+
         if token.kind is not TokenKind.REFERENCE or not isinstance(token.value, CellRef):
             rebuilt.append(token)
             index += 1

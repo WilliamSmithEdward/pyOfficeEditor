@@ -456,6 +456,19 @@ into `Data` must move the second and leave the first, and only a token stream
 that tracks the qualifier can tell them apart. A regex cannot, and neither
 can it keep `LOG10` from looking like `G10`.
 
+**`A:A` and `2:4` are references too.** A whole-axis reference is not a pair
+of cells: `A:A` is not `A1:A1048576`, and Excel keeps the short form when it
+rewrites a formula, so it gets its own token kind and its own value type
+rather than being decomposed. Its ends move like a range's: inserting two
+rows at 2 turns `2:4` into `4:6`, and deleting rows 2 to 4 turns it into
+`#REF!` while `1:6` shrinks to `1:3`.
+
+Leaving them alone was the original behaviour and it was the silent-
+corruption case in miniature: after deleting rows 2 to 4, an untouched
+`SUM(2:4)` sums three different rows and nothing reports an error. The
+tokenizer tries a cell reference first, so `A1:A4` is still two cells, and
+a lookaround keeps `TIME(2,4,0)`, `"2:4"` and `Table1[Units]` out.
+
 **What cannot be shifted is refused.** Conditional formatting, data
 validation, protected ranges, drawings and extension content all carry cell
 addresses this library does not model. Shifting everything else and leaving

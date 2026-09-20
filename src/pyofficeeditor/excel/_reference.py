@@ -33,6 +33,8 @@ MAX_COLUMN = 16384
 MAX_ROW = 1048576
 
 _CELL = re.compile(r"^(\$?)([A-Za-z]{1,3})(\$?)([1-9][0-9]*)$")
+_AXIS_ROWS = re.compile(r"^(\$?)([1-9][0-9]*):(\$?)([1-9][0-9]*)$")
+_AXIS_COLUMNS = re.compile(r"^(\$?)([A-Za-z]{1,3}):(\$?)([A-Za-z]{1,3})$")
 _LETTERS = re.compile(r"^[A-Za-z]{1,3}$")
 
 
@@ -297,9 +299,78 @@ class RangeRef:
         return self.a1
 
 
+@dataclass(frozen=True)
+class AxisRef:
+    """A whole-row or whole-column reference, such as ``A:A`` or ``2:4``.
+
+    It names a span on one axis and every cell on the other, so it cannot be
+    written as a :class:`CellRef` pair: ``A:A`` is not ``A1:A1048576``, and
+    Excel keeps the shorter form when it rewrites a formula.
+
+    The two ends still move like the ends of a range. Inserting rows at 2
+    turns ``2:4`` into ``4:6``, and deleting rows 2 to 4 turns it into
+    ``#REF!``, both measured against Excel.
+    """
+
+    #: ``True`` for ``2:4``, ``False`` for ``A:C``.
+    is_row: bool
+    low: int
+    high: int
+    absolute_low: bool = False
+    absolute_high: bool = False
+
+    def __post_init__(self) -> None:
+        limit = MAX_ROW if self.is_row else MAX_COLUMN
+        what = "row" if self.is_row else "column"
+        for end in (self.low, self.high):
+            if not 1 <= end <= limit:
+                raise ValueError(f"{what} {end} is outside 1..{limit}")
+        if self.low > self.high:
+            raise ValueError(f"{what}s {self.low}..{self.high} run backwards")
+
+    @classmethod
+    def parse(cls, text: str) -> AxisRef:
+        """Read ``A:C``, ``$A:$C``, ``2:4`` or ``$2:$4``."""
+        match = _AXIS_ROWS.match(text.strip())
+        if match:
+            low_dollar, low, high_dollar, high = match.groups()
+            return cls(True, int(low), int(high), low_dollar == "$", high_dollar == "$")
+        match = _AXIS_COLUMNS.match(text.strip())
+        if match:
+            low_dollar, low, high_dollar, high = match.groups()
+            return cls(
+                False,
+                column_index(low),
+                column_index(high),
+                low_dollar == "$",
+                high_dollar == "$",
+            )
+        raise ValueError(f"{text!r} is not a whole-row or whole-column reference")
+
+    def _end(self, value: int, absolute: bool) -> str:
+        name = str(value) if self.is_row else column_letter(value)
+        return f"{'$' if absolute else ''}{name}"
+
+    @property
+    def a1(self) -> str:
+        """The reference as written, absolute markers included."""
+        return (
+            f"{self._end(self.low, self.absolute_low)}:"
+            f"{self._end(self.high, self.absolute_high)}"
+        )
+
+    def with_span(self, low: int, high: int) -> AxisRef:
+        """The same reference over a different span, keeping the markers."""
+        return AxisRef(self.is_row, low, high, self.absolute_low, self.absolute_high)
+
+    def __str__(self) -> str:
+        return self.a1
+
+
 __all__ = [
     "MAX_COLUMN",
     "MAX_ROW",
+    "AxisRef",
     "CellRef",
     "RangeRef",
     "column_index",

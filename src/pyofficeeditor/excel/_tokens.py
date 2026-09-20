@@ -28,7 +28,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
-from pyofficeeditor.excel._reference import CellRef
+from pyofficeeditor.excel._reference import AxisRef, CellRef
 
 #: A cell reference. The lookbehind rejects a match that continues an
 #: identifier, so the ``G10`` in ``LOG10`` is not one, and the lookahead
@@ -38,6 +38,24 @@ _REFERENCE = re.compile(
     (\$?)([A-Za-z]{1,3})       # optional $ then the column letters
     (\$?)([0-9]{1,7})          # optional $ then the row number
     (?![0-9(\[])               # not a longer number, a call, or a table ref
+    """,
+    re.VERBOSE,
+)
+#: A whole-row or whole-column reference: ``2:4``, ``A:C``, ``$A:$C``. Tried
+#: only after a cell reference fails to match, so the ``A1`` in ``A1:A4``
+#: wins and this never sees it.
+_AXIS = re.compile(
+    r"""
+    (?:
+        (\$?)([1-9][0-9]{0,6})       # whole rows: 2:4
+        :
+        (\$?)([1-9][0-9]{0,6})
+      |
+        (\$?)([A-Za-z]{1,3})         # whole columns: A:C
+        :
+        (\$?)([A-Za-z]{1,3})
+    )
+    (?![0-9A-Za-z_.(\[])             # not the head of something longer
     """,
     re.VERBOSE,
 )
@@ -53,6 +71,10 @@ class TokenKind(Enum):
     STRING = "string"
     SHEET = "sheet"
     REFERENCE = "reference"
+    #: A whole-row or whole-column reference. Its own kind because it is not
+    #: a pair of cells: ``A:A`` is not ``A1:A1048576``, and it moves as one
+    #: piece rather than as two endpoints with a colon between them.
+    AXIS = "axis"
 
 
 @dataclass
@@ -67,7 +89,7 @@ class Token:
     raw: str
     #: For a reference, where it points. For a sheet qualifier, the sheet's
     #: name with any quoting removed.
-    value: CellRef | str | None = None
+    value: CellRef | AxisRef | str | None = None
     #: For a reference, the sheet it addresses: the qualifier in front of it,
     #: or ``None`` when it is bare and so means the formula's own sheet.
     sheet: str | None = None
@@ -131,6 +153,20 @@ def tokenize(formula: str) -> list[Token]:
                 position = reference.end()
                 continue
 
+        # Only once a cell reference has failed, so ``A1:A4`` is two cells
+        # and never the column range ``A1``..``A4`` would not be anyway.
+        axis = _AXIS.match(formula, position)
+        if axis and not _continues_identifier(formula, position):
+            try:
+                span = AxisRef.parse(axis.group(0))
+            except ValueError:
+                span = None
+            if span is not None:
+                flush()
+                tokens.append(Token(TokenKind.AXIS, axis.group(0), value=span))
+                position = axis.end()
+                continue
+
         text.append(character)
         position += 1
 
@@ -176,6 +212,14 @@ def _attach_sheets(tokens: list[Token]) -> None:
 
         if token.kind is TokenKind.SHEET:
             pending = token.value if isinstance(token.value, str) else None
+            index += 1
+            continue
+
+        if token.kind is TokenKind.AXIS:
+            # A whole-axis reference is already both its ends, so the
+            # qualifier applies to it and stops there.
+            token.sheet = pending
+            pending = None
             index += 1
             continue
 

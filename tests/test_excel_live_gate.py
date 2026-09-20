@@ -881,6 +881,70 @@ End Function
     assert seen["used"] == "A1:E11"
 
 
+def test_excel_agrees_about_whole_axis_references(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """``SUM(2:4)`` and ``SUM(A:A)`` are references too, and they move.
+
+    The offline tests pin this library's output against answers measured
+    from Excel. This one closes the loop: Excel opens a file where this
+    library did the moving, and reports the same formulas and the same
+    values it would have produced itself.
+    """
+    def written(where: Path, edit: str) -> Path:
+        # The formulas live on Notes, not Data. On Data they would sit in
+        # the very rows being moved, and a whole-row SUM containing its own
+        # cell is circular besides. This also exercises the qualified path,
+        # where the sheet name decides whether a reference moves at all.
+        book = Workbook.open(live_sample_xlsx)
+        notes = book["Notes"]
+        notes["D1"].formula = "=SUM(Data!2:4)"
+        notes["D2"].formula = "=SUM(Data!1:6)"
+        notes["D3"].formula = "=SUM(Data!6:7)"
+        notes["D4"].formula = "=SUM(Data!B:B)"
+        # Bare, so it addresses Notes and must not move at all.
+        notes["D5"].formula = "=SUM(8:9)"
+        if edit == "insert":
+            book["Data"].insert_rows(2, 2)
+        else:
+            book["Data"].delete_rows(2, 3)
+        book.save(where)
+        return where
+
+    source = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Notes")
+    parts = "D1=" & ws.Range("D1").Formula
+    parts = parts & "|D2=" & ws.Range("D2").Formula
+    parts = parts & "|D3=" & ws.Range("D3").Formula
+    parts = parts & "|D4=" & ws.Range("D4").Formula
+    parts = parts & "|D5=" & ws.Range("D5").Formula
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+
+    seen = probe(excel, source, written(tmp_path / "axis_inserted.xlsx", "insert"), "axisinsert")
+    assert seen["D1"] == "=SUM(Data!4:6)", "both ends moved past the insertion"
+    assert seen["D2"] == "=SUM(Data!1:8)", "a span across the insertion grew"
+    assert seen["D3"] == "=SUM(Data!8:9)"
+    assert seen["D4"] == "=SUM(Data!B:B)", "a row insertion cannot touch a column span"
+    assert seen["D5"] == "=SUM(8:9)", "bare, so it addresses Notes and stays"
+
+    seen = probe(excel, source, written(tmp_path / "axis_deleted.xlsx", "delete"), "axisdelete")
+    assert seen["D1"] == "=SUM(Data!#REF!)", "gone, but still qualified"
+    assert seen["D2"] == "=SUM(Data!1:3)", "a span across the deletion shrank"
+    assert seen["D3"] == "=SUM(Data!3:4)"
+    assert seen["D4"] == "=SUM(Data!B:B)"
+    assert seen["D5"] == "=SUM(8:9)"
+
+
 _OPEN_PROBE = r"""
 Public Function Probe(ByVal Target As String) As String
     Dim wb As Workbook

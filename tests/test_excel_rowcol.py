@@ -101,6 +101,101 @@ class TestTokenizer:
         assert [t for t in tokenize("SUM(Table1[Amount])") if t.kind is TokenKind.REFERENCE] == []
 
 
+class TestWholeAxisTokens:
+    """``A:A`` and ``2:4`` are references too, and they move.
+
+    They get their own kind because they are not a pair of cells: ``A:A``
+    is not ``A1:A1048576``, and Excel keeps the short form when it rewrites
+    a formula. The risk is the reverse one, inventing an axis reference
+    where the text only looks like one.
+    """
+
+    def axes(self, formula: str) -> list[str]:
+        return [t.raw for t in tokenize(formula) if t.kind is TokenKind.AXIS]
+
+    @pytest.mark.parametrize(
+        ("formula", "expected"),
+        [
+            ("SUM(A:A)", ["A:A"]),
+            ("SUM(2:4)", ["2:4"]),
+            ("SUM($A:$C)", ["$A:$C"]),
+            ("SUM($2:$4)", ["$2:$4"]),
+            ("VLOOKUP(A1,A:C,2,0)", ["A:C"]),
+            ("SUM(A1:A4)+SUM(2:4)", ["2:4"]),
+        ],
+    )
+    def test_found(self, formula: str, expected: list[str]) -> None:
+        assert self.axes(formula) == expected
+
+    @pytest.mark.parametrize(
+        "formula",
+        [
+            "SUM(A1:A4)",  # two cells, and a cell reference wins
+            "LOG10(A1)",
+            '"2:4"',  # inside a string
+            "IF(A1=1,2,3)",
+            "TIME(2,4,0)",  # commas, not a colon
+            "SUM(Table1[Units])",
+            "AA1:AA9",
+        ],
+    )
+    def test_not_invented(self, formula: str) -> None:
+        assert self.axes(formula) == []
+
+    @pytest.mark.parametrize(
+        ("formula", "sheet"),
+        [("Data!2:4", "Data"), ("'My Sheet'!A:C", "My Sheet"), ("A:C", None)],
+    )
+    def test_the_qualifier_reaches_it(self, formula: str, sheet: str | None) -> None:
+        found = [t for t in tokenize(formula) if t.kind is TokenKind.AXIS]
+        assert len(found) == 1
+        assert found[0].sheet == sheet
+
+    @pytest.mark.parametrize(
+        "formula",
+        ["SUM(A:A)", "SUM(2:4)", "Data!2:4", '"2:4"', "SUM($A:$C)", "VLOOKUP(A1,A:C,2,0)"],
+    )
+    def test_round_trip(self, formula: str) -> None:
+        assert "".join(t.raw for t in tokenize(formula)) == formula
+
+
+class TestWholeAxisMoves:
+    """Excel's own answers, measured through ``Range.Formula`` after
+    inserting two rows at row 2 and after deleting rows 2 to 4."""
+
+    @pytest.mark.parametrize(
+        ("formula", "expected"),
+        [
+            ("SUM(2:4)", "SUM(4:6)"),
+            ("SUM(1:6)", "SUM(1:8)"),
+            ("SUM(6:7)", "SUM(8:9)"),
+            ("SUM(A:A)", "SUM(A:A)"),
+        ],
+    )
+    def test_insertion(self, formula: str, expected: str) -> None:
+        assert (
+            shift_formula(formula, Shift.rows(2, 2), formula_sheet="S", target_sheet="S")
+            == expected
+        )
+
+    def test_a_column_insertion_moves_a_column_span(self) -> None:
+        assert (
+            shift_formula("SUM(A:C)", Shift.columns(2, 1), formula_sheet="S", target_sheet="S")
+            == "SUM(A:D)"
+        )
+
+    def test_only_the_edited_sheet(self) -> None:
+        assert (
+            shift_formula(
+                "SUM(2:4)+SUM(Data!2:4)",
+                Shift.rows(2, 2),
+                formula_sheet="Summary",
+                target_sheet="Data",
+            )
+            == "SUM(2:4)+SUM(Data!4:6)"
+        )
+
+
 class TestShiftFormula:
     def shift(self, formula: str, shift: Shift) -> str:
         return shift_formula(formula, shift, formula_sheet="Data", target_sheet="Data")

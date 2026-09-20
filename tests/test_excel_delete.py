@@ -127,6 +127,26 @@ class TestDeleteInFormula:
             == f"A3+Data!{REF_ERROR}+Notes!A3"
         )
 
+    @pytest.mark.parametrize(
+        ("formula", "expected"),
+        [
+            ("SUM(Data!2:4)", f"SUM(Data!{REF_ERROR})"),
+            ("SUM(Data!1:6)", "SUM(Data!1:3)"),
+            ("Data!A3", f"Data!{REF_ERROR}"),
+            ("SUM(Data!A2:A4)", f"SUM(Data!{REF_ERROR})"),
+            ("SUM(Data!A1:A8)", "SUM(Data!A1:A5)"),
+        ],
+    )
+    def test_a_broken_reference_keeps_its_qualifier(self, formula: str, expected: str) -> None:
+        """Measured: Excel writes ``Data!#REF!``, not a bare ``#REF!``. The
+        sheet name survives even though what it pointed at does not."""
+        assert (
+            delete_in_formula(
+                formula, Deletion.rows(2, 3), formula_sheet="Notes", target_sheet="Data"
+            )
+            == expected
+        )
+
     def test_a_cross_sheet_range_shrinks(self) -> None:
         assert (
             delete_in_formula(
@@ -171,21 +191,33 @@ class TestDeleteInFormula:
             == expected
         )
 
-    @pytest.mark.parametrize("formula", ["SUM(2:4)", "SUM(1:6)", "SUM(A:B)"])
-    def test_whole_axis_references_do_not_move_yet(self, formula: str) -> None:
-        """A known gap, recorded rather than hidden.
-
-        The tokenizer models A1-style references, so ``2:4`` passes through
-        as text. Excel turns ``SUM(2:4)`` into ``SUM(#REF!)`` on this
-        deletion and ``SUM(1:6)`` into ``SUM(1:3)``, both measured. Until the
-        tokenizer knows whole-axis references this library leaves them alone,
-        which is wrong in the same silent way the module exists to prevent.
-        """
+    @pytest.mark.parametrize(
+        ("formula", "expected"),
+        [
+            ("SUM(2:4)", f"SUM({REF_ERROR})"),
+            ("SUM(1:6)", "SUM(1:3)"),
+            ("SUM(6:7)", "SUM(3:4)"),
+            ("SUM(A:B)", "SUM(A:B)"),
+            ("SUM($1:$6)", "SUM($1:$3)"),
+        ],
+    )
+    def test_whole_axis_references(self, formula: str, expected: str) -> None:
+        """Also Excel's own answers. A whole-row reference shrinks and
+        breaks exactly like a range, and a column span is untouched by a row
+        deletion."""
         assert (
             delete_in_formula(
                 formula, Deletion.rows(2, 3), formula_sheet="S", target_sheet="S"
             )
-            == formula
+            == expected
+        )
+
+    def test_a_column_deletion_breaks_a_column_span(self) -> None:
+        assert (
+            delete_in_formula(
+                "SUM(B:C)", Deletion.columns(2, 2), formula_sheet="S", target_sheet="S"
+            )
+            == f"SUM({REF_ERROR})"
         )
 
 
