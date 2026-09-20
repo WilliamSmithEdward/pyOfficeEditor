@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyOfficeEditor"
-version = "0.1.1"
+version = "0.2.0"
 description = "Edit the document surface of Excel, Word, PowerPoint and Access in pure Python, no dependencies."
 readme = "README.md"
 license = { text = "MIT" }
@@ -60,6 +60,7 @@ dev = [
     # the interop tests are for.
     "openpyxl>=3.1",
 ]
+
 [project.urls]
 Homepage = "https://github.com/WilliamSmithEdward/pyOfficeEditor"
 Repository = "https://github.com/WilliamSmithEdward/pyOfficeEditor"

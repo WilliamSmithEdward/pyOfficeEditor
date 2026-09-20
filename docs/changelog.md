@@ -11,13 +11,83 @@ package and writing it back unchanged reproduces the input exactly.
 workflow extracts one section by reading to the next "## [" heading, so
 anything trailing the file is swept into the oldest release's notes. -->
 
-[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/WilliamSmithEdward/pyOfficeEditor/releases/tag/v0.1.0
 
 ## [Unreleased]
 
 Nothing yet.
+
+## [0.2.0] - 2026-09-19
+
+Conditional formatting, data validation, sheet protection, page setup,
+hyperlinks, grouping and shapes. Nothing about a sheet makes inserting or
+deleting rows refuse any more.
+
+### Added
+
+- **Conditional formatting**, every rule family Excel has: comparisons,
+  expressions, the four text rules, blanks, errors, duplicates and uniques,
+  top and bottom, above and below average, the ten time periods, colour
+  scales, data bars and icon sets. With the differential formats they paint
+  with.
+
+- **Data validation**: lists typed in or pointed at a range, whole numbers,
+  decimals, dates, times, text length and custom formulas, with error and
+  input messages and all three alert styles.
+
+- **Sheet protection**, with or without a password, and the twelve
+  allowances a protected sheet can still grant.
+
+- **How a sheet prints**: margins, orientation, paper, scaling, print
+  options, headers and footers, the print area and the rows and columns
+  repeated on every page.
+
+- **Sheet appearance**: tab colour, gridlines, row and column headings,
+  zoom, and the three visibility states.
+
+- **Hyperlinks**, internal and external, and **outline grouping** on rows
+  and columns.
+
+- **Reading the shapes on a sheet**: AutoShapes, text boxes, lines, groups
+  and form controls, with their geometry, text and the macro a click runs.
+
+### Fixed
+
+- **A comment was left behind when rows moved.** Inserting or deleting rows
+  on a sheet carrying a comment moved the cells and left the comment on the
+  cell it used to be on. Comments and legacy drawings were on neither the
+  shifted list nor the refused one, so nothing caught it. Present in 0.1.0
+  and 0.1.1.
+
+- **Whole-axis references did not move.** `SUM(2:4)` survived a deletion of
+  rows 2 to 4 unchanged, going on to sum three different rows, and an
+  insertion left it alone where Excel makes it `SUM(4:6)`. Present in 0.1.0
+  and 0.1.1.
+
+- **`Typing :: Typed` without a `py.typed`**, so downstream type checkers
+  ignored the annotations. Fixed in 0.1.1.
+
+### Changed
+
+- **Nothing about a sheet's contents makes an insertion or deletion
+  refuse.** The list of elements that used to raise is empty and the
+  machinery is gone. Data validation, protected ranges, ignored errors,
+  saved sorts, data consolidations, scenarios, custom sheet views, shapes,
+  form controls, embedded objects, comments and extension content all move
+  now, along with the addresses they keep in drawing anchors, VML and the
+  comments part.
+
+  Two entries on that list were wrong in opposite directions: a background
+  picture was refused although it names no cell at all, and comments were
+  never refused although they needed to be.
+
+- `pyvbaharness` is no longer a published extra. It drove real Excel over
+  COM and had no business being installable from a library whose first
+  promise is no Office installation; it is a PEP 735 dependency group now,
+  which never reaches the wheel's metadata.
 
 ## [0.1.1] - 2026-09-19
 
