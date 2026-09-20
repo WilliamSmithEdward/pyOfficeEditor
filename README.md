@@ -7,9 +7,11 @@ Its sister project [pyOpenVBA](https://github.com/WilliamSmithEdward/pyOpenVBA)
 edits the VBA project inside an Office file. This one edits the document: the
 cell, the formula, the paragraph, the slide, the table, the query.
 
-> **Status: early.** The Excel surface reads and writes cells, values,
-> formulas and dates, verified against real Excel. Word, PowerPoint and Access
-> follow, in that order.
+> **Status: early, and growing.** The Excel surface reads and writes cells,
+> values, formulas, dates, sheets, formatting, merged ranges, tables, row and
+> column dimensions, frozen panes and defined names, each verified against real
+> Excel. Inserting and deleting rows is the next gap. Word, PowerPoint and
+> Access follow, in that order.
 
 ```python
 import datetime as dt
@@ -45,7 +47,8 @@ with Workbook.open("orders.xlsx") as book:
 
     summary = book.add_sheet("Summary", index=0)
     summary["A1"].formula = "=SUM(Data!D2:D5)"
-    book.rename_sheet("Data", "Q1 Data")     # the formula follows the rename
+    book.add_defined_name("Totals", "Data!$D$2:$D$5")
+    book.rename_sheet("Data", "Q1 Data")     # formulas and names both follow
     book.save()
 ```
 
@@ -111,6 +114,7 @@ data descriptors.
 |               immutable values                         |
 |   _tables     ListObjects: their own parts and wiring  |
 |   _dimensions widths, heights, hiding, frozen panes    |
+|   _names      defined names, and the rules tables share |
 |   _formulas   shifting references, for shared formulas |
 |               and for repointing a renamed sheet       |
 |   _sharedstrings   the per-workbook string table       |

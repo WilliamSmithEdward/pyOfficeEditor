@@ -52,6 +52,8 @@ Each layer knows the layer below it and not the layer above.
 |   _values       the six cell encodings, serial dates    |
 |   _tables       ListObjects: their own parts and wiring  |
 |   _dimensions   widths, heights, hiding, frozen panes    |
+|   _names        defined names, and the naming rules       |
+|                 tables share with them                    |
 |   _styles       the five style tables; is this a date?   |
 |   _formats      fonts, fills, borders, alignment, as     |
 |                 immutable values                         |
@@ -268,6 +270,7 @@ tests/
   test_excel_merges.py          merged ranges and range intersection
   test_excel_tables.py          ListObjects: parts, columns, wiring
   test_excel_dimensions.py      widths, heights, hiding, frozen panes
+  test_excel_names.py           defined names and their scope indices
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               three committed Excel-authored packages,
                                 plus two built on demand; see its README
@@ -431,6 +434,22 @@ no such trap: they are points, and 24 stores as 24.
 **A dimension needs its companion flag.** A `width` without `customWidth="1"`
 and an `ht` without `customHeight="1"` are ignored, so the value looks like it
 never took.
+
+**A defined name's scope is a position, not a name.** `localSheetId="0"`
+means the first sheet in tab order, so adding, removing or moving a sheet
+silently rescopes every name after it. `Workbook` resolves scope to a sheet
+*name* on the way out and back to an index on the way in, and remaps every
+index whenever the sheet order changes. A name scoped to a sheet that is
+removed goes with it, which is what Excel does. Without that remapping the
+corruption is invisible: the file opens, the name resolves, and it points at
+the wrong sheet.
+
+**A table name is a defined name**, so both follow one set of rules and one
+check enforces them: no spaces, no operator characters, nothing that reads as
+a cell reference, and not the `_xlnm.` prefix Excel reserves. Where the name
+must be unique differs, though: a table name across the workbook, a defined
+name only within its scope, so the same name may exist workbook-wide and on a
+sheet at once, and the sheet-scoped one wins there.
 
 **`activePane` decides where the cursor lands** after a freeze: `bottomRight`
 when both axes are frozen, `bottomLeft` for rows only, `topRight` for columns

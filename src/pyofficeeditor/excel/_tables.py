@@ -41,10 +41,10 @@ looks like the library's edit being silently undone.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._names import MAX_NAME_LENGTH, check_name
 from pyofficeeditor.excel._reference import CellRef, RangeRef
 
 NS_SPREADSHEETML = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -77,50 +77,20 @@ TOTALS_FUNCTIONS = frozenset(
     }
 )
 
-#: The longest table name Excel accepts.
-MAX_TABLE_NAME_LENGTH = 255
-#: A table name follows the rules for a defined name: it starts with a
-#: letter, an underscore or a backslash, and carries no spaces or
-#: punctuation that a formula would read as an operator.
-_VALID_TABLE_NAME = re.compile(r"^[A-Za-z_\\][A-Za-z0-9_.\\]*$")
+#: The longest table name Excel accepts.  Same as a defined name's, because
+#: a table name is one.
+MAX_TABLE_NAME_LENGTH = MAX_NAME_LENGTH
 
 
 def check_table_name(name: str, *, taken: set[str] | None = None) -> None:
     """Refuse a table name Excel would refuse.
 
-    A table name is a defined name: formulas refer to it, so it cannot
-    contain a space or look like a cell reference, and it is unique across
-    the whole workbook rather than per sheet.
+    A table name *is* a defined name: formulas refer to it, so it follows the
+    same rules, and it is unique across the whole workbook rather than per
+    sheet. The rules live in :mod:`pyofficeeditor.excel._names` so both kinds
+    of name are checked by one piece of code.
     """
-    if not name:
-        raise ValueError("a table name cannot be empty.")
-    if len(name) > MAX_TABLE_NAME_LENGTH:
-        raise ValueError(
-            f"{name!r} is {len(name)} characters; Excel allows at most {MAX_TABLE_NAME_LENGTH}."
-        )
-    if not _VALID_TABLE_NAME.match(name):
-        raise ValueError(
-            f"{name!r} is not a usable table name. It must start with a letter, an "
-            f"underscore or a backslash and contain no spaces or operator characters, "
-            f"because formulas refer to it by name."
-        )
-    try:
-        CellRef.parse(name)
-    except ValueError:
-        pass
-    else:
-        raise ValueError(
-            f"{name!r} reads as a cell reference, so a formula could not tell the table "
-            f"from the cell."
-        )
-    if name.upper() in ("C", "R"):
-        # Reserved by R1C1 notation.
-        raise ValueError(f"{name!r} is reserved by R1C1 reference notation.")
-    if taken and name.casefold() in {existing.casefold() for existing in taken}:
-        raise ValueError(
-            f"the workbook already has a table called {name!r}; table names are unique "
-            f"across the workbook regardless of case."
-        )
+    check_name(name, taken=taken, what="table", unique_within="the workbook")
 
 
 @dataclass(frozen=True)

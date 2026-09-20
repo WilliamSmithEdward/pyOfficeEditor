@@ -29,6 +29,12 @@ from pathlib import Path
 
 from pyofficeeditor._xml import Element
 from pyofficeeditor.excel._formulas import rename_sheet_in_formula
+from pyofficeeditor.excel._names import (
+    DefinedName,
+    check_name,
+    read_defined_name,
+    write_defined_name,
+)
 from pyofficeeditor.excel._schema import WORKBOOK_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._sharedstrings import (
     CT_SHARED_STRINGS,
@@ -288,8 +294,10 @@ class Workbook:
             container.append(entry)
 
         sheet = Worksheet(self, name, part_name, self._package.xml(part_name))
+        previous_order = list(self._order)
         self._order.insert(position, name)
         self._sheets[name] = sheet
+        self._remap_defined_name_scopes(previous_order)
         self.mark_changed()
         return sheet
 
@@ -319,9 +327,11 @@ class Workbook:
                 break
 
         self._package.remove_part(sheet.part_name)
+        previous_order = list(self._order)
         position = self._order.index(name)
         del self._order[position]
         del self._sheets[name]
+        self._remap_defined_name_scopes(previous_order)
         self._clamp_active_tab()
         self.mark_changed()
 
@@ -385,7 +395,9 @@ class Workbook:
         else:
             container.append(moving)
 
+        previous_order = list(self._order)
         self._order.insert(target, self._order.pop(current))
+        self._remap_defined_name_scopes(previous_order)
         self._set_active_tab(self._order.index(active))
         self.mark_changed()
 
@@ -444,6 +456,155 @@ class Workbook:
             return
         if current >= len(self._order):
             view.set("activeTab", str(max(0, len(self._order) - 1)))
+
+    # ------------------------------------------------------------------
+    # Defined names
+    # ------------------------------------------------------------------
+
+    @property
+    def defined_names(self) -> list[DefinedName]:
+        """Every defined name, Excel's own built-ins included.
+
+        Scope comes back as a sheet's *name* rather than the index the file
+        stores, because that index means a different sheet as soon as sheets
+        are reordered.
+        """
+        container = self._document.root.child("definedNames")
+        if container is None:
+            return []
+        found: list[DefinedName] = []
+        for element in container.children_named("definedName"):
+            entry = read_defined_name(element, self._order)
+            if entry is not None:
+                found.append(entry)
+        return found
+
+    def defined_name(self, name: str, *, scope: str | None = None) -> DefinedName:
+        """One defined name.
+
+        A workbook-wide name and a sheet-scoped one can share a name, so the
+        scope is part of the lookup. With no scope given, a workbook-wide
+        name is preferred and a sheet-scoped one is returned only if it is
+        the only match.
+        """
+        matches = [e for e in self.defined_names if e.name.casefold() == name.casefold()]
+        if not matches:
+            available = ", ".join(e.name for e in self.defined_names) or "none"
+            raise KeyError(f"no defined name {name!r} in this workbook. It has: {available}")
+        if scope is not None:
+            for entry in matches:
+                if entry.scope == scope:
+                    return entry
+            raise KeyError(f"no defined name {name!r} scoped to {scope!r}.")
+        for entry in matches:
+            if entry.is_workbook_scoped:
+                return entry
+        if len(matches) == 1:
+            return matches[0]
+        scopes = ", ".join(str(e.scope) for e in matches)
+        raise KeyError(
+            f"{name!r} is defined on several sheets ({scopes}) and not workbook-wide; "
+            f"say which scope you mean."
+        )
+
+    def add_defined_name(
+        self,
+        name: str,
+        refers_to: str,
+        *,
+        scope: str | None = None,
+        comment: str | None = None,
+        hidden: bool = False,
+    ) -> DefinedName:
+        """Define a name for a formula or a range.
+
+        ``refers_to`` is a formula without the leading ``=``, normally a
+        fully qualified range such as ``Data!$A$1:$B$4``. An unqualified
+        reference is resolved by Excel against whichever sheet is active,
+        which is rarely what anyone means.
+        """
+        if scope is not None and scope not in self._sheets:
+            raise KeyError(f"no sheet named {scope!r}. The workbook has: {', '.join(self._order)}")
+        taken = {e.name for e in self.defined_names if e.scope == scope}
+        check_name(
+            name,
+            taken=taken,
+            what="defined name",
+            # A name may repeat at a different scope, so the message says
+            # where the collision actually is.
+            unique_within="this workbook" if scope is None else f"the sheet {scope!r}",
+        )
+
+        entry = DefinedName(
+            name=name,
+            refers_to=refers_to[1:] if refers_to.startswith("=") else refers_to,
+            scope=scope,
+            comment=comment,
+            hidden=hidden,
+        )
+        container = self._document.root.child("definedNames")
+        if container is None:
+            container = Element.create("definedNames")
+            insert_in_schema_order(self._document.root, container, WORKBOOK_CHILD_ORDER)
+        element = write_defined_name(entry, self._order)
+        # Excel keeps them in name order. Nothing requires it, but a diff
+        # against a workbook Excel later rewrites is quieter this way.
+        for existing in container.children_named("definedName"):
+            if (existing.get("name") or "").casefold() > name.casefold():
+                container.insert_before(existing, element)
+                break
+        else:
+            container.append(element)
+        self.mark_changed()
+        return entry
+
+    def _remap_defined_name_scopes(self, previous_order: list[str]) -> None:
+        """Repoint sheet-scoped names after the sheet order changed.
+
+        ``localSheetId`` is a position, so adding, removing or moving a sheet
+        silently rescopes every name after it. Names are resolved through the
+        order as it was, then rewritten against the order as it is; a name
+        scoped to a sheet that is gone goes with it, which is what Excel
+        does.
+        """
+        container = self._document.root.child("definedNames")
+        if container is None:
+            return
+        for element in list(container.children_named("definedName")):
+            raw = element.get("localSheetId")
+            if raw is None:
+                continue
+            try:
+                old_index = int(raw)
+            except ValueError:
+                continue
+            if not 0 <= old_index < len(previous_order):
+                container.remove(element)
+                continue
+            sheet_name = previous_order[old_index]
+            if sheet_name not in self._order:
+                container.remove(element)
+                continue
+            element.set("localSheetId", str(self._order.index(sheet_name)))
+        if next(container.children_named("definedName"), None) is None:
+            self._document.root.remove(container)
+
+    def remove_defined_name(self, name: str, *, scope: str | None = None) -> None:
+        """Remove a defined name.  Formulas using it will read ``#NAME?``."""
+        target = self.defined_name(name, scope=scope)
+        container = self._document.root.child("definedNames")
+        if container is None:
+            return
+        for element in list(container.children_named("definedName")):
+            entry = read_defined_name(element, self._order)
+            if entry is None:
+                continue
+            if entry.name == target.name and entry.scope == target.scope:
+                container.remove(element)
+                break
+        if next(container.children_named("definedName"), None) is None:
+            self._document.root.remove(container)
+        self.mark_changed()
 
     # ------------------------------------------------------------------
     # Tables, whose names and ids are workbook-wide

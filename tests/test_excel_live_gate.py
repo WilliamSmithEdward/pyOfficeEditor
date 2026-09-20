@@ -542,6 +542,62 @@ def test_excel_applies_the_dimensions_this_library_writes(
 
 
 # --------------------------------------------------------------------------
+# Defined names
+# --------------------------------------------------------------------------
+
+_NAME_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim parts As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+
+    ' A name Excel accepts resolves in a formula. One whose scope index is
+    ' wrong resolves to the wrong sheet, or not at all.
+    parts = "added=" & CStr(Application.Evaluate(wb.Names("Alpha").RefersTo))
+    parts = parts & "|workbookScope=" & CStr(wb.Names("TotalUnits").RefersTo)
+    parts = parts & "|sum=" & CStr(Application.Evaluate("SUM(TotalUnits)"))
+
+    ' A sheet-scoped name is reached through the sheet, and its index has to
+    ' still point at that sheet after the move.
+    parts = parts & "|scoped=" & CStr(wb.Worksheets("Tabled").Names("LocalRegion").RefersTo)
+    parts = parts & "|order="
+    Dim i As Long
+    For i = 1 To wb.Worksheets.Count
+        parts = parts & wb.Worksheets(i).Name & ","
+    Next i
+
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+
+
+def test_excel_resolves_the_defined_names_this_library_writes(
+    excel: object, live_structures_xlsx: Path, tmp_path: Path
+) -> None:
+    """A sheet-scoped name stores its sheet as a position, so moving a sheet
+    silently rescopes it unless the index moves too. Excel is the only thing
+    that can say which sheet a name actually reached."""
+    book = Workbook.open(live_structures_xlsx)
+    book.add_defined_name("Alpha", "Tabled!$B$2")
+    book.move_sheet("Tabled", 1)
+    target = tmp_path / "named.xlsx"
+    book.save(target)
+
+    seen = probe(excel, _NAME_PROBE, target, "names")
+
+    assert seen["order"] == "Second,Tabled,", "the move took"
+    assert seen["added"] == "120", "Tabled!B2 holds 120"
+    assert seen["workbookScope"] == "=Tabled!$B$2:$B$4"
+    assert seen["sum"] == "555", "120 + 340 + 95"
+    # The scope index had to follow the sheet from position 0 to position 1.
+    assert seen["scoped"] == "=Tabled!$A$2", "still scoped to the sheet it named"
+
+
+# --------------------------------------------------------------------------
 # The no-op case
 # --------------------------------------------------------------------------
 
