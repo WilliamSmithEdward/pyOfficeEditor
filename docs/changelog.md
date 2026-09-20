@@ -7,6 +7,13 @@ While the version is below 1.0 the public API may change between minor
 releases. What will not change is the byte-fidelity contract: reading a
 package and writing it back unchanged reproduces the input exactly.
 
+<!-- Link definitions live above the sections, not below them. The release
+workflow extracts one section by reading to the next "## [" heading, so
+anything trailing the file is swept into the oldest release's notes. -->
+
+[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/WilliamSmithEdward/pyOfficeEditor/releases/tag/v0.1.0
+
 ## [Unreleased]
 
 Nothing yet.
@@ -73,6 +80,3 @@ library's idea of the format.
 Word, PowerPoint and Access. Conditional formatting, data validation and
 the other elements on the refusal list. The formula analyzer and linter,
 legacy data connections, and Power Query.
-
-[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/WilliamSmithEdward/pyOfficeEditor/releases/tag/v0.1.0
