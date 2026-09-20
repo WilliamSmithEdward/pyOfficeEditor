@@ -43,6 +43,16 @@ _VALID_NAME = re.compile(r"^[A-Za-z_\\][A-Za-z0-9_.\\]*$")
 #: The prefix Excel reserves for its own names.
 BUILTIN_NAME_PREFIX = "_xlnm."
 
+#: The built-in name holding a sheet's print area.
+PRINT_AREA = "_xlnm.Print_Area"
+
+#: And the rows and columns it repeats on every page.
+PRINT_TITLES = "_xlnm.Print_Titles"
+
+#: Every built-in name this library writes. Excel has more, and one it does
+#: not know is refused rather than written under the reserved prefix.
+BUILTIN_NAMES = frozenset({PRINT_AREA, PRINT_TITLES})
+
 
 def check_name(
     name: str,
@@ -165,8 +175,11 @@ def write_defined_name(entry: DefinedName, sheet_order: list[str]) -> Element:
 
 
 __all__ = [
+    "BUILTIN_NAMES",
     "BUILTIN_NAME_PREFIX",
     "MAX_NAME_LENGTH",
+    "PRINT_AREA",
+    "PRINT_TITLES",
     "DefinedName",
     "check_name",
     "read_defined_name",

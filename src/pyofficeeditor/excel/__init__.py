@@ -57,6 +57,13 @@ from pyofficeeditor.excel._formats import (
     Protection,
     Side,
 )
+from pyofficeeditor.excel._pagesetup import (
+    HeaderFooter,
+    HeaderFooterText,
+    PageMargins,
+    PageSetup,
+    PrintOptions,
+)
 from pyofficeeditor.excel._protection import SheetProtection, hash_password
 from pyofficeeditor.excel._reference import (
     MAX_COLUMN,
@@ -99,7 +106,12 @@ __all__ = [
     "ErrorStyle",
     "Fill",
     "Font",
+    "HeaderFooter",
+    "HeaderFooterText",
     "IconSet",
+    "PageMargins",
+    "PageSetup",
+    "PrintOptions",
     "Protection",
     "Range",
     "RangeRef",

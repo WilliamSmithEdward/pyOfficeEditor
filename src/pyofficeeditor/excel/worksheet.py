@@ -45,7 +45,14 @@ from pyofficeeditor.excel._formats import (
     Fill,
     Font,
 )
-from pyofficeeditor.excel._formulas import shared_formula_for
+from pyofficeeditor.excel._formulas import quote_sheet_name, shared_formula_for
+from pyofficeeditor.excel._names import PRINT_AREA, PRINT_TITLES, DefinedName
+from pyofficeeditor.excel._pagesetup import (
+    HeaderFooter,
+    PageMargins,
+    PageSetup,
+    PrintOptions,
+)
 from pyofficeeditor.excel._protection import SheetProtection
 from pyofficeeditor.excel._reference import CellRef, RangeRef, column_letter
 from pyofficeeditor.excel._rowcol import (
@@ -925,6 +932,183 @@ class Worksheet:
         else:
             view.set(name, "1" if value else "0")
         self._invalidate()
+
+
+    # ------------------------------------------------------------------
+    # Printing
+    # ------------------------------------------------------------------
+
+    @property
+    def page_margins(self) -> PageMargins:
+        """The margins, in inches. Excel's own defaults when unset."""
+        element = self._root.child("pageMargins")
+        return PageMargins() if element is None else PageMargins.read(element)
+
+    @page_margins.setter
+    def page_margins(self, value: PageMargins) -> None:
+        self._replace_child("pageMargins", value.write())
+
+    @property
+    def page_setup(self) -> PageSetup:
+        """Orientation, paper, scaling and numbering."""
+        element = self._root.child("pageSetup")
+        return PageSetup() if element is None else PageSetup.read(element)
+
+    @page_setup.setter
+    def page_setup(self, value: PageSetup) -> None:
+        self._replace_child("pageSetup", value.write())
+
+    @property
+    def print_options(self) -> PrintOptions:
+        """Centring, and whether headings and gridlines print."""
+        element = self._root.child("printOptions")
+        return PrintOptions() if element is None else PrintOptions.read(element)
+
+    @print_options.setter
+    def print_options(self, value: PrintOptions) -> None:
+        if value.is_empty:
+            self._drop_child("printOptions")
+            return
+        self._replace_child("printOptions", value.write())
+
+    @property
+    def header_footer(self) -> HeaderFooter:
+        """The headers and footers, split into their three boxes."""
+        element = self._root.child("headerFooter")
+        return HeaderFooter() if element is None else HeaderFooter.read(element)
+
+    @header_footer.setter
+    def header_footer(self, value: HeaderFooter) -> None:
+        if value.is_empty:
+            self._drop_child("headerFooter")
+            return
+        self._replace_child("headerFooter", value.write())
+
+    @property
+    def fit_to_page(self) -> bool:
+        """Whether the fit-to-width and fit-to-height numbers are used.
+
+        They sit on ``<pageSetup>`` and do nothing until this says so, so
+        setting them without this leaves the sheet printing at its scale.
+        """
+        properties = self._root.child("sheetPr")
+        if properties is None:
+            return False
+        setup = properties.child("pageSetUpPr")
+        return setup is not None and setup.get("fitToPage") in ("1", "true")
+
+    @fit_to_page.setter
+    def fit_to_page(self, value: bool) -> None:
+        properties = self._sheet_properties()
+        setup = properties.child("pageSetUpPr")
+        if not value:
+            if setup is not None:
+                setup.unset("fitToPage")
+                if not setup.attributes:
+                    properties.remove(setup)
+                self._tidy_sheet_properties(properties)
+                self._invalidate()
+            return
+        if setup is None:
+            setup = Element.create("pageSetUpPr")
+            insert_in_schema_order(properties, setup, SHEET_PR_CHILD_ORDER)
+        setup.set("fitToPage", "1")
+        self._invalidate()
+
+    @property
+    def print_area(self) -> tuple[RangeRef, ...]:
+        """The ranges that print, or empty for the whole used range.
+
+        Stored as the built-in defined name ``_xlnm.Print_Area`` scoped to
+        this sheet, which is why it already moves when rows are inserted.
+        """
+        return self._builtin_ranges(PRINT_AREA)
+
+    @print_area.setter
+    def print_area(self, value: str | RangeRef | Sequence[str | RangeRef] | None) -> None:
+        if value is None:
+            self._drop_builtin(PRINT_AREA)
+            return
+        ranges = _as_ranges(value)
+        if not ranges:
+            raise ValueError("a print area needs at least one range; pass None to clear it.")
+        self._set_builtin(PRINT_AREA, ranges)
+
+    @property
+    def print_titles(self) -> str | None:
+        """The rows and columns repeated on every page, as written.
+
+        ``$1:$1`` repeats the first row, ``$A:$A`` the first column, and
+        ``$A:$A,$1:$1`` both. Kept as text because the two are whole-axis
+        references rather than ranges.
+        """
+        found = self._builtin(PRINT_TITLES)
+        return None if found is None else found.refers_to
+
+    @print_titles.setter
+    def print_titles(self, value: str | None) -> None:
+        if value is None:
+            self._drop_builtin(PRINT_TITLES)
+            return
+        qualified = ",".join(
+            piece if "!" in piece else f"{quote_sheet_name(self._name)}!{piece}"
+            for piece in value.split(",")
+        )
+        self._put_builtin(PRINT_TITLES, qualified)
+
+    def _builtin(self, name: str) -> DefinedName | None:
+        """The sheet-scoped built-in name, or ``None`` when unset.
+
+        ``Workbook.defined_name`` raises for a name that is not there, and
+        an unset print area is the ordinary case rather than an error.
+        """
+        try:
+            return self._workbook.defined_name(name, scope=self._name)
+        except KeyError:
+            return None
+
+    def _put_builtin(self, name: str, refers_to: str) -> None:
+        """Define it, replacing whatever was there."""
+        self._drop_builtin(name)
+        self._workbook.add_defined_name(name, refers_to, scope=self._name, builtin=True)
+
+    def _drop_builtin(self, name: str) -> None:
+        if self._builtin(name) is not None:
+            self._workbook.remove_defined_name(name, scope=self._name)
+
+    def _builtin_ranges(self, name: str) -> tuple[RangeRef, ...]:
+        found = self._builtin(name)
+        if found is None:
+            return ()
+        blocks: list[RangeRef] = []
+        for piece in found.refers_to.split(","):
+            _, _, reference = piece.rpartition("!")
+            try:
+                blocks.append(RangeRef.parse(reference))
+            except ValueError:
+                continue
+        return tuple(blocks)
+
+    def _set_builtin(self, name: str, ranges: tuple[RangeRef, ...]) -> None:
+        sheet = quote_sheet_name(self._name)
+        self._put_builtin(
+            name, ",".join(f"{sheet}!{block.absolute.a1}" for block in ranges)
+        )
+
+    def _replace_child(self, name: str, element: Element) -> None:
+        existing = self._root.child(name)
+        if existing is not None:
+            self._root.insert_before(existing, element)
+            self._root.remove(existing)
+        else:
+            insert_in_schema_order(self._root, element, WORKSHEET_CHILD_ORDER)
+        self._invalidate()
+
+    def _drop_child(self, name: str) -> None:
+        existing = self._root.child(name)
+        if existing is not None:
+            self._root.remove(existing)
+            self._invalidate()
 
     # ------------------------------------------------------------------
     # Data validation

@@ -52,6 +52,11 @@ from pyofficeeditor.excel import (
     CellError,
     DataValidation,
     Dxf,
+    HeaderFooter,
+    HeaderFooterText,
+    PageMargins,
+    PageSetup,
+    PrintOptions,
     SheetProtection,
     Workbook,
     cell_is,
@@ -1269,6 +1274,104 @@ End Function
     # The hash is right, so Excel accepts the password and the sheet opens.
     assert seen["unprotectErr"] == "0", "Excel rejected the password"
     assert seen["afterUnprotect"] == "False"
+
+
+def test_excel_agrees_about_how_a_sheet_prints(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """Page setup, read back through Excel's own PageSetup.
+
+    Two of these cannot be checked any other way. Margins are inches in the
+    file and points in the object model, so a unit slip is invisible offline
+    and gives an inch-and-a-half margin where a quarter inch was asked for.
+    And fitToWidth and fitToHeight do nothing until the separate
+    ``sheetPr/pageSetUpPr/@fitToPage`` flag turns them on, so a sheet can
+    carry the right numbers and still print at full size.
+    """
+    book = Workbook.open(live_sample_xlsx)
+    sheet = book["Data"]
+    sheet.page_margins = PageMargins(0.25, 0.25, 1.0, 1.0, 0.5, 0.5)
+    sheet.page_setup = PageSetup.on(
+        "A4",
+        orientation="landscape",
+        fit_to_width=1,
+        fit_to_height=2,
+        first_page_number=3,
+        use_first_page_number=True,
+    )
+    sheet.fit_to_page = True
+    sheet.print_options = PrintOptions(
+        horizontal_centered=True, headings=True, gridlines=True
+    )
+    sheet.header_footer = HeaderFooter(
+        odd_header=HeaderFooterText(left="left head", center="centre"),
+        odd_footer=HeaderFooterText(right="Page &P of &N"),
+    )
+    sheet.print_area = "A1:D9"
+    sheet.print_titles = "$1:$1"
+
+    target = tmp_path / "printed.xlsx"
+    book.save(target)
+
+    source = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+    With ws.PageSetup
+        parts = "left=" & CStr(.LeftMargin)
+        parts = parts & "|top=" & CStr(.TopMargin)
+        parts = parts & "|orient=" & CStr(.Orientation)
+        parts = parts & "|paper=" & CStr(.PaperSize)
+        parts = parts & "|zoomOff=" & CStr(.Zoom)
+        parts = parts & "|wide=" & CStr(.FitToPagesWide)
+        parts = parts & "|tall=" & CStr(.FitToPagesTall)
+        parts = parts & "|firstPage=" & CStr(.FirstPageNumber)
+        parts = parts & "|centred=" & CStr(.CenterHorizontally)
+        parts = parts & "|grid=" & CStr(.PrintGridlines)
+        parts = parts & "|headings=" & CStr(.PrintHeadings)
+        parts = parts & "|lhead=" & .LeftHeader
+        parts = parts & "|chead=" & .CenterHeader
+        parts = parts & "|rfoot=" & .RightFooter
+        parts = parts & "|area=" & .PrintArea
+        parts = parts & "|titles=" & .PrintTitleRows
+    End With
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+    seen = probe(excel, source, target, "printing")
+
+    # Inches in the file, points here: a quarter inch is eighteen points.
+    assert seen["left"] == "18", "0.25 inch"
+    assert seen["top"] == "72", "1 inch"
+
+    assert seen["orient"] == "2", "xlLandscape"
+    assert seen["paper"] == "9", "xlPaperA4"
+
+    # Zoom reports False exactly when fit-to-page is on, which is the flag
+    # that lives on sheetPr rather than pageSetup.
+    assert seen["zoomOff"] == "False", "fitToPage did not take"
+    assert seen["wide"] == "1"
+    assert seen["tall"] == "2"
+
+    assert seen["firstPage"] == "3"
+    assert seen["centred"] == "True"
+    assert seen["grid"] == "True"
+    assert seen["headings"] == "True"
+
+    # One string in the file, three boxes here.
+    assert seen["lhead"] == "left head"
+    assert seen["chead"] == "centre"
+    assert seen["rfoot"] == "Page &P of &N"
+
+    # Both of these are defined names rather than attributes.
+    assert seen["area"] == "$A$1:$D$9"
+    assert seen["titles"] == "$1:$1"
 
 
 _OPEN_PROBE = r"""

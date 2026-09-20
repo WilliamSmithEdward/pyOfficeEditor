@@ -65,6 +65,7 @@ Each layer knows the layer below it and not the layer above.
 |                 inverted and means hide it                |
 |   _protection   sheet protection, whose flags are locks   |
 |                 rather than permissions                   |
+|   _pagesetup    margins in inches, headers as one string  |
 |   _conditional  cfRules, and the compatibility formula    |
 |                 that makes them fire                      |
 |   _dxf          differential formats: what a rule paints  |
@@ -295,6 +296,7 @@ tests/
   test_excel_conditional.py     cfRules, and what makes them fire
   test_excel_validation.py      what a cell accepts, and the dropdown
   test_excel_settings.py        protection, tab colour, view, visibility
+  test_excel_pagesetup.py       margins, orientation, headers, print area
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               three committed Excel-authored packages,

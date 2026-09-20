@@ -288,6 +288,18 @@ class RangeRef:
             and self.right >= other.right
         )
 
+    @property
+    def absolute(self) -> RangeRef:
+        """The same block with every marker set: ``$A$1:$C$3``.
+
+        Which is how a defined name writes a range, because a relative one
+        would move with whichever cell happened to be selected.
+        """
+        return RangeRef(
+            CellRef(self.top, self.left, True, True),
+            CellRef(self.bottom, self.right, True, True),
+        )
+
     def expanded(self, cell: CellRef) -> RangeRef:
         """The smallest range covering this block and one more cell."""
         return RangeRef(

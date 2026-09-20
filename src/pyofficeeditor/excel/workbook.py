@@ -30,6 +30,7 @@ from pathlib import Path
 from pyofficeeditor._xml import Element
 from pyofficeeditor.excel._formulas import rename_sheet_in_formula
 from pyofficeeditor.excel._names import (
+    BUILTIN_NAMES,
     DefinedName,
     check_name,
     read_defined_name,
@@ -552,6 +553,7 @@ class Workbook:
         scope: str | None = None,
         comment: str | None = None,
         hidden: bool = False,
+        builtin: bool = False,
     ) -> DefinedName:
         """Define a name for a formula or a range.
 
@@ -563,14 +565,27 @@ class Workbook:
         if scope is not None and scope not in self._sheets:
             raise KeyError(f"no sheet named {scope!r}. The workbook has: {', '.join(self._order)}")
         taken = {e.name for e in self.defined_names if e.scope == scope}
-        check_name(
-            name,
-            taken=taken,
-            what="defined name",
-            # A name may repeat at a different scope, so the message says
-            # where the collision actually is.
-            unique_within="this workbook" if scope is None else f"the sheet {scope!r}",
-        )
+        if builtin:
+            # Excel's own names carry the reserved prefix that check_name
+            # exists to stop a caller inventing, so the library writing a
+            # real one skips the check rather than working around it. Only
+            # the names Excel actually defines are accepted.
+            if name not in BUILTIN_NAMES:
+                raise ValueError(
+                    f"{name!r} is not one of Excel's built-in names: "
+                    f"{', '.join(sorted(BUILTIN_NAMES))}."
+                )
+            if name in taken:
+                raise ValueError(f"{name!r} is already defined at this scope.")
+        else:
+            check_name(
+                name,
+                taken=taken,
+                what="defined name",
+                # A name may repeat at a different scope, so the message says
+                # where the collision actually is.
+                unique_within="this workbook" if scope is None else f"the sheet {scope!r}",
+            )
 
         entry = DefinedName(
             name=name,
