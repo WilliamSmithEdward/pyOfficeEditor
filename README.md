@@ -64,8 +64,9 @@ the error. Getting them right is most of what the Excel modules do.
 
 ## Why this exists
 
-openpyxl, python-docx and python-pptx already set a cell, a paragraph and a
-slide. This library is aimed at the ground they leave uncovered:
+openpyxl already sets a cell, python-docx a paragraph, python-pptx a slide.
+Each covers one host. This library is aimed at the ground they leave
+uncovered:
 
 - **One API across four hosts**, including Access, which none of them touch.
 - **The legacy binary formats**, `.xls`, `.doc` and `.ppt`, which pyOpenVBA
@@ -257,10 +258,10 @@ pyright src tests
 errors on `src` and `tests` before anything merges, and a behavior change lands
 with its test in the same commit.
 
-The suite needs no Office installation. It tests against two committed
-Excel-authored packages and against openpyxl-authored ones generated during the
-run, because a reader that only ever sees one producer's output encodes that
-producer's habits as rules.
+The suite needs no Office installation. It tests against six committed
+Excel-authored packages, an `.xlsb` among them, and against openpyxl-authored
+ones generated during the run, because a reader that only ever sees one
+producer's output encodes that producer's habits as rules.
 
 There is also a live gate, which is the only check that can prove Excel
 accepts what this library writes. It drives real Excel through

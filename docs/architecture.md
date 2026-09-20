@@ -293,10 +293,11 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against two committed
-  Excel-authored packages and against openpyxl-authored ones generated
-  during the run, because a reader that only ever sees one producer's output
-  encodes that producer's habits as rules.
+- The suite needs no Office installation. It runs against six committed
+  Excel-authored packages, an `.xlsb` among them, and against
+  openpyxl-authored ones generated during the run, because a reader that
+  only ever sees one producer's output encodes that producer's habits as
+  rules.
 - Richer Excel-authored fixtures come from
   `scripts/build_excel_fixtures.py`, which drives real Excel through
   `pyvbaharness`. Tests needing them skip when they are absent.
@@ -310,9 +311,16 @@ Three assertions, and everything else rests on them:
 2. Editing one part leaves every other part's stored bytes identical.
 3. What this library writes, `zipfile` and openpyxl can read.
 
-They hold for Excel-authored `.xlsm`, `.xlsb` and `.xlsx`, for
+The first two hold for Excel-authored `.xlsm`, `.xlsb` and `.xlsx`, for
 openpyxl-authored `.xlsx`, and for archives whose members carry data
 descriptors.
+
+The third is narrower, and the difference matters. `zipfile` reads every one
+of them, because that half of the assertion is about the container and not
+the format inside it. openpyxl reads `.xlsx` and `.xlsm` and has never
+supported `.xlsb`, so it cannot stand as a reader for the binary workbook at
+all; the test behind this assertion round-trips an openpyxl-authored `.xlsx`
+through the XML layer and reads it back with openpyxl.
 
 ### 8.2 Format facts the Excel layer is built around
 
