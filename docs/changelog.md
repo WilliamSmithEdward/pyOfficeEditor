@@ -11,12 +11,38 @@ package and writing it back unchanged reproduces the input exactly.
 workflow extracts one section by reading to the next "## [" heading, so
 anything trailing the file is swept into the oldest release's notes. -->
 
-[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/WilliamSmithEdward/pyOfficeEditor/releases/tag/v0.1.0
 
 ## [Unreleased]
 
 Nothing yet.
+
+## [0.1.1] - 2026-09-19
+
+Documentation only; the library is byte for byte the code 0.1.0 shipped.
+It gets a release because the README is the project page on PyPI, where a
+wrong claim stays visible until a new version replaces it.
+
+### Fixed
+
+- **What openpyxl covers.** The README named three libraries and three
+  things they do in one sentence, leaving the reader to pair them up. Read
+  the other way it says openpyxl sets a paragraph and a slide, which it
+  does not: openpyxl is Excel only, python-docx Word only, python-pptx
+  PowerPoint only. Each is now paired with its own host explicitly.
+
+- **openpyxl and `.xlsb`.** The architecture doc listed three fidelity
+  assertions and said they hold for `.xlsm`, `.xlsb` and `.xlsx`. The third
+  is that `zipfile` and openpyxl can read what this library writes, and
+  openpyxl has never supported `.xlsb`. `zipfile` does read all three,
+  since its half of the assertion is about the container rather than the
+  format inside it, and the test behind the openpyxl half round-trips an
+  `.xlsx`. Each half is scoped to what it actually covers now.
+
+- **A stale count.** Both documents said the suite runs against two
+  committed Excel-authored packages. There are six.
 
 ## [0.1.0] - 2026-09-19
 
