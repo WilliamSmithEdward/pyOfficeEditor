@@ -85,6 +85,9 @@ include = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "live: drives a real Office application; opt in with RUN_LIVE_EXCEL=1",
+]
 
 [tool.pyright]
 include = ["src", "tests"]

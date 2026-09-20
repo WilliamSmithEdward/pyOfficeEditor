@@ -7,9 +7,32 @@ Its sister project [pyOpenVBA](https://github.com/WilliamSmithEdward/pyOpenVBA)
 edits the VBA project inside an Office file. This one edits the document: the
 cell, the formula, the paragraph, the slide, the table, the query.
 
-> **Status: early.** The container, XML and packaging layers every host sits on
-> are built and tested against bytes Excel wrote. The Excel surface is being
-> built on them now. Word, PowerPoint and Access follow, in that order.
+> **Status: early.** The Excel surface reads and writes cells, values,
+> formulas and dates, verified against real Excel. Word, PowerPoint and Access
+> follow, in that order.
+
+```python
+import datetime as dt
+from pyofficeeditor.excel import Workbook
+
+with Workbook.open("orders.xlsx") as book:
+    sheet = book["Data"]
+
+    sheet["A2"].value        # 'North'                  stored as an index
+    sheet["F2"].value        # datetime.date(2026, 1, 15)   stored as 46037
+    sheet["D3"].formula      # 'B3*C3'                  stored nowhere at all
+    sheet["B8"].value        # CellError('#DIV/0!')     not the text of one
+
+    sheet["B2"].value = 200
+    sheet["G1"].value = dt.date(2026, 7, 4)
+    sheet["G2"].formula = "=SUM(B2:B5)"
+    book.save()
+```
+
+Each of those four reads has a plausible wrong answer that a naive
+implementation gives instead: `6` for the string, `46037` for the date, an
+empty formula for `D3`, and a string that compares equal to `"#DIV/0!"` for
+the error. Getting them right is most of what the Excel modules do.
 
 ## Why this exists
 
@@ -59,8 +82,15 @@ data descriptors.
 
 ```
 +--------------------------------------------------------+
-| excel / word / powerpoint / access   host surfaces     |
-|   (being built, in that order)                         |
+| excel/        Workbook, Worksheet, Range, Cell         |
+|   _reference  A1 notation, bijective base-26 columns   |
+|   _values     the six cell encodings, and serial dates |
+|   _styles     number formats, which is how a date is   |
+|               told from a number                       |
+|   _formulas   shifting references, for shared formulas |
+|   _sharedstrings   the per-workbook string table       |
++--------------------------------------------------------+
+| word / powerpoint / access   to follow, in that order  |
 +--------------------------------------------------------+
 | opc.py        Open Packaging Conventions               |
 |   - parts, cached and flushed only when modified       |
@@ -106,7 +136,42 @@ pip install pyOfficeEditor
 
 Python 3.10 or newer. No runtime dependencies.
 
-## Current API
+## Three things Excel does that catch readers out
+
+Each is measured, each is pinned by a test, and each gives a wrong answer
+rather than an error if you miss it.
+
+**A formula assigned to a range is stored once.** Excel writes the text on the
+group's first cell and leaves the rest pointing at it by index:
+
+```xml
+<c r="D2"><f t="shared" ref="D2:D5" si="0">B2*C2</f><v>510</v></c>
+<c r="D3"><f t="shared" si="0"/><v>1445</v></c>
+```
+
+D3's formula is not in the file. It is D2's, shifted down a row. Finding the
+references to shift is the delicate part, because `LOG10(x)` contains `G10`,
+`"A1"` is a string literal, and `'My Sheet A1'!B2` has a reference inside a
+quoted sheet name.
+
+**A date is a number, and only its number format says otherwise.**
+`2026-01-15` is stored as `46037`. Confirming it is a date means following
+`s="2"` to `cellXfs[2]`, its `numFmtId` to a format code, and the code to its
+date tokens, skipping the quoted, escaped and bracketed parts that only look
+like them: `#,##0 "days"` is not a date and `[h]:mm` is. Excel also numbers
+dates as though 1900 were a leap year, so serial 60 is a 29 February that
+never happened and is refused rather than reported as 1 March.
+
+**A changed cell invalidates cached results.** A formula cell stores the value
+it last evaluated to, so setting `B2` leaves `D2`'s cached `510` behind. A
+workbook this library modified is saved with `fullCalcOnLoad` set and the
+`calcChain` part dropped, so Excel recalculates on open. The live gate proves
+it: after changing an input, Excel reports the recomputed number rather than
+the stale one still written in the file.
+
+## Lower-level access
+
+The packaging layer is public, for anything the host surfaces do not cover:
 
 ```python
 from pyofficeeditor import OpcPackage
@@ -114,13 +179,9 @@ from pyofficeeditor import OpcPackage
 with OpcPackage.open("book.xlsx") as package:
     # Navigate the way Office does: by relationship, not by path.
     workbook_part = package.main_document_part()          # 'xl/workbook.xml'
-    sheets = package.relationships(workbook_part).by_type(
-        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
-    )
-    sheet = package.xml(sheets[0].target_part)
-
-    sheet.root.require("dimension").set("ref", "A1:D20")
-    package.save()          # every other part keeps its original bytes
+    document = package.xml(workbook_part)
+    document.root.require("sheets")
+    package.save()          # every untouched part keeps its original bytes
 ```
 
 ## Development
@@ -140,15 +201,18 @@ Excel-authored packages and against openpyxl-authored ones generated during the
 run, because a reader that only ever sees one producer's output encodes that
 producer's habits as rules.
 
-Richer Excel-authored fixtures are built on demand, with real Excel, through
-[pyVBAharness](https://github.com/WilliamSmithEdward/pyVBAharness):
+There is also a live gate, which is the only check that can prove Excel
+accepts what this library writes. It drives real Excel through
+[pyVBAharness](https://github.com/WilliamSmithEdward/pyVBAharness), opens an
+edited workbook, and reads the cells back through Excel's own object model:
 
 ```bash
 python -m pip install -e ".[dev,live]"
 python scripts/build_excel_fixtures.py
+RUN_LIVE_EXCEL=1 python -m pytest -m live -p no:randomly
 ```
 
-Tests needing those fixtures skip when they are absent.
+Windows and Excel only. Everything else in the suite runs anywhere.
 
 ## License
 

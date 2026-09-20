@@ -46,8 +46,16 @@ Each layer knows the layer below it and not the layer above.
 
 ```
 +--------------------------------------------------------+
-| excel / word / powerpoint / access   host surfaces     |
-|   - not built yet; Excel is next                       |
+| excel/          the Excel surface                      |
+|   workbook      sheets, shared parts, recalculation     |
+|   worksheet     cells, rows, ranges, ordering rules     |
+|   _values       the six cell encodings, serial dates    |
+|   _styles       number formats: is this number a date?  |
+|   _formulas     reference shifting for shared formulas  |
+|   _sharedstrings  the per-workbook string table         |
+|   _reference    A1 notation, bijective base-26          |
++--------------------------------------------------------+
+| word / powerpoint / access   to follow, in that order  |
 +--------------------------------------------------------+
 | opc.py          Open Packaging Conventions             |
 |   - parts, cached as trees, flushed only when modified  |
@@ -71,10 +79,18 @@ Each layer knows the layer below it and not the layer above.
 
 - `_zip.py` knows nothing about XML or OOXML. It could be lifted out.
 - `_xml.py` knows nothing about packages, parts or relationships.
-- `opc.py` is the only module that touches the filesystem. Adding a
-  `pathlib` import to `_xml.py` or `_zip.py` is a red flag.
+- `opc.py` is the only module that touches the filesystem, apart from
+  `Workbook.open`, which delegates to it. Adding a `pathlib` import to
+  `_xml.py` or `_zip.py` is a red flag.
 - A host surface must not reach past `opc.py` into `_zip.py`. If it needs
   something from the container, `opc.py` grows a method.
+- Inside `excel/`, the four private modules are pure: `_reference`,
+  `_styles`, `_formulas` and `_values` know about elements and strings, not
+  about packages or files. `workbook.py` is the only one that does.
+- `Worksheet` owns the part and does the work, addressed by `CellRef`.
+  `Cell` and `Range` are views that delegate to it, so nothing is reachable
+  only through a cell. That is why `Worksheet.get_value` and friends are
+  public even though `Cell.value` is the pleasant way to call them.
 
 ---
 
@@ -165,6 +181,19 @@ underscore on a module name says so.
 | `XmlDocument`, `Element` | `_xml.py` | the editable tree |
 | `PyOfficeEditorError` and subclasses | `exceptions.py` | the error hierarchy |
 
+The Excel surface is exported from `pyofficeeditor.excel`:
+
+| Public name | Defined in | Purpose |
+|---|---|---|
+| `Workbook` | `excel/workbook.py` | a workbook; context manager |
+| `Worksheet`, `Cell`, `Range` | `excel/worksheet.py` | the sheet and views onto it |
+| `CellRef`, `RangeRef` | `excel/_reference.py` | A1 notation |
+| `CellError` | `excel/_values.py` | an Excel error value, distinct from its text |
+| `CellValue` | `excel/_values.py` | the union a cell can hold |
+| `Styles`, `SharedStrings` | `excel/_styles.py`, `excel/_sharedstrings.py` | the shared parts |
+| `column_letter`, `column_index` | `excel/_reference.py` | bijective base-26 |
+| `MAX_ROW`, `MAX_COLUMN` | `excel/_reference.py` | Excel's real limits |
+
 `opc.py` also exports the path helpers (`normalize_part_name`,
 `rels_part_for`, `resolve_target`, `relative_target`) and the content-type
 and relationship constants. They are stable but are not the recommended user
@@ -216,13 +245,20 @@ Rules:
 
 ```
 tests/
-  conftest.py        fixtures; openpyxl workbooks built during the run
-  test_zip.py        container round-trip, header fidelity, malformed input
-  test_xml.py        source-preserving round-trip, scoped rewriting, safety
-  test_opc.py        path arithmetic, no-op save, relationships, interop,
-                     and the SpreadsheetML format facts the Excel layer owes
-  fixtures/excel/    three committed Excel-authored packages, plus two built
-                     on demand by real Excel; see its README
+  conftest.py                   fixtures; openpyxl workbooks built in-run
+  test_zip.py                   container round-trip, header fidelity,
+                                malformed input
+  test_xml.py                   source-preserving round-trip, scoped
+                                rewriting, untrusted input
+  test_opc.py                   path arithmetic, no-op save, relationships,
+                                interop, and the SpreadsheetML format facts
+  test_excel_reference.py       A1 notation, exhaustive at the boundaries
+  test_excel_styles.py          number formats and date classification
+  test_excel_sharedstrings.py   the string table, whitespace, rich text
+  test_excel_workbook.py        the Excel surface end to end
+  test_excel_live_gate.py       real Excel, opt-in
+  fixtures/excel/               three committed Excel-authored packages,
+                                plus two built on demand; see its README
 ```
 
 - **Always** run pytest with `-p no:randomly` to keep ordering reproducible.
@@ -251,23 +287,57 @@ They hold for Excel-authored `.xlsm`, `.xlsb` and `.xlsx`, for
 openpyxl-authored `.xlsx`, and for archives whose members carry data
 descriptors.
 
-### 8.2 Format facts the Excel layer owes
+### 8.2 Format facts the Excel layer is built around
 
-Two gates in `test_opc.py` pin SpreadsheetML behavior that a cell-level API
-gets wrong by default. They live there until the Excel module exists, then
-move.
+Each of these gives a plausible wrong answer rather than an error, so each is
+pinned by a test that names the wrong answer.
 
 **Shared formulas.** A formula assigned to a range is stored once, on the
 first cell, as `<f t="shared" ref="D2:D5" si="0">B2*C2</f>`; the rest carry
 `<f t="shared" si="0"/>` and a cached value, with no formula text. Reading
-`<f>` per cell reports an empty formula for all but the master. The rest
-must be translated from it, shifting relative references. A formula entered
-into one cell is stored plainly, so both shapes occur in the same sheet.
+`<f>` per cell reports an empty formula for all but the master. The rest are
+translated from it by `_formulas.shared_formula_for`. A formula entered into
+one cell is stored plainly, so both shapes occur in the same sheet.
 
 **Sheet order.** The order of worksheet relationships is not the order of
-sheets, and Excel does reorder them in practice. Sheets are resolved through
-`<sheets>` in `xl/workbook.xml`, whose entries carry the name, the
+sheets, and Excel does reorder them in practice: in the sample fixture
+`rId2 -> sheet2.xml` precedes `rId1 -> sheet1.xml`. Sheets are resolved
+through `<sheets>` in `xl/workbook.xml`, whose entries carry the name, the
 `sheetId`, and an `r:id` naming the relationship.
+
+**Dates are numbers.** Only the number format distinguishes `46037` from a
+date, through `s` to `cellXfs` to `numFmtId` to a format code. Classifying
+the code means skipping quoted runs, backslash escapes and bracketed
+sections, because `#,##0 "days"` is not a date and `[h]:mm` is.
+
+**The 1900 leap-year bug is in the format.** Excel numbers dates as though
+1900 were a leap year, reserving serial 60 for a 29 February that never
+existed, so serials from 61 are one greater than the true day count. Serial
+60 is refused rather than reported as 1 March.
+
+**Cached results go stale.** A formula cell stores its last computed value,
+so changing an input leaves a wrong number in the file. A modified workbook
+is saved with `fullCalcOnLoad` set and `calcChain` dropped. The live gate
+verifies Excel really does recalculate: after an edit it reports the
+recomputed value and not the one still in the bytes.
+
+**Ordering is not cosmetic.** Rows must be in ascending `r` order and a
+row's cells in ascending column order. Excel refuses a worksheet that breaks
+either rule rather than repairing it, so `_ensure_cell` and `_ensure_row`
+insert in place instead of appending.
+
+### 8.3 The live gate
+
+`test_excel_live_gate.py` is the only check that can prove Excel accepts what
+this library writes. It drives real Excel through `pyvbaharness`, opens an
+edited workbook and reads the cells back through Excel's own object model.
+Opt in with `RUN_LIVE_EXCEL=1`; it needs Windows, Excel and the `live` extra.
+
+`pyvbaharness` holds a machine-wide mutex, because Office automation is
+sequential by contract. If it reports the lock held, another session really
+is driving Excel: the mutex is abandoned-safe, so a dead holder would have
+been granted. Wait for it rather than passing `exclusive=False`, which would
+contend with whatever is running.
 
 ---
 
@@ -284,4 +354,5 @@ This table is the canonical sync checklist.
 | New exception type | `exceptions.py`, this file section 6 |
 | New supported extension | the host facade, README table |
 | New test file or fixture | this file section 8, `tests/fixtures/excel/README.md` |
+| A new host surface | this file sections 2, 5 and 8, README architecture box and status |
 | A measured format fact | the docstring of the module that acts on it, and this file if it changed a decision |

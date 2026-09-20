@@ -328,10 +328,18 @@ class Element(Node):
         return default
 
     def set(self, name: str, value: str) -> None:
-        """Set an attribute, keeping its position if it already exists."""
+        """Set an attribute, keeping its position if it already exists.
+
+        Setting an attribute to the value it already has changes nothing and
+        does not mark the element modified, so an idempotent write does not
+        cost a part its original bytes.
+        """
         for a in self._attrs:
             if _matches(a.name, name):
-                a.raw_value = escape_attribute(value, a.quote)
+                escaped = escape_attribute(value, a.quote)
+                if escaped == a.raw_value:
+                    return
+                a.raw_value = escaped
                 self._touch()
                 return
         self._attrs.append(Attribute(name, escape_attribute(value)))
