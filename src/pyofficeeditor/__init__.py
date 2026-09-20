@@ -19,6 +19,8 @@ Access follow in that order.
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version
+
 from pyofficeeditor._xml import Element, XmlDocument
 from pyofficeeditor.exceptions import (
     PackageError,
@@ -29,7 +31,19 @@ from pyofficeeditor.exceptions import (
 )
 from pyofficeeditor.opc import OpcPackage, Relationship, Relationships
 
-__version__ = "0.1.0"
+try:
+    #: Read from the installed distribution rather than written here.
+    #:
+    #: A literal has to be remembered at every release and was not: 0.1.1,
+    #: 0.2.0 and 0.2.1 all shipped saying 0.1.0, because nothing links a
+    #: string in this file to the version in pyproject.toml. Asking the
+    #: metadata cannot drift, and ``tests/test_version.py`` fails if the
+    #: two ever disagree.
+    __version__ = version("pyOfficeEditor")
+except PackageNotFoundError:  # pragma: no cover - a source tree, uninstalled
+    # Importable straight from a checkout, where there is no distribution to
+    # ask. Saying so beats guessing a number.
+    __version__ = "0.0.0+source"
 
 __all__ = [
     "Element",

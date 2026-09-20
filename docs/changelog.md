@@ -11,7 +11,8 @@ package and writing it back unchanged reproduces the input exactly.
 workflow extracts one section by reading to the next "## [" heading, so
 anything trailing the file is swept into the oldest release's notes. -->
 
-[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.0...v0.1.1
@@ -20,6 +21,22 @@ anything trailing the file is swept into the oldest release's notes. -->
 ## [Unreleased]
 
 Nothing yet.
+
+## [0.2.2] - 2026-09-20
+
+### Fixed
+
+- **`__version__` reported 0.1.0 on every release since.** It was a literal
+  in `__init__.py` that nothing linked to the version in
+  `pyproject.toml`, so 0.1.1, 0.2.0 and 0.2.1 all imported saying 0.1.0.
+  The distribution metadata was right throughout; only the attribute was
+  wrong, so `pip` and the PyPI page were never affected and anything
+  reading `pyofficeeditor.__version__` was.
+
+  It is read from the installed distribution now, which cannot drift, and
+  `tests/test_version.py` fails if the attribute, the metadata and
+  `pyproject.toml` ever disagree. That test is the thing that was missing:
+  nothing checked, so nothing failed.
 
 ## [0.2.1] - 2026-09-19
 
