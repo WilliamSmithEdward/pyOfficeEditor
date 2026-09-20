@@ -981,18 +981,9 @@ def _anchor_ends(root: Element) -> Iterator[Element]:
     or ``row`` child is simply skipped.
     """
     for name in ("from", "to"):
-        for end in _descendants(root, name):
+        for end in root.descendants(name):
             if _anchor_index(end, "col") is not None or _anchor_index(end, "row") is not None:
                 yield end
-
-
-def _descendants(element: Element, name: str) -> Iterator[Element]:
-    for child in element.children:
-        if not isinstance(child, Element):
-            continue
-        if child.name == name or child.name.endswith(f":{name}"):
-            yield child
-        yield from _descendants(child, name)
 
 
 def _anchor_index(end: Element, axis: str) -> Element | None:
@@ -1036,8 +1027,12 @@ RT_VML = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vm
 RT_COMMENTS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
 
 
-def _related_parts(sheet: Worksheet, relationship_type: str) -> list[str]:
-    """The part names a sheet relates to by type."""
+def related_parts(sheet: Worksheet, relationship_type: str) -> list[str]:
+    """The part names a sheet relates to by type.
+
+    Public because more than one feature needs it: the shifting reaches a
+    sheet's drawing and comments this way, and so does reading its shapes.
+    """
     package = sheet.workbook.package
     try:
         relationships = package.relationships(sheet.part_name)
@@ -1071,15 +1066,15 @@ def _move_related_parts(sheet: Worksheet, *, shift: Shift | None, deletion: Dele
     refused one before this, so inserting a row on a sheet with a comment
     moved the cells and left the comment behind.
     """
-    for name in _related_parts(sheet, RT_DRAWING):
+    for name in related_parts(sheet, RT_DRAWING):
         document = sheet.workbook.package.xml(name)
         _move_anchor_ends(document.root, shift=shift, deletion=deletion)
 
-    for name in _related_parts(sheet, RT_COMMENTS):
+    for name in related_parts(sheet, RT_COMMENTS):
         document = sheet.workbook.package.xml(name)
         _move_comments(document.root, shift=shift, deletion=deletion)
 
-    for name in _related_parts(sheet, RT_VML):
+    for name in related_parts(sheet, RT_VML):
         _move_vml(sheet, name, shift=shift, deletion=deletion)
 
 
@@ -1331,7 +1326,7 @@ def _move_extensions(
     extensions = sheet.document.root.child("extLst")
     if extensions is None:
         return
-    for node in list(_descendants(extensions, "sqref")):
+    for node in list(extensions.descendants("sqref")):
         if not node.text:
             continue
         moved = (
@@ -1345,7 +1340,7 @@ def _move_extensions(
         if moved != node.text:
             node.set_text(moved)
 
-    for node in _descendants(extensions, "f"):
+    for node in extensions.descendants("f"):
         if not node.text:
             continue
         moved = (

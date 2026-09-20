@@ -57,16 +57,19 @@ from pyofficeeditor.excel._pagesetup import (
 from pyofficeeditor.excel._protection import SheetProtection
 from pyofficeeditor.excel._reference import CellRef, RangeRef, column_letter
 from pyofficeeditor.excel._rowcol import (
+    RT_DRAWING,
     delete_columns,
     delete_rows,
     insert_columns,
     insert_rows,
+    related_parts,
 )
 from pyofficeeditor.excel._schema import (
     SHEET_PR_CHILD_ORDER,
     WORKSHEET_CHILD_ORDER,
     insert_in_schema_order,
 )
+from pyofficeeditor.excel._shapes import Shape, SheetGrid, read_drawing
 from pyofficeeditor.excel._tables import (
     CT_TABLE,
     RT_TABLE,
@@ -935,6 +938,68 @@ class Worksheet:
         self._invalidate()
 
 
+
+
+    # ------------------------------------------------------------------
+    # Shapes
+    # ------------------------------------------------------------------
+
+    @property
+    def shapes(self) -> list[Shape]:
+        """Every shape on the sheet, in the order the drawing holds them.
+
+        A form control is finished off here rather than in the drawing: the
+        drawing calls it an ordinary shape and carries no macro, and only
+        the sheet's own ``<control>`` records say otherwise.
+        """
+        grid = SheetGrid.of(self._root)
+        found: list[Shape] = []
+        for name in related_parts(self, RT_DRAWING):
+            document = self._workbook.package.xml(name)
+            found.extend(read_drawing(document.root, grid))
+
+        controls = self._form_controls()
+        if not controls:
+            return found
+        return [
+            replace(shape, kind="formControl", macro=controls[shape.shape_id])
+            if shape.shape_id in controls
+            else shape
+            for shape in found
+        ]
+
+    def shape(self, name: str) -> Shape:
+        """One shape by name."""
+        for found in self.shapes:
+            if found.name == name:
+                return found
+        available = ", ".join(s.name for s in self.shapes) or "none"
+        raise KeyError(f"no shape named {name!r} on {self._name!r}. It has: {available}")
+
+    def _form_controls(self) -> dict[int, str]:
+        """Each form control's macro, by the shape id the drawing gave it.
+
+        Two things make this awkward, and both are measured. A control
+        carries no macro on its drawing shape: the sheet's ``<control>``
+        holds ``macro="[1]!Clicked"``, where the bracketed number names the
+        workbook. And Excel wraps ``<controls>`` in an
+        ``mc:AlternateContent`` of its own, so looking for it among the
+        worksheet's children finds nothing; the search is by name at any
+        depth instead.
+        """
+        found: dict[int, str] = {}
+        for control in self._root.descendants("control"):
+            raw = control.get("shapeId")
+            if raw is None:
+                continue
+            try:
+                shape_id = int(raw)
+            except ValueError:
+                continue
+            properties = next(control.descendants("controlPr"), None)
+            macro = None if properties is None else properties.get("macro")
+            found[shape_id] = macro or ""
+        return found
 
     # ------------------------------------------------------------------
     # Hyperlinks

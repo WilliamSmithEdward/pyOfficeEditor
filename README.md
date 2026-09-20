@@ -13,7 +13,7 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > Excel. Conditional formatting reads and writes every rule family Excel has.
 > Data validation covers every rule Excel has, dropdowns included. Sheets
 > protect, hide, colour their tabs, set their own view, and print the way
-> you set them up. Hyperlinks, and outline grouping on rows and columns.
+> you set them up. Hyperlinks, outline grouping, and the shapes on a sheet.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Nothing about a sheet makes that refuse any more: validation,
@@ -131,6 +131,7 @@ data descriptors.
 |   _tables     ListObjects: their own parts and wiring  |
 |   _dimensions widths, heights, hiding, frozen panes    |
 |   _names      defined names, and the rules tables share |
+|   _shapes     shapes, and the grid that places a control |
 |   _pagesetup  margins in inches, and the three header   |
 |               boxes coded into one string               |
 |   _validation what a cell accepts, and the inverted    |

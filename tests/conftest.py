@@ -44,6 +44,10 @@ LIVE_SETTINGS_XLSX = EXCEL_FIXTURES / "settings.xlsx"
 #: Authored by Excel: hyperlinks of every kind, an autofilter with two
 #: sorts of criteria, and outline grouping on rows and columns.
 LIVE_LINKS_XLSX = EXCEL_FIXTURES / "links.xlsx"
+#: Authored by Excel: one of every shape a sheet can hold, and beside it
+#: what Excel then said about each through its own object model.
+LIVE_SHAPES_XLSM = EXCEL_FIXTURES / "shapes.xlsm"
+LIVE_SHAPES_ANSWERS = EXCEL_FIXTURES / "shapes_answers.json"
 
 
 @pytest.fixture(scope="session")
@@ -166,3 +170,19 @@ def live_links_xlsx() -> Path:
     if not LIVE_LINKS_XLSX.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to author links.xlsx with real Excel")
     return LIVE_LINKS_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_shapes_xlsm() -> Path:
+    """The Excel-authored workbook carrying one of every shape."""
+    if not LIVE_SHAPES_XLSM.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author shapes.xlsm with real Excel")
+    return LIVE_SHAPES_XLSM
+
+
+@pytest.fixture(scope="session")
+def live_shapes_answers() -> Path:
+    """What Excel said about those shapes, measured beside the workbook."""
+    if not LIVE_SHAPES_ANSWERS.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to measure the shapes with real Excel")
+    return LIVE_SHAPES_ANSWERS

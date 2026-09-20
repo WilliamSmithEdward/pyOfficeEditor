@@ -175,7 +175,11 @@ class ContentTypes:
             existing.set("ContentType", content_type)
             return
         entry = Element.create("Default", {"Extension": key, "ContentType": content_type})
-        # Office writes every Default before any Override; keep that shape.
+        # Every Default goes before the first Override, and this is not
+        # cosmetic: ``CT_Types`` declares them in that order, and Excel
+        # refuses a package whose Defaults come after an Override rather
+        # than repairing it. Appending would be the obvious simplification
+        # and would break every file this adds an extension to.
         anchor = next(self._document.root.children_named("Override"), None)
         if anchor is None:
             self._document.root.append(entry)

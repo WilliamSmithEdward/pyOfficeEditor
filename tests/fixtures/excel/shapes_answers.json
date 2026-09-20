@@ -1,0 +1,58 @@
+{
+  "Box": {
+    "height": 60.0,
+    "left": 100.0,
+    "macro": "Clicked",
+    "top": 50.0,
+    "type": 1,
+    "width": 120.0
+  },
+  "Edge": {
+    "height": 40.0,
+    "left": 100.0,
+    "macro": "",
+    "top": 220.0,
+    "type": 9,
+    "width": 160.0
+  },
+  "Go": {
+    "height": 30.0,
+    "left": 100.0,
+    "macro": "Book1!Clicked",
+    "top": 300.0,
+    "type": 8,
+    "width": 90.0
+  },
+  "Note": {
+    "height": 40.0,
+    "left": 100.0,
+    "macro": "",
+    "top": 150.0,
+    "type": 17,
+    "width": 140.0
+  },
+  "Oval": {
+    "height": 40.0,
+    "left": 350.0,
+    "macro": "",
+    "top": 50.0,
+    "type": 1,
+    "width": 80.0
+  },
+  "Pair": {
+    "height": 30.0,
+    "left": 400.0,
+    "macro": "",
+    "top": 150.0,
+    "type": 6,
+    "width": 120.0
+  },
+  "Rounded": {
+    "height": 40.0,
+    "left": 250.0,
+    "macro": "",
+    "top": 50.0,
+    "type": 1,
+    "width": 80.0
+  }
+}
