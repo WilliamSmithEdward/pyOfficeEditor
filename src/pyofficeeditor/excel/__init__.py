@@ -21,6 +21,17 @@ get each of them right, and each is tested against bytes real Excel wrote.
 
 from __future__ import annotations
 
+from pyofficeeditor.excel._formats import (
+    Alignment,
+    Border,
+    BorderStyle,
+    CellFormat,
+    Color,
+    Fill,
+    Font,
+    Protection,
+    Side,
+)
 from pyofficeeditor.excel._reference import (
     MAX_COLUMN,
     MAX_ROW,
@@ -38,14 +49,23 @@ from pyofficeeditor.excel.worksheet import Cell, Range, Worksheet
 __all__ = [
     "MAX_COLUMN",
     "MAX_ROW",
+    "Alignment",
+    "Border",
+    "BorderStyle",
     "Cell",
     "CellError",
+    "CellFormat",
     "CellRef",
     "CellValue",
+    "Color",
     "DateOutOfRangeError",
+    "Fill",
+    "Font",
+    "Protection",
     "Range",
     "RangeRef",
     "SharedStrings",
+    "Side",
     "Styles",
     "Workbook",
     "Worksheet",

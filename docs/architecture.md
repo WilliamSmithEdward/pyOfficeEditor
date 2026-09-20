@@ -50,7 +50,9 @@ Each layer knows the layer below it and not the layer above.
 |   workbook      sheets, shared parts, recalculation     |
 |   worksheet     cells, rows, ranges, ordering rules     |
 |   _values       the six cell encodings, serial dates    |
-|   _styles       number formats: is this number a date?  |
+|   _styles       the five style tables; is this a date?   |
+|   _formats      fonts, fills, borders, alignment, as     |
+|                 immutable values                         |
 |   _formulas     reference shifting for shared formulas, |
 |                 and repointing a renamed sheet          |
 |   _sharedstrings  the per-workbook string table         |
@@ -260,6 +262,7 @@ tests/
   test_excel_sharedstrings.py   the string table, whitespace, rich text
   test_excel_workbook.py        the Excel surface end to end
   test_excel_sheets.py          adding, removing, renaming, reordering
+  test_excel_formats.py         fonts, fills, borders, alignment
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               three committed Excel-authored packages,
                                 plus two built on demand; see its README
@@ -349,6 +352,29 @@ each follower its own text would destroy the group.
 adjusted to keep pointing at the sheet that was active. Leaving it past the
 end makes Excel offer to repair the file.
 
+**Formatting is shared and so is never mutated.** A cell carries an index
+into `cellXfs`, and many cells carry the same one, so editing an entry
+restyles every cell using it. `ensure_cell_format` finds a matching entry or
+appends one, and leaves existing entries alone. The live gate checks this the
+only way that means anything: it italicises `A1`, which shared its entry with
+`B1`, and asks Excel whether `B1` stayed upright.
+
+**A cell with no `s` uses `cellXfs[0]`, not nothing.** Entry 0 names the
+workbook's default font. Resolving a missing `s` to an empty `CellFormat`
+would make `with_font(bold=True)` produce a font with no name or size, and
+Excel would render the default typeface instead of the workbook's. The live
+gate asserts the typeface is unchanged after emboldening, which is the only
+place that distinction is visible.
+
+**A solid fill's colour lives in `fgColor`.** Not `bgColor`, despite the
+names. Putting it in `bgColor` produces a cell that renders unfilled.
+
+**Fill indices 0 and 1 are reserved** for `none` and `gray125`. Excel writes
+both into every workbook whether or not anything uses them. A new fill is
+appended from index 2, and the reserved pair is only created when the table
+is empty: inserting them in front of existing entries would shift every
+`fillId` in the workbook and repaint every cell.
+
 ### 8.3 The live gate
 
 `test_excel_live_gate.py` is the only check that can prove Excel accepts what
@@ -356,11 +382,22 @@ this library writes. It drives real Excel through `pyvbaharness`, opens an
 edited workbook and reads the cells back through Excel's own object model.
 Opt in with `RUN_LIVE_EXCEL=1`; it needs Windows, Excel and the `live` extra.
 
-`pyvbaharness` holds a machine-wide mutex, because Office automation is
-sequential by contract. If it reports the lock held, another session really
-is driving Excel: the mutex is abandoned-safe, so a dead holder would have
-been granted. Wait for it rather than passing `exclusive=False`, which would
-contend with whatever is running.
+**One session, shared by every live test.** The harness acquires its mutex
+with a zero timeout, so creating a session per test races against the previous
+one's teardown and fails intermittently with `SessionLockHeld`. Office
+automation is sequential by contract, so the module holds one Excel instance
+for all of its tests; it is also several times faster. If the lock is held by
+unrelated work on the machine, the fixture skips rather than fails, since that
+is not a defect in the code under test.
+
+The harness creates and owns its own Excel process and kills it by recorded
+pid on teardown, so an unrelated Excel on the machine is untouched. Confirming
+that takes sampling the process list *during* a run: comparing before and
+after shows nothing, because teardown has already killed the owned one.
+
+If the lock is genuinely held, wait rather than passing `exclusive=False`,
+which would contend with whatever is running. The mutex is abandoned-safe, so
+a dead holder would have been granted to you already.
 
 ---
 

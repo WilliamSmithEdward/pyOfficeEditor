@@ -83,6 +83,22 @@ WORKBOOK_CHILD_ORDER: tuple[str, ...] = (
 )
 
 
+#: The order ``CT_Stylesheet`` requires its children to appear in.
+STYLESHEET_CHILD_ORDER: tuple[str, ...] = (
+    "numFmts",
+    "fonts",
+    "fills",
+    "borders",
+    "cellStyleXfs",
+    "cellXfs",
+    "cellStyles",
+    "dxfs",
+    "tableStyles",
+    "colors",
+    "extLst",
+)
+
+
 def insert_in_schema_order(parent: Element, element: Element, order: tuple[str, ...]) -> None:
     """Put ``element`` where ``order`` says it belongs among its siblings.
 
@@ -117,6 +133,7 @@ def ensure_child(parent: Element, name: str, order: tuple[str, ...]) -> Element:
 
 
 __all__ = [
+    "STYLESHEET_CHILD_ORDER",
     "WORKBOOK_CHILD_ORDER",
     "WORKSHEET_CHILD_ORDER",
     "ensure_child",

@@ -1,19 +1,28 @@
-"""Number formats, because a date in a worksheet is just a number.
+"""``xl/styles.xml``: the tables everything about a cell's look lives in.
 
-Excel stores ``2026-01-15`` as ``46037``. Nothing in the cell says it is a
-date; the only clue is the style index, and following it takes three hops:
+A cell carries an index, never its formatting. Resolving what it looks like
+means following that index through five tables::
 
     <c r="F2" s="2"><v>46037</v></c>
-        s="2"          -> styles.xml cellXfs[2]
+        s="2"          -> cellXfs[2]
         numFmtId="164" -> numFmts entry formatCode="yyyy\\-mm\\-dd"
-        the code has date tokens, so the number is a date
+        fontId="0"     -> fonts[0]
+        fillId="0"     -> fills[0]
+        borderId="0"   -> borders[0]
 
-A reader that skips those hops reports 46037, which is not a date read
-badly but a wrong answer. This module is that lookup, plus enough writing to
-make a date land as a date.
+The number-format hop is the one that decides a cell's *type*, not just its
+appearance: nothing else distinguishes ``46037`` from ``2026-01-15``, and a
+reader that skips it reports the number. So that part of this module is
+load-bearing for :mod:`pyofficeeditor.excel._values`, and the rest describes
+appearance.
 
-Scope: number formats only. Fonts, fills, borders and alignment are a later
-increment; this does not pretend to model them, and it never disturbs them.
+Writing works by reuse, never by mutation. An entry is shared, so changing
+one repaints every cell pointing at it, which is almost never what a caller
+asking to embolden one cell meant. ``ensure_*`` therefore finds a matching
+entry or appends a new one, and existing entries are left exactly as they
+were. That also keeps a part's bytes intact when nothing new was needed.
+
+The component value objects live in :mod:`pyofficeeditor.excel._formats`.
 """
 
 from __future__ import annotations
@@ -21,6 +30,17 @@ from __future__ import annotations
 import re
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._formats import (
+    PATTERN_GRAY125,
+    PATTERN_NONE,
+    Alignment,
+    Border,
+    CellFormat,
+    Fill,
+    Font,
+    Protection,
+)
+from pyofficeeditor.excel._schema import STYLESHEET_CHILD_ORDER, insert_in_schema_order
 
 #: Where Excel starts numbering custom formats.  0 to 163 are reserved for
 #: the builtins, whether or not a given build defines them all.
@@ -185,7 +205,7 @@ def _first_section(code: str) -> str:
 
 
 class Styles:
-    """``xl/styles.xml``, as far as number formats go.
+    """The workbook's style tables, read and appended to.
 
     Built over the part's tree, so every edit is scoped: adding a number
     format rewrites the ``numFmts`` and ``cellXfs`` elements and leaves the
@@ -224,22 +244,37 @@ class Styles:
 
     @property
     def cell_format_count(self) -> int:
+        """How many entries ``cellXfs`` has, which is the range a cell's
+        ``s`` may index."""
         return len(self._cell_formats())
+
+    @property
+    def font_count(self) -> int:
+        return len(self._table("fonts"))
+
+    @property
+    def fill_count(self) -> int:
+        return len(self._table("fills"))
+
+    @property
+    def border_count(self) -> int:
+        return len(self._table("borders"))
 
     def number_format_id(self, style_index: int | None) -> int:
         """The ``numFmtId`` a cell's ``s`` attribute resolves to.
 
-        A cell with no ``s`` uses format 0, General.  A cell whose ``s``
-        points past the table is treated the same way rather than raising,
-        because Excel itself renders such a cell with the default format and
-        refusing to read the file would be worse than agreeing with Excel.
+        A cell with no ``s`` is not unformatted: it uses ``cellXfs`` entry 0,
+        so that is what ``None`` resolves to rather than a bare default. A
+        cell whose ``s`` points past the table is treated the same way rather
+        than raising, because Excel itself renders such a cell with the
+        default format and refusing the file would be worse than agreeing
+        with Excel.
         """
-        if style_index is None:
-            return 0
         formats = self._cell_formats()
-        if not 0 <= style_index < len(formats):
+        index = 0 if style_index is None else style_index
+        if not 0 <= index < len(formats):
             return 0
-        raw = formats[style_index].get("numFmtId")
+        raw = formats[index].get("numFmtId")
         if raw is None:
             return 0
         try:
@@ -288,6 +323,176 @@ class Styles:
     # ------------------------------------------------------------------
     # Writing
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Whole cell formats
+    # ------------------------------------------------------------------
+
+    def _table(self, name: str) -> list[Element]:
+        container = self._root.child(name)
+        if container is None:
+            return []
+        return list(container.children_named(_ENTRY_NAMES[name]))
+
+    def _ensure_table(self, name: str) -> Element:
+        container = self._root.child(name)
+        if container is None:
+            container = Element.create(name, {"count": "0"})
+            insert_in_schema_order(self._root, container, STYLESHEET_CHILD_ORDER)
+        return container
+
+    @staticmethod
+    def _refresh_count(container: Element, entry: str) -> int:
+        count = sum(1 for _ in container.children_named(entry))
+        container.set("count", str(count))
+        return count
+
+    def font(self, index: int) -> Font:
+        """The font at an index in the workbook's font table."""
+        entries = self._table("fonts")
+        if not 0 <= index < len(entries):
+            return Font()
+        return Font.read(entries[index])
+
+    def fill(self, index: int) -> Fill:
+        """The fill at an index in the workbook's fill table."""
+        entries = self._table("fills")
+        if not 0 <= index < len(entries):
+            return Fill()
+        return Fill.read(entries[index])
+
+    def border(self, index: int) -> Border:
+        """The border at an index in the workbook's border table."""
+        entries = self._table("borders")
+        if not 0 <= index < len(entries):
+            return Border()
+        return Border.read(entries[index])
+
+    def cell_format(self, style_index: int | None) -> CellFormat:
+        """Everything a cell's ``s`` attribute resolves to.
+
+        A cell with no ``s`` is not unformatted: it uses ``cellXfs`` entry 0,
+        which normally names the workbook's default font rather than nothing
+        at all. Resolving ``None`` to an empty format instead would make
+        "add bold to this cell" quietly change its typeface, since the new
+        font would carry no name or size.
+        """
+        formats = self._cell_formats()
+        index = 0 if style_index is None else style_index
+        if not 0 <= index < len(formats):
+            return CellFormat(number_format=self.number_format(None))
+        entry = formats[index]
+        return CellFormat(
+            number_format=self.number_format(index),
+            font=self.font(_index_of(entry, "fontId")),
+            fill=self.fill(_index_of(entry, "fillId")),
+            border=self.border(_index_of(entry, "borderId")),
+            alignment=Alignment.read(entry.child("alignment")),
+            protection=Protection.read(entry.child("protection")),
+            style_id=_index_of(entry, "xfId"),
+        )
+
+    def ensure_font(self, font: Font) -> int:
+        """The index of a font, appending it if the workbook lacks it."""
+        container = self._ensure_table("fonts")
+        entries = list(container.children_named("font"))
+        for index, entry in enumerate(entries):
+            if Font.read(entry) == font:
+                return index
+        container.append(font.write())
+        self._refresh_count(container, "font")
+        return len(entries)
+
+    def ensure_fill(self, fill: Fill) -> int:
+        """The index of a fill, appending it if the workbook lacks it.
+
+        Indices 0 and 1 are reserved for ``none`` and ``gray125``. They are
+        created only when the table is empty: shifting existing entries to
+        make room would renumber every ``fillId`` in the workbook and repaint
+        every cell, so a table that already has entries is left as its
+        producer wrote it.
+        """
+        container = self._ensure_table("fills")
+        entries = list(container.children_named("fill"))
+        if not entries:
+            for pattern in (PATTERN_NONE, PATTERN_GRAY125):
+                container.append(Fill(pattern=pattern).write())
+            entries = list(container.children_named("fill"))
+            self._refresh_count(container, "fill")
+        for index, entry in enumerate(entries):
+            if Fill.read(entry) == fill:
+                return index
+        container.append(fill.write())
+        self._refresh_count(container, "fill")
+        return len(entries)
+
+    def ensure_border(self, border: Border) -> int:
+        """The index of a border, appending it if the workbook lacks it."""
+        container = self._ensure_table("borders")
+        entries = list(container.children_named("border"))
+        if not entries:
+            container.append(Border().write())
+            entries = list(container.children_named("border"))
+            self._refresh_count(container, "border")
+        for index, entry in enumerate(entries):
+            if Border.read(entry) == border:
+                return index
+        container.append(border.write())
+        self._refresh_count(container, "border")
+        return len(entries)
+
+    def ensure_cell_format(self, wanted: CellFormat) -> int:
+        """The ``s`` index for a whole format, building what is missing.
+
+        The four component tables are filled first, then an existing
+        ``cellXfs`` entry with the same components is reused. Reuse is the
+        point: formatting is shared, so a hundred cells given the same format
+        add one entry, and an existing entry is never modified because other
+        cells may point at it.
+        """
+        number_format_id = self._ensure_format_id(wanted.number_format)
+        font_id = self.ensure_font(wanted.font)
+        fill_id = self.ensure_fill(wanted.fill)
+        border_id = self.ensure_border(wanted.border)
+
+        for index in range(len(self._cell_formats())):
+            if self.cell_format(index) == wanted:
+                return index
+
+        container = self._ensure_table("cellXfs")
+        entry = Element.create(
+            "xf",
+            {
+                "numFmtId": str(number_format_id),
+                "fontId": str(font_id),
+                "fillId": str(fill_id),
+                "borderId": str(border_id),
+                "xfId": str(wanted.style_id),
+            },
+        )
+        # The apply flags say this entry overrides its named style for that
+        # aspect. Excel writes them, and some readers honour them, so a
+        # format that sets a component says so.
+        if number_format_id != 0:
+            entry.set("applyNumberFormat", "1")
+        if font_id != 0:
+            entry.set("applyFont", "1")
+        if fill_id != 0:
+            entry.set("applyFill", "1")
+        if border_id != 0:
+            entry.set("applyBorder", "1")
+        if not wanted.alignment.is_empty:
+            entry.set("applyAlignment", "1")
+        if not wanted.protection.is_default:
+            entry.set("applyProtection", "1")
+        # CT_Xf is a sequence: alignment, protection, extLst.
+        if not wanted.alignment.is_empty:
+            entry.append(wanted.alignment.write())
+        if not wanted.protection.is_default:
+            entry.append(wanted.protection.write())
+
+        container.append(entry)
+        return self._refresh_count(container, "xf") - 1
 
     def ensure_number_format(self, code: str) -> int:
         """The ``s`` index for a cell formatted with ``code``, adding it if
@@ -352,6 +557,28 @@ class Styles:
         count = sum(1 for _ in container.children_named("xf"))
         container.set("count", str(count))
         return count - 1
+
+
+#: The child element name inside each of the stylesheet's tables.
+_ENTRY_NAMES = {
+    "numFmts": "numFmt",
+    "fonts": "font",
+    "fills": "fill",
+    "borders": "border",
+    "cellStyleXfs": "xf",
+    "cellXfs": "xf",
+    "cellStyles": "cellStyle",
+}
+
+
+def _index_of(entry: Element, attribute: str) -> int:
+    raw = entry.get(attribute)
+    if raw is None:
+        return 0
+    try:
+        return int(raw)
+    except ValueError:
+        return 0
 
 
 def _is_plain(entry: Element) -> bool:

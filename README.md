@@ -13,7 +13,7 @@ cell, the formula, the paragraph, the slide, the table, the query.
 
 ```python
 import datetime as dt
-from pyofficeeditor.excel import Workbook
+from pyofficeeditor.excel import Border, Workbook
 
 with Workbook.open("orders.xlsx") as book:
     sheet = book["Data"]
@@ -26,6 +26,10 @@ with Workbook.open("orders.xlsx") as book:
     sheet["B2"].value = 200
     sheet["G1"].value = dt.date(2026, 7, 4)
     sheet["G2"].formula = "=SUM(B2:B5)"
+
+    sheet.range("A1:F1").apply_font(bold=True)   # each cell keeps its own rest
+    sheet["B2"].fill = "FFFF00"
+    sheet["B3"].border = Border.all_sides("thin", "FF0000")
 
     summary = book.add_sheet("Summary", index=0)
     summary["A1"].formula = "=SUM(Data!D2:D5)"
@@ -91,6 +95,8 @@ data descriptors.
 |   _values     the six cell encodings, and serial dates |
 |   _styles     number formats, which is how a date is   |
 |               told from a number                       |
+|   _formats    fonts, fills, borders, alignment, as     |
+|               immutable values                         |
 |   _formulas   shifting references, for shared formulas |
 |               and for repointing a renamed sheet       |
 |   _sharedstrings   the per-workbook string table       |
@@ -181,7 +187,20 @@ one. The natural thing to do with a missing element is append it, and that is
 wrong whenever anything that must follow it is already there: a sheet Excel
 authored starts with `sheetPr`, so a missing `dimension` does not go at the
 front, and a workbook usually ends with `extLst`, so a missing `calcPr` does
-not go at the end. `_schema.py` writes both orders down.
+not go at the end. `_schema.py` writes all three orders down.
+
+**Formatting is shared, so it cannot be edited in place.** A cell carries an
+index into `cellXfs`, and two hundred cells may carry the same one. Changing
+that entry restyles all of them, which is never what "embolden this cell"
+meant. So formats are immutable values: read the cell's, derive a new one,
+and the workbook finds or appends the entry that matches. Two consequences
+worth knowing:
+
+- A cell with no `s` attribute is not unformatted. It uses `cellXfs[0]`,
+  which names the workbook's default font. Resolving it to an empty format
+  instead would make "add bold" silently change the typeface.
+- A solid fill's colour goes in `fgColor`, not `bgColor`. The names suggest
+  otherwise, and putting it in `bgColor` produces a cell that looks unfilled.
 
 ## Lower-level access
 

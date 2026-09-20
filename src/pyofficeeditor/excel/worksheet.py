@@ -25,9 +25,18 @@ address that reads nicely; everything it does, the worksheet exposes too.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._formats import (
+    Alignment,
+    Border,
+    CellFormat,
+    Color,
+    Fill,
+    Font,
+)
 from pyofficeeditor.excel._formulas import shared_formula_for
 from pyofficeeditor.excel._reference import CellRef, RangeRef, column_letter
 from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
@@ -229,6 +238,35 @@ class Worksheet:
         """The format code a cell is displayed with."""
         styles = self._workbook.styles
         return "" if styles is None else styles.number_format(self.style_index(reference))
+
+    def get_format(self, reference: CellRef) -> CellFormat:
+        """Everything about how a cell looks: number format, font, fill,
+        border, alignment and protection.
+
+        A cell with no format of its own reports the default rather than
+        ``None``, so a caller can derive from it without a special case.
+        """
+        styles = self._workbook.styles
+        if styles is None:
+            return CellFormat()
+        return styles.cell_format(self.style_index(reference))
+
+    def set_format(self, reference: CellRef, wanted: CellFormat) -> None:
+        """Give a cell a format, reusing an existing one where possible.
+
+        Formatting is shared: many cells point at one entry, so nothing
+        existing is modified. The workbook's tables gain whatever the format
+        needs, and the cell's ``s`` is pointed at the entry that matches.
+        """
+        styles = self._workbook.styles
+        if styles is None:
+            raise ValueError(
+                "this workbook has no styles part, so there is nowhere to record a format."
+            )
+        index = styles.ensure_cell_format(wanted)
+        element = self._ensure_cell(reference)
+        element.set("s", str(index))
+        self._invalidate()
 
     def clear_cell(self, reference: CellRef) -> None:
         """Remove a cell, leaving the sheet as if it were never set."""
@@ -518,6 +556,55 @@ class Cell:
     def number_format(self) -> str:
         return self._sheet.number_format(self._reference)
 
+    @property
+    def format(self) -> CellFormat:
+        """How the cell looks.  Derive from it rather than replacing it::
+
+            cell.format = cell.format.with_font(bold=True)
+
+        Assigning a bare :class:`~pyofficeeditor.excel.CellFormat` resets
+        every aspect it does not mention, which is occasionally what you
+        want and usually not.
+        """
+        return self._sheet.get_format(self._reference)
+
+    @format.setter
+    def format(self, wanted: CellFormat) -> None:
+        self._sheet.set_format(self._reference, wanted)
+
+    @property
+    def font(self) -> Font:
+        return self.format.font
+
+    @font.setter
+    def font(self, font: Font) -> None:
+        self._sheet.set_format(self._reference, replace(self.format, font=font))
+
+    @property
+    def fill(self) -> Fill:
+        return self.format.fill
+
+    @fill.setter
+    def fill(self, fill: Fill | Color | str) -> None:
+        """Set the background.  A color or a hex string means a solid fill."""
+        self._sheet.set_format(self._reference, self.format.with_fill(fill))
+
+    @property
+    def border(self) -> Border:
+        return self.format.border
+
+    @border.setter
+    def border(self, border: Border) -> None:
+        self._sheet.set_format(self._reference, replace(self.format, border=border))
+
+    @property
+    def alignment(self) -> Alignment:
+        return self.format.alignment
+
+    @alignment.setter
+    def alignment(self, alignment: Alignment) -> None:
+        self._sheet.set_format(self._reference, replace(self.format, alignment=alignment))
+
     def clear(self) -> None:
         self._sheet.clear_cell(self._reference)
 
@@ -583,6 +670,53 @@ class Range:
                 )
             for reference, value in zip(target_row, source_row, strict=True):
                 self._sheet.set_value(reference, value)
+
+    def set_format(self, wanted: CellFormat) -> None:
+        """Give every cell in the block the same format.
+
+        One entry is added to the workbook's tables however large the block
+        is, because the cells all end up pointing at it.
+        """
+        for reference in self._reference.cells():
+            self._sheet.set_format(reference, wanted)
+
+    def apply_font(self, **changes: object) -> None:
+        """Change some font aspects across the block, keeping the rest.
+
+        Each cell keeps its own other formatting, so emboldening a row of
+        differently coloured cells leaves the colours alone::
+
+            sheet.range("A1:F1").apply_font(bold=True)
+        """
+        for reference in self._reference.cells():
+            current = self._sheet.get_format(reference)
+            self._sheet.set_format(reference, replace(current, font=replace(current.font, **changes)))  # type: ignore[arg-type]
+
+    def apply_fill(self, fill: Fill | Color | str) -> None:
+        """Give every cell in the block a background, keeping the rest."""
+        for reference in self._reference.cells():
+            current = self._sheet.get_format(reference)
+            self._sheet.set_format(reference, current.with_fill(fill))
+
+    def apply_border(self, border: Border) -> None:
+        """Give every cell in the block the same edges, keeping the rest."""
+        for reference in self._reference.cells():
+            current = self._sheet.get_format(reference)
+            self._sheet.set_format(reference, replace(current, border=border))
+
+    def apply_alignment(self, **changes: object) -> None:
+        """Change some alignment aspects across the block, keeping the rest."""
+        for reference in self._reference.cells():
+            current = self._sheet.get_format(reference)
+            self._sheet.set_format(
+                reference, replace(current, alignment=replace(current.alignment, **changes))  # type: ignore[arg-type]
+            )
+
+    def apply_number_format(self, code: str) -> None:
+        """Give every cell in the block a number format, keeping the rest."""
+        for reference in self._reference.cells():
+            current = self._sheet.get_format(reference)
+            self._sheet.set_format(reference, current.with_number_format(code))
 
     def clear(self) -> None:
         """Remove every cell in the block."""

@@ -109,8 +109,14 @@ def data_descriptor_zip_bytes() -> bytes:
     return bytes(sink.buffer)
 
 
-@pytest.fixture()
+@pytest.fixture(scope="session")
 def live_sample_xlsx() -> Path:
+    """The path to the Excel-authored sample, or a skip if it is absent.
+
+    Session-scoped because it is a constant, and because the live gate's
+    module-scoped fixtures request it: a narrower scope cannot be consumed by
+    a wider one.
+    """
     if not LIVE_SAMPLE_XLSX.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to author sample.xlsx with real Excel")
     return LIVE_SAMPLE_XLSX
