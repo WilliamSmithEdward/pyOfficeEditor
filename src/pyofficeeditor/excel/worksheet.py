@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pyofficeeditor._xml import Element, XmlDocument
 from pyofficeeditor.excel._conditional import ConditionalFormatting, ConditionalRule
@@ -46,6 +46,7 @@ from pyofficeeditor.excel._formats import (
     Font,
 )
 from pyofficeeditor.excel._formulas import shared_formula_for
+from pyofficeeditor.excel._protection import SheetProtection
 from pyofficeeditor.excel._reference import CellRef, RangeRef, column_letter
 from pyofficeeditor.excel._rowcol import (
     delete_columns,
@@ -53,7 +54,11 @@ from pyofficeeditor.excel._rowcol import (
     insert_columns,
     insert_rows,
 )
-from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
+from pyofficeeditor.excel._schema import (
+    SHEET_PR_CHILD_ORDER,
+    WORKSHEET_CHILD_ORDER,
+    insert_in_schema_order,
+)
 from pyofficeeditor.excel._tables import (
     CT_TABLE,
     RT_TABLE,
@@ -65,6 +70,10 @@ from pyofficeeditor.excel._tables import (
 from pyofficeeditor.excel._validation import DataValidation
 from pyofficeeditor.excel._values import CellValue, read_value, write_value
 from pyofficeeditor.exceptions import PackageError
+
+#: What ``<sheet state=...>`` can say. A ``veryHidden`` sheet is not in
+#: Excel's unhide list, so only code can bring it back.
+SheetVisibility = Literal["visible", "hidden", "veryHidden"]
 
 if TYPE_CHECKING:
     from pyofficeeditor.excel.workbook import Workbook
@@ -722,6 +731,200 @@ class Worksheet:
             except ValueError:
                 continue
         return found
+
+
+    # ------------------------------------------------------------------
+    # Protection, appearance and visibility
+    # ------------------------------------------------------------------
+
+    @property
+    def protection(self) -> SheetProtection | None:
+        """How the sheet is protected, or ``None`` when it is not."""
+        element = self._root.child("sheetProtection")
+        return None if element is None else SheetProtection.read(element)
+
+    def protect(
+        self,
+        protection: SheetProtection | None = None,
+        *,
+        password: str | None = None,
+    ) -> SheetProtection:
+        """Lock the sheet.
+
+        With no arguments this locks what Excel's own Protect locks. Pass a
+        :class:`SheetProtection` to say what stays allowed.
+
+        A password is a deterrent rather than a secret: the file carries a
+        hash, and anything that can read the file can remove it.
+        """
+        resolved = protection if protection is not None else SheetProtection()
+        if password is not None:
+            resolved = resolved.with_password(password)
+        existing = self._root.child("sheetProtection")
+        element = resolved.write()
+        if existing is not None:
+            self._root.insert_before(existing, element)
+            self._root.remove(existing)
+        else:
+            insert_in_schema_order(self._root, element, WORKSHEET_CHILD_ORDER)
+        self._invalidate()
+        return resolved
+
+    def unprotect(self) -> bool:
+        """Remove the protection, reporting whether there was any."""
+        element = self._root.child("sheetProtection")
+        if element is None:
+            return False
+        self._root.remove(element)
+        self._invalidate()
+        return True
+
+    @property
+    def tab_color(self) -> Color | None:
+        """The colour of the sheet's tab, or ``None`` for the default."""
+        properties = self._root.child("sheetPr")
+        if properties is None:
+            return None
+        return Color.read(properties.child("tabColor"))
+
+    @tab_color.setter
+    def tab_color(self, value: Color | str | None) -> None:
+        properties = self._sheet_properties()
+        existing = properties.child("tabColor")
+        if value is None:
+            if existing is not None:
+                properties.remove(existing)
+                self._tidy_sheet_properties(properties)
+                self._invalidate()
+            return
+        color = Color.from_rgb(value) if isinstance(value, str) else value
+        element = color.write("tabColor")
+        if existing is not None:
+            properties.insert_before(existing, element)
+            properties.remove(existing)
+        else:
+            # tabColor is the first child of CT_SheetPr.
+            insert_in_schema_order(properties, element, SHEET_PR_CHILD_ORDER)
+        self._invalidate()
+
+    @property
+    def show_gridlines(self) -> bool:
+        """Whether the grid is drawn. Printing has its own setting."""
+        return self._view_flag("showGridLines", default=True)
+
+    @show_gridlines.setter
+    def show_gridlines(self, value: bool) -> None:
+        self._set_view_flag("showGridLines", value, default=True)
+
+    @property
+    def show_headings(self) -> bool:
+        """Whether the row numbers and column letters are shown."""
+        return self._view_flag("showRowColHeaders", default=True)
+
+    @show_headings.setter
+    def show_headings(self, value: bool) -> None:
+        self._set_view_flag("showRowColHeaders", value, default=True)
+
+    @property
+    def zoom(self) -> int:
+        """The view's zoom, as a percentage. 100 when unset."""
+        view = self._first_view()
+        if view is None:
+            return 100
+        raw = view.get("zoomScale")
+        if raw is None:
+            return 100
+        try:
+            return int(raw)
+        except ValueError:
+            return 100
+
+    @zoom.setter
+    def zoom(self, value: int) -> None:
+        if not 10 <= value <= 400:
+            raise ValueError(f"zoom {value} is outside 10 to 400, which is what Excel allows.")
+        view = self._ensure_view()
+        if value == 100:
+            view.unset("zoomScale")
+            view.unset("zoomScaleNormal")
+        else:
+            view.set("zoomScale", str(value))
+            # Excel writes both, and the normal-view one is what it
+            # restores when switching back from page-break preview.
+            view.set("zoomScaleNormal", str(value))
+        self._invalidate()
+
+    @property
+    def visible(self) -> SheetVisibility:
+        """``visible``, ``hidden`` or ``veryHidden``.
+
+        A ``veryHidden`` sheet is not in Excel's unhide list; only code can
+        bring it back.
+        """
+        state = self._workbook.sheet_entry(self._name).get("state")
+        return state if state in ("hidden", "veryHidden") else "visible"  # type: ignore[return-value]
+
+    @visible.setter
+    def visible(self, value: SheetVisibility) -> None:
+        if value not in ("visible", "hidden", "veryHidden"):
+            raise ValueError(
+                f"{value!r} is not a visibility Excel has; expected visible, hidden "
+                f"or veryHidden."
+            )
+        if value != "visible" and not self._workbook.has_another_visible_sheet(self._name):
+            raise ValueError(
+                f"{self._name!r} is the only visible sheet, and Excel refuses a workbook "
+                f"in which every sheet is hidden. Show another sheet first."
+            )
+        entry = self._workbook.sheet_entry(self._name)
+        if value == "visible":
+            entry.unset("state")
+        else:
+            entry.set("state", value)
+        self._workbook.mark_changed()
+
+    def _sheet_properties(self) -> Element:
+        properties = self._root.child("sheetPr")
+        if properties is None:
+            properties = Element.create("sheetPr")
+            insert_in_schema_order(self._root, properties, WORKSHEET_CHILD_ORDER)
+        return properties
+
+    def _tidy_sheet_properties(self, properties: Element) -> None:
+        if not properties.attributes and not any(
+            isinstance(child, Element) for child in properties.children
+        ):
+            self._root.remove(properties)
+
+    def _first_view(self) -> Element | None:
+        container = self._root.child("sheetViews")
+        return None if container is None else container.child("sheetView")
+
+    def _ensure_view(self) -> Element:
+        container = self._root.child("sheetViews")
+        if container is None:
+            container = Element.create("sheetViews")
+            insert_in_schema_order(self._root, container, WORKSHEET_CHILD_ORDER)
+        view = container.child("sheetView")
+        if view is None:
+            view = Element.create("sheetView", {"workbookViewId": "0"})
+            container.append(view)
+        return view
+
+    def _view_flag(self, name: str, *, default: bool) -> bool:
+        view = self._first_view()
+        if view is None:
+            return default
+        raw = view.get(name)
+        return default if raw is None else raw in ("1", "true")
+
+    def _set_view_flag(self, name: str, value: bool, *, default: bool) -> None:
+        view = self._ensure_view()
+        if value == default:
+            view.unset(name)
+        else:
+            view.set(name, "1" if value else "0")
+        self._invalidate()
 
     # ------------------------------------------------------------------
     # Data validation

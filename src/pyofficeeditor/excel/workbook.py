@@ -199,6 +199,38 @@ class Workbook:
             self._order.append(name)
             self._sheets[name] = Worksheet(self, name, target, self._package.xml(target))
 
+
+    def sheet_entry(self, name: str) -> Element:
+        """The ``<sheet>`` in the workbook part that names a worksheet.
+
+        A sheet's name, tab order and visibility live here rather than in
+        its own part, so anything that changes one goes through the
+        workbook.
+        """
+        container = self._document.root.child("sheets")
+        if container is not None:
+            for entry in container.children_named("sheet"):
+                if entry.get("name") == name:
+                    return entry
+        raise PackageError(f"the workbook has no sheet named {name!r}.")
+
+    def has_another_visible_sheet(self, besides: str) -> bool:
+        """Whether some other sheet would still be visible.
+
+        Excel refuses to open a workbook in which every sheet is hidden, so
+        hiding the last one is refused here instead.
+        """
+        container = self._document.root.child("sheets")
+        if container is None:
+            return False
+        for entry in container.children_named("sheet"):
+            name = entry.get("name")
+            if name is None or name == besides:
+                continue
+            if entry.get("state") not in ("hidden", "veryHidden"):
+                return True
+        return False
+
     @property
     def sheet_names(self) -> list[str]:
         """Sheet names in the order Excel shows their tabs."""

@@ -259,6 +259,70 @@ Public Function Build(ByVal Target As String) As String
 End Function
 """
 
+
+#: Sheet-level settings: protection with and without a password, a tab
+#: colour, view flags, outline grouping, page setup and three visibility
+#: states across four sheets.
+_BUILD_SETTINGS = r"""
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim other As Worksheet
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "S"
+    ws.Range("A1:D20").Value = 1
+
+    wb.Windows(1).Zoom = 85
+    ws.Tab.Color = RGB(255, 0, 0)
+    wb.Windows(1).DisplayGridlines = False
+    wb.Windows(1).DisplayHeadings = False
+
+    With ws.PageSetup
+        .Orientation = 2
+        .PaperSize = 9
+        .LeftMargin = Application.InchesToPoints(0.25)
+        .RightMargin = Application.InchesToPoints(0.25)
+        .TopMargin = Application.InchesToPoints(1)
+        .BottomMargin = Application.InchesToPoints(1)
+        .HeaderMargin = Application.InchesToPoints(0.5)
+        .FooterMargin = Application.InchesToPoints(0.5)
+        .CenterHorizontally = True
+        .PrintArea = "$A$1:$D$20"
+        .PrintTitleRows = "$1:$1"
+        .PrintTitleColumns = "$A:$A"
+        .LeftHeader = "left head"
+        .CenterHeader = "&Bbold centre&B"
+        .RightFooter = "Page &P of &N"
+        .PrintGridlines = True
+        .PrintHeadings = True
+        .Zoom = False
+        .FitToPagesWide = 1
+        .FitToPagesTall = 2
+        .FirstPageNumber = 3
+    End With
+
+    ws.Rows("5:8").Group
+    ws.Columns("B:C").Group
+
+    Set other = wb.Worksheets.Add
+    other.Name = "Hidden"
+    other.Visible = 0
+    Set other = wb.Worksheets.Add
+    other.Name = "VeryHidden"
+    other.Visible = 2
+
+    ws.Protect Password:="secret", DrawingObjects:=True, Contents:=True, Scenarios:=True
+
+    Set other = wb.Worksheets.Add
+    other.Name = "Plain"
+    other.Protect DrawingObjects:=False, Contents:=True, Scenarios:=False, AllowFormattingCells:=True, AllowSorting:=True
+
+    Build = "ok"
+End Function
+"""
+
 def main() -> int:
     try:
         from pyvbaharness import ExcelSession
@@ -276,6 +340,7 @@ def main() -> int:
         ("sample.xlsx", _BUILD_SAMPLE),
         ("structures.xlsx", _BUILD_STRUCTURES),
         ("refused.xlsx", _BUILD_REFUSED),
+        ("settings.xlsx", _BUILD_SETTINGS),
     ]
     if not force and all((FIXTURES / name).exists() for name, _ in wanted):
         print("every fixture is already there; nothing to do (pass --force to rebuild)")

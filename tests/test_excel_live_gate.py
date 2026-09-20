@@ -52,6 +52,7 @@ from pyofficeeditor.excel import (
     CellError,
     DataValidation,
     Dxf,
+    SheetProtection,
     Workbook,
     cell_is,
     contains_text,
@@ -1185,6 +1186,89 @@ End Function
     # Relative to the range's top-left, so it reads as T3 on row 3.
     assert seen["customF1"] == "=ISNUMBER(T3)"
     assert seen["warnStyle"] == "2", "xlValidAlertWarning"
+
+
+def test_excel_agrees_about_protection_and_appearance(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """The two things only Excel can settle.
+
+    Every protection flag names a lock rather than a permission, so
+    ``formatCells="0"`` means formatting is allowed. And a password is a
+    SHA-512 hash of the salt plus the password in UTF-16LE, spun a hundred
+    thousand times; if this library computed it differently the sheet would
+    still look protected and the password would simply not work.
+
+    Excel is asked to unprotect with the password, which fails loudly if the
+    hash is wrong, and to report each allowance through ``Protection``.
+    """
+    book = Workbook.open(live_sample_xlsx)
+    sheet = book["Data"]
+    sheet.tab_color = "FF0000"
+    sheet.show_gridlines = False
+    sheet.show_headings = False
+    sheet.zoom = 85
+    sheet.protect(
+        SheetProtection(allow_sort=True, allow_autofilter=True, allow_format_cells=True),
+        password="hunter2",
+    )
+    book["Notes"].visible = "veryHidden"
+
+    target = tmp_path / "protected.xlsx"
+    book.save(target)
+
+    source = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+
+    parts = "protected=" & CStr(ws.ProtectContents)
+    parts = parts & "|sort=" & CStr(ws.Protection.AllowSorting)
+    parts = parts & "|filter=" & CStr(ws.Protection.AllowFiltering)
+    parts = parts & "|format=" & CStr(ws.Protection.AllowFormattingCells)
+    parts = parts & "|insertRows=" & CStr(ws.Protection.AllowInsertingRows)
+    parts = parts & "|tab=" & CStr(ws.Tab.Color)
+    parts = parts & "|grid=" & CStr(wb.Windows(1).DisplayGridlines)
+    parts = parts & "|headings=" & CStr(wb.Windows(1).DisplayHeadings)
+    parts = parts & "|zoom=" & CStr(wb.Windows(1).Zoom)
+    parts = parts & "|notes=" & CStr(wb.Worksheets("Notes").Visible)
+
+    ' The password check. A wrong hash raises here.
+    On Error Resume Next
+    ws.Unprotect Password:="hunter2"
+    parts = parts & "|unprotectErr=" & CStr(Err.Number)
+    Err.Clear
+    On Error GoTo 0
+    parts = parts & "|afterUnprotect=" & CStr(ws.ProtectContents)
+
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+    seen = probe(excel, source, target, "protection")
+
+    assert seen["protected"] == "True"
+    # Each of these was written as name="0", which is what lifts the lock.
+    assert seen["sort"] == "True", 'sort="0" means sorting is allowed'
+    assert seen["filter"] == "True"
+    assert seen["format"] == "True"
+    # And this one was never written, which is what leaves the lock on.
+    assert seen["insertRows"] == "False", "absent means blocked"
+
+    assert seen["tab"] == "255", "BGR, so pure red is 255"
+    assert seen["grid"] == "False"
+    assert seen["headings"] == "False"
+    assert seen["zoom"] == "85"
+    assert seen["notes"] == "2", "xlSheetVeryHidden"
+
+    # The hash is right, so Excel accepts the password and the sheet opens.
+    assert seen["unprotectErr"] == "0", "Excel rejected the password"
+    assert seen["afterUnprotect"] == "False"
 
 
 _OPEN_PROBE = r"""

@@ -11,7 +11,8 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > values, formulas, dates, sheets, formatting, merged ranges, tables, row and
 > column dimensions, frozen panes and defined names, each verified against real
 > Excel. Conditional formatting reads and writes every rule family Excel has.
-> Data validation covers every rule Excel has, dropdowns included.
+> Data validation covers every rule Excel has, dropdowns included. Sheets
+> protect, hide, colour their tabs and set their own view.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Nothing about a sheet makes that refuse any more: validation,

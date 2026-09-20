@@ -38,6 +38,9 @@ LIVE_STRUCTURES_XLSX = EXCEL_FIXTURES / "structures.xlsx"
 #: scenarios, a shape in a drawing part, a form control and a comment,
 #: the last two anchored through VML.
 LIVE_REFUSED_XLSX = EXCEL_FIXTURES / "refused.xlsx"
+#: Authored by Excel: protection with and without a password, a tab colour,
+#: view settings, grouping, page setup and three visibility states.
+LIVE_SETTINGS_XLSX = EXCEL_FIXTURES / "settings.xlsx"
 
 
 @pytest.fixture(scope="session")
@@ -144,3 +147,11 @@ def live_refused_xlsx() -> Path:
     if not LIVE_REFUSED_XLSX.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to author refused.xlsx with real Excel")
     return LIVE_REFUSED_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_settings_xlsx() -> Path:
+    """The Excel-authored workbook carrying the sheet settings."""
+    if not LIVE_SETTINGS_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author settings.xlsx with real Excel")
+    return LIVE_SETTINGS_XLSX

@@ -57,6 +57,7 @@ from pyofficeeditor.excel._formats import (
     Protection,
     Side,
 )
+from pyofficeeditor.excel._protection import SheetProtection, hash_password
 from pyofficeeditor.excel._reference import (
     MAX_COLUMN,
     MAX_ROW,
@@ -103,6 +104,7 @@ __all__ = [
     "Range",
     "RangeRef",
     "SharedStrings",
+    "SheetProtection",
     "Side",
     "Styles",
     "Table",
@@ -124,6 +126,7 @@ __all__ = [
     "ends_with",
     "expression",
     "gradient",
+    "hash_password",
     "icons",
     "is_blank",
     "is_error",

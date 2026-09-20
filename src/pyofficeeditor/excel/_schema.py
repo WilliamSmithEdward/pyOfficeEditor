@@ -99,6 +99,14 @@ STYLESHEET_CHILD_ORDER: tuple[str, ...] = (
 )
 
 
+#: The order ``CT_SheetPr`` requires its children to appear in.
+SHEET_PR_CHILD_ORDER: tuple[str, ...] = (
+    "tabColor",
+    "outlinePr",
+    "pageSetUpPr",
+)
+
+
 def insert_in_schema_order(parent: Element, element: Element, order: tuple[str, ...]) -> None:
     """Put ``element`` where ``order`` says it belongs among its siblings.
 
@@ -133,6 +141,7 @@ def ensure_child(parent: Element, name: str, order: tuple[str, ...]) -> Element:
 
 
 __all__ = [
+    "SHEET_PR_CHILD_ORDER",
     "STYLESHEET_CHILD_ORDER",
     "WORKBOOK_CHILD_ORDER",
     "WORKSHEET_CHILD_ORDER",
