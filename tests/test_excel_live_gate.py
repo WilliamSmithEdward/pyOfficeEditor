@@ -1,7 +1,11 @@
 # pyvbaharness ships no type stubs and is an optional extra, so strict
 # inference cannot see through it here. The suppressions are scoped to this
-# file, which is the only one that imports it.
+# file, which is the only one that imports it. reportMissingImports is among
+# them because the extra is Windows-and-Office only: CI installs [dev] alone,
+# where the import genuinely is not resolvable and the try/except around it
+# is what makes that fine.
 # pyright: reportMissingTypeStubs=false, reportUnknownMemberType=false
+# pyright: reportMissingImports=false
 # pyright: reportAttributeAccessIssue=false, reportUnknownArgumentType=false
 # pyright: reportUnknownVariableType=false, reportMissingParameterType=false
 """The live gate: does Excel accept what this library writes?
