@@ -1,0 +1,47 @@
+# Agent working files. Local only: they point at absolute paths on the
+# author's machine, so they mean nothing to anyone who clones this.
+AGENTS.md
+CLAUDE.md
+.claude/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build output
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test and type-check caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Test artifacts written during a run
+tests/output/
+
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Office lock files, left behind when a live host test is interrupted
+~$*

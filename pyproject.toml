@@ -1,0 +1,126 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pyOfficeEditor"
+version = "0.1.0"
+description = "Edit the document surface of Excel, Word, PowerPoint and Access in pure Python, no dependencies."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "William Smith", email = "williamsmithe@icloud.com" },
+]
+keywords = [
+    "excel",
+    "word",
+    "powerpoint",
+    "access",
+    "office",
+    "ooxml",
+    "opc",
+    "spreadsheetml",
+    "xlsx",
+    "xlsm",
+    "docx",
+    "pptx",
+    "accdb",
+    "power-query",
+    "formula",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Office/Business",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pyright>=1.1.350",
+    "build>=1.2",
+    "twine>=5",
+    # Test-time only; the runtime keeps its promise of no dependencies.
+    # openpyxl writes the same parts a different legal way, which is what
+    # the interop tests are for.
+    "openpyxl>=3.1",
+]
+# Opt-in live gates: drive real Excel / Word / PowerPoint / Access and read
+# the surface back through the host itself.  Windows and Office only.
+live = [
+    "pyvbaharness>=1.1.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/WilliamSmithEdward/pyOfficeEditor"
+Repository = "https://github.com/WilliamSmithEdward/pyOfficeEditor"
+Issues = "https://github.com/WilliamSmithEdward/pyOfficeEditor/issues"
+Documentation = "https://github.com/WilliamSmithEdward/pyOfficeEditor#readme"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pyofficeeditor"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/pyofficeeditor",
+    "README.md",
+    "LICENSE.md",
+    "pyproject.toml",
+    "docs/architecture.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.10"
+typeCheckingMode = "strict"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "SIM", "I", "RUF", "PIE", "C4", "PERF", "N", "TC", "RET", "TRY"]
+# Ignore rules that conflict with the project's strict-pyright typing posture,
+# intentional spec naming, or stylistic preferences:
+#   B009    getattr(obj, "_private")  -- deliberate to bypass reportPrivateUsage in tests
+#   PIE807  default_factory=lambda: [] -- pyright strict cannot infer element type from bare `list`
+#   TRY003  raising vanilla exception messages is fine in this project
+#   E501    long lines are tolerated where they aid readability of binary specs
+#   N801/N802/N806  mixed-case names mirror OOXML / ZIP spec field names
+#   PERF203 try/except inside loops is required for per-part recovery in parsers
+#   PERF401 manual list builds are clearer than comprehensions in spec-driven code
+#   SIM105  contextlib.suppress is slower; explicit try/except is preferred
+#   TRY300  try-else is stylistic
+#   TC001/TC003  moving runtime-required imports into TYPE_CHECKING risks breakage
+ignore = [
+    "B009",
+    "PIE807",
+    "TRY003",
+    "E501",
+    "N801",
+    "N802",
+    "N806",
+    "PERF203",
+    "PERF401",
+    "SIM105",
+    "TRY300",
+    "TC001",
+    "TC003",
+]

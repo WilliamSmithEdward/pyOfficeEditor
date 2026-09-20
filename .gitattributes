@@ -1,0 +1,28 @@
+# Office packages are byte-exact fixtures. The whole test suite asserts that
+# reading one and writing it back reproduces the input, so any line-ending
+# conversion would corrupt them and the corruption would look like a library
+# bug. Git normally infers this; state it so the inference cannot be wrong.
+*.xlsx  binary
+*.xlsm  binary
+*.xlsb  binary
+*.xltx  binary
+*.xltm  binary
+*.xlam  binary
+*.xls   binary
+*.docx  binary
+*.docm  binary
+*.dotx  binary
+*.dotm  binary
+*.doc   binary
+*.pptx  binary
+*.pptm  binary
+*.potx  binary
+*.potm  binary
+*.ppt   binary
+*.accdb binary
+*.mdb   binary
+*.bin   binary
+
+# Everything else is text, stored with LF in the repository so a diff reads
+# the same on every platform.
+*       text=auto
