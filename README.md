@@ -10,14 +10,15 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > **Status: early, and growing.** The Excel surface reads and writes cells,
 > values, formulas, dates, sheets, formatting, merged ranges, tables, row and
 > column dimensions, frozen panes and defined names, each verified against real
-> Excel. Rows and columns can be inserted and deleted, with every reference
-> in the workbook following or breaking exactly as Excel breaks it,
-> `A:A` and `2:4` included. Conditional formatting and data validation are
-> the next gap. Word, PowerPoint and Access follow, in that order.
+> Excel. Conditional formatting reads and writes every rule family Excel has.
+> Rows and columns can be inserted and deleted, with every reference in the
+> workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
+> included. Data validation is the next gap. Word, PowerPoint and Access
+> follow, in that order.
 
 ```python
 import datetime as dt
-from pyofficeeditor.excel import Border, Workbook
+from pyofficeeditor.excel import Border, Dxf, Workbook, cell_is, gradient
 
 with Workbook.open("orders.xlsx") as book:
     sheet = book["Data"]
@@ -46,6 +47,11 @@ with Workbook.open("orders.xlsx") as book:
     sheet.set_row_height(1, 24)                  # points, exact
     sheet.set_column_hidden(4, True)
     sheet.freeze_panes("B2")                     # pins row 1 and column A
+
+    sheet.add_conditional_format(
+        "B2:B20", cell_is("greaterThan", 100), dxf=Dxf.of(fill="FFC7CE", bold=True)
+    )
+    sheet.add_conditional_format("C2:C20", gradient())   # three-colour scale
 
     sheet.insert_rows(3, 2)                      # every reference follows
     sheet.delete_columns(5, 1)                   # SUM(E2:E9) -> #REF!
@@ -121,6 +127,9 @@ data descriptors.
 |   _tables     ListObjects: their own parts and wiring  |
 |   _dimensions widths, heights, hiding, frozen panes    |
 |   _names      defined names, and the rules tables share |
+|   _conditional  cfRules, and the compatibility formula |
+|                 that makes them fire                   |
+|   _dxf        differential formats: what a rule paints |
 |   _rowcol     inserting and deleting rows and columns,  |
 |               and moving everything that records a     |
 |               cell address                             |

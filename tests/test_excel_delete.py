@@ -18,7 +18,14 @@ from pathlib import Path
 import pytest
 
 from pyofficeeditor._xml import Element
-from pyofficeeditor.excel import RangeRef, Workbook
+from pyofficeeditor.excel import (
+    RangeRef,
+    Workbook,
+    Worksheet,
+    cell_is,
+    contains_text,
+    expression,
+)
 from pyofficeeditor.excel._formulas import REF_ERROR, Deletion, delete_in_formula
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW
 from pyofficeeditor.excel._rowcol import UnshiftableContentError
@@ -413,11 +420,13 @@ class TestRefusals:
             structures["Tabled"].delete_columns(1, 3)
 
     def test_unshiftable_content(self, book: Workbook) -> None:
+        """Conditional formatting used to be on this list and now moves, so
+        the refusal is exercised with something still on it."""
         sheet = book["Data"]
         insert_in_schema_order(
-            sheet.document.root, Element.create("conditionalFormatting"), WORKSHEET_CHILD_ORDER
+            sheet.document.root, Element.create("protectedRanges"), WORKSHEET_CHILD_ORDER
         )
-        with pytest.raises(UnshiftableContentError, match="conditional formatting"):
+        with pytest.raises(UnshiftableContentError, match="protected ranges"):
             sheet.delete_rows(3, 1)
 
     @pytest.mark.parametrize(("at", "count"), [(0, 1), (-1, 1), (MAX_ROW + 1, 1), (3, 0)])
@@ -461,3 +470,101 @@ class TestRoundTrip:
         sheet.insert_rows(3, 2)
         assert sheet["A3"].value is None
         assert sheet["A5"].value == "West"
+
+
+class TestConditionalFormattingMoves:
+    """Conditional formatting used to make insert and delete refuse. Now it
+    moves, and three things have to move together or the rules highlight
+    cells nobody asked about while the file opens perfectly."""
+
+    def formatted(self, book: Workbook) -> Worksheet:
+        sheet = book["Data"]
+        sheet.add_conditional_format("B2:B9", cell_is("greaterThan", 100))
+        sheet.add_conditional_format("D2:D5", contains_text("x"))
+        sheet.add_conditional_format("F2:F9", expression("=$B2>SUM($D$2:$D$5)"))
+        return sheet
+
+    def sqrefs(self, sheet: Worksheet) -> list[str]:
+        return [block.sqref for block in sheet.conditional_formats]
+
+    def test_an_insertion_moves_the_ranges(self, book: Workbook) -> None:
+        sheet = self.formatted(book)
+        sheet.insert_rows(3, 2)
+        assert self.sqrefs(sheet) == ["B2:B11", "D2:D7", "F2:F11"]
+
+    def test_a_deletion_shrinks_them(self, book: Workbook) -> None:
+        sheet = self.formatted(book)
+        sheet.delete_rows(3, 2)
+        assert self.sqrefs(sheet) == ["B2:B7", "D2:D3", "F2:F7"]
+
+    def test_a_block_with_nothing_left_goes(self, book: Workbook) -> None:
+        """Not left behind with an empty sqref, which Excel treats as
+        malformed."""
+        sheet = self.formatted(book)
+        sheet.delete_rows(2, 4)
+        assert "D" not in "".join(self.sqrefs(sheet))
+
+    def test_an_expressions_references_follow(self, book: Workbook) -> None:
+        """The condition is a real formula with real references. Moving the
+        range and leaving the formula is the silent-corruption case."""
+        sheet = self.formatted(book)
+        sheet.insert_rows(3, 2)
+        rule = sheet.conditional_formats[2].rules[0]
+        assert rule.formulas == ("$B2>SUM($D$2:$D$7)",)
+
+    def test_a_deleted_reference_in_a_condition_breaks(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.add_conditional_format("F2:F9", expression("=$B$3>1"))
+        sheet.delete_rows(3, 1)
+        assert sheet.conditional_formats[0].rules[0].formulas == (f"{REF_ERROR}>1",)
+
+    def test_the_compatibility_formula_is_rebuilt_for_the_new_anchor(
+        self, book: Workbook
+    ) -> None:
+        """It names the top-left of the range by construction, so it is
+        rebuilt rather than shifted."""
+        sheet = book["Data"]
+        sheet.add_conditional_format("D4:D9", contains_text("x"))
+        assert sheet.conditional_formats[0].rules[0].formulas == (
+            'NOT(ISERROR(SEARCH("x",D4)))',
+        )
+        sheet.insert_rows(2, 3)
+        block = sheet.conditional_formats[0]
+        assert block.sqref == "D7:D12"
+        assert block.rules[0].formulas == ('NOT(ISERROR(SEARCH("x",D7)))',)
+
+    def test_columns_too(self, book: Workbook) -> None:
+        sheet = self.formatted(book)
+        sheet.insert_columns(3, 1)
+        assert self.sqrefs(sheet) == ["B2:B9", "E2:E5", "G2:G9"]
+
+    def test_a_deleted_column_takes_its_block(self, book: Workbook) -> None:
+        sheet = self.formatted(book)
+        sheet.delete_columns(4, 1)
+        assert self.sqrefs(sheet) == ["B2:B9", "E2:E9"]
+
+    def test_the_block_keeps_its_place_in_the_sheet(self, book: Workbook) -> None:
+        """Between mergeCells and pageMargins. A rebuilt block appended to
+        the end would break the schema's order."""
+        sheet = self.formatted(book)
+        sheet.insert_rows(3, 2)
+        rendered = sheet.document.to_bytes().decode()
+        assert rendered.index("<mergeCells") < rendered.index("<conditionalFormatting")
+        assert rendered.index("<conditionalFormatting") < rendered.index("<pageMargins")
+
+    def test_a_multi_area_block_moves_every_area(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.add_conditional_format("B2:B5 D2:D5", cell_is("greaterThan", 1))
+        sheet.insert_rows(3, 2)
+        assert sheet.conditional_formats[0].sqref == "B2:B7 D2:D7"
+
+    def test_it_survives_a_save(self, book: Workbook) -> None:
+        sheet = self.formatted(book)
+        sheet.insert_rows(3, 2)
+        reopened = Workbook.from_bytes(book.to_bytes())["Data"]
+        assert self.sqrefs(reopened) == ["B2:B11", "D2:D7", "F2:F11"]
+
+    def test_insertion_no_longer_refuses(self, book: Workbook) -> None:
+        sheet = self.formatted(book)
+        sheet.insert_rows(3, 2)  # would have raised UnshiftableContentError
+        assert len(sheet.conditional_formats) == 3

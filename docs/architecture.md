@@ -59,6 +59,9 @@ Each layer knows the layer below it and not the layer above.
 |                 transform may touch                        |
 |   _names        defined names, and the naming rules       |
 |                 tables share with them                    |
+|   _conditional  cfRules, and the compatibility formula    |
+|                 that makes them fire                      |
+|   _dxf          differential formats: what a rule paints  |
 |   _styles       the five style tables; is this a date?   |
 |   _formats      fonts, fills, borders, alignment, as     |
 |                 immutable values                         |
@@ -283,6 +286,8 @@ tests/
   test_excel_names.py           defined names and their scope indices
   test_excel_rowcol.py          the tokenizer, shifting, insertion
   test_excel_delete.py          #REF!, shrinking ranges, orphaned groups
+  test_excel_conditional.py     cfRules, and what makes them fire
+  test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               three committed Excel-authored packages,
                                 plus two built on demand; see its README
@@ -482,12 +487,20 @@ corruption case in miniature: after deleting rows 2 to 4, an untouched
 tokenizer tries a cell reference first, so `A1:A4` is still two cells, and
 a lookaround keeps `TIME(2,4,0)`, `"2:4"` and `Table1[Units]` out.
 
-**What cannot be shifted is refused.** Conditional formatting, data
-validation, protected ranges, drawings and extension content all carry cell
-addresses this library does not model. Shifting everything else and leaving
-those behind is the silent-corruption case, so `check_shiftable` refuses the
-insertion and names what it found. That list shrinks as those features get
-modelled.
+**What cannot be shifted is refused.** Data validation, protected ranges,
+drawings and extension content all carry cell addresses this library does not
+model. Shifting everything else and leaving those behind is the
+silent-corruption case, so `check_shiftable` refuses the insertion and names
+what it found. That list shrinks as those features get modelled; conditional
+formatting came off it once its rules were.
+
+**Conditional formatting is three things moving together.** The `sqref`, the
+condition of a `cellIs` or `expression` rule (a real formula with real
+references), and the compatibility formula of every other rule type. The
+third is *rebuilt* rather than shifted: it names the top-left of the range by
+construction, so it follows the block's new anchor. Move the range and leave
+any one of the three and the rules highlight cells nobody asked about, with
+no error anywhere.
 
 **Deletion is not insertion run backwards.** It reuses the same inventory of
 places a cell address is written, and adds three problems insertion does not

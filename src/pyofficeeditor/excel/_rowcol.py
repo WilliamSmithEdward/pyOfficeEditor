@@ -13,13 +13,17 @@ wrong rather than broken:
 - each table's ``ref`` and its own autofilter
 - the sheet's ``dimension`` and its page breaks
 - defined names, at both scopes
+- every conditional formatting block: its ``sqref``, the condition of any
+  ``cellIs`` or ``expression`` rule, and the compatibility formula of the
+  rest, which is rebuilt from the block's new anchor rather than shifted
+  because it names the top-left of the range by construction
 
 Anything on the sheet that addresses cells and is *not* in that list makes
-the operation refuse rather than proceed. Conditional formatting, data
-validation, protected ranges and drawings all carry cell addresses this
-library does not model yet, and moving the rest while leaving those behind
-would produce a file that opens cleanly and highlights the wrong cells. A
-refusal naming the element is the honest answer until they are modelled.
+the operation refuse rather than proceed. Data validation, protected ranges,
+drawings and extension content all carry cell addresses this library does
+not model yet, and moving the rest while leaving those behind would produce
+a file that opens cleanly and highlights the wrong cells. A refusal naming
+the element is the honest answer until they are modelled.
 
 Deletion is not insertion run backwards. Three things only it has to do:
 
@@ -36,9 +40,15 @@ Deletion is not insertion run backwards. Three things only it has to do:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from pyofficeeditor._xml import Element
+from pyofficeeditor.excel._conditional import (
+    CONDITION_FORMULA_TYPES,
+    ConditionalFormatting,
+    ConditionalRule,
+)
 from pyofficeeditor.excel._formulas import (
     Deletion,
     Shift,
@@ -56,7 +66,6 @@ if TYPE_CHECKING:
 #: one makes an insertion refuse, because moving everything else and leaving
 #: these behind gives a workbook that opens and is wrong.
 UNSHIFTABLE_ELEMENTS: dict[str, str] = {
-    "conditionalFormatting": "conditional formatting rules",
     "dataValidations": "data validation rules",
     "protectedRanges": "protected ranges",
     "ignoredErrors": "ignored-error markers",
@@ -133,6 +142,7 @@ def delete_rows(sheet: Worksheet, at: int, count: int) -> None:
     _delete_formulas(sheet, deletion)
     _remove_rows(sheet, at, count)
     _delete_sheet_ranges(sheet, deletion)
+    _delete_conditional_formats(sheet, deletion)
     _delete_tables(sheet, deletion)
     _delete_breaks(sheet, deletion)
     _delete_defined_names(sheet, deletion)
@@ -150,6 +160,7 @@ def delete_columns(sheet: Worksheet, at: int, count: int) -> None:
     _remove_columns(sheet, at, count)
     _delete_column_entries(sheet, at, count)
     _delete_sheet_ranges(sheet, deletion)
+    _delete_conditional_formats(sheet, deletion)
     _delete_tables(sheet, deletion)
     _delete_breaks(sheet, deletion)
     _delete_defined_names(sheet, deletion)
@@ -354,6 +365,58 @@ def _delete_column_entries(sheet: Worksheet, at: int, count: int) -> None:
             container.remove(entry)
     if next(container.children_named("col"), None) is None:
         sheet.document.root.remove(container)
+
+
+def _swap(parent: Element, old: Element, new: Element) -> None:
+    """Put ``new`` where ``old`` sits, keeping the position.
+
+    Conditional formatting has to stay between ``mergeCells`` and
+    ``dataValidations``, and appending a rebuilt block would move it.
+    """
+    parent.insert_before(old, new)
+    parent.remove(old)
+
+
+def _delete_conditional_formats(sheet: Worksheet, deletion: Deletion) -> None:
+    """Shrink each block's ranges, and drop a block with nothing left.
+
+    A range that only partly overlaps the deletion shrinks, exactly as a
+    merge or a formula's range does. A block whose every range is gone is
+    removed rather than left behind with an empty ``sqref``, which Excel
+    treats as malformed.
+    """
+    root = sheet.document.root
+    for element in list(root.children_named("conditionalFormatting")):
+        block = ConditionalFormatting.read(element)
+        if not block.ranges:
+            continue
+        moved = tuple(
+            survivor
+            for area in block.ranges
+            if (survivor := deletion.moved_range(area)) is not None
+        )
+        if not moved:
+            root.remove(element)
+            continue
+        rules = tuple(_delete_in_rule(rule, deletion, sheet=sheet) for rule in block.rules)
+        rebuilt = ConditionalFormatting(ranges=moved, rules=rules)
+        anchored = tuple(rule.anchored_at(rebuilt.anchor) for rule in rebuilt.rules)
+        _swap(root, element, ConditionalFormatting(ranges=moved, rules=anchored).write())
+
+
+def _delete_in_rule(
+    rule: ConditionalRule, deletion: Deletion, *, sheet: Worksheet
+) -> ConditionalRule:
+    """Break or shrink the references inside a rule's own condition."""
+    if rule.kind not in CONDITION_FORMULA_TYPES or not rule.formulas:
+        return rule
+    return replace(
+        rule,
+        formulas=tuple(
+            delete_in_formula(text, deletion, formula_sheet=sheet.name, target_sheet=sheet.name)
+            for text in rule.formulas
+        ),
+    )
 
 
 def _delete_sheet_ranges(sheet: Worksheet, deletion: Deletion) -> None:
@@ -597,10 +660,49 @@ def _shift_everything_else(sheet: Worksheet, shift: Shift) -> None:
 
     _shift_shared_formula_refs(sheet, shift)
     _shift_sheet_ranges(sheet, shift)
+    _shift_conditional_formats(sheet, shift)
     _shift_tables(sheet, shift)
     _shift_breaks(sheet, shift)
     _shift_defined_names(sheet, shift)
     sheet.invalidate()
+
+
+def _shift_conditional_formats(sheet: Worksheet, shift: Shift) -> None:
+    """Move each block's ranges, and the formulas that follow them.
+
+    Three things move together, and missing any one leaves rules that
+    highlight the wrong cells while the file opens cleanly:
+
+    - every range in the ``sqref``
+    - the condition of a ``cellIs`` or ``expression`` rule, which is a real
+      formula and contains real references
+    - the compatibility formula of the attribute-driven rules, which is
+      rebuilt from the block's new anchor rather than shifted, because it
+      names the top-left of the range by construction
+    """
+    root = sheet.document.root
+    for element in list(root.children_named("conditionalFormatting")):
+        block = ConditionalFormatting.read(element)
+        if not block.ranges:
+            continue
+        moved = tuple(shift_range(area, shift) for area in block.ranges)
+        rules = tuple(_shift_rule(rule, shift, sheet=sheet) for rule in block.rules)
+        rebuilt = ConditionalFormatting(ranges=moved, rules=rules)
+        anchored = tuple(rule.anchored_at(rebuilt.anchor) for rule in rebuilt.rules)
+        _swap(root, element, ConditionalFormatting(ranges=moved, rules=anchored).write())
+
+
+def _shift_rule(rule: ConditionalRule, shift: Shift, *, sheet: Worksheet) -> ConditionalRule:
+    """Move the references inside a rule's own condition."""
+    if rule.kind not in CONDITION_FORMULA_TYPES or not rule.formulas:
+        return rule
+    return replace(
+        rule,
+        formulas=tuple(
+            shift_formula(text, shift, formula_sheet=sheet.name, target_sheet=sheet.name)
+            for text in rule.formulas
+        ),
+    )
 
 
 def _shift_formulas(sheet: Worksheet, shift: Shift, *, target_sheet: str) -> None:
