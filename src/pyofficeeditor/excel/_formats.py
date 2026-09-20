@@ -196,7 +196,7 @@ class Font:
         if u is not None:
             raw = u.get("val")
             # <u/> with no val means single, which is the common spelling.
-            underline = _as_underline(raw) if raw is not None else "single"
+            underline = as_underline(raw) if raw is not None else "single"
         script_element = element.child("vertAlign")
         return cls(
             name=_child_value(element, "name"),
@@ -603,7 +603,7 @@ def _format_float(value: float) -> str:
     return repr(value)
 
 
-def _as_underline(raw: str) -> Underline | None:
+def as_underline(raw: str) -> Underline | None:
     return raw if raw in ("single", "double", "singleAccounting", "doubleAccounting", "none") else None  # type: ignore[return-value]
 
 
@@ -667,4 +667,5 @@ __all__ = [
     "Side",
     "Underline",
     "VerticalAlignment",
+    "as_underline",
 ]

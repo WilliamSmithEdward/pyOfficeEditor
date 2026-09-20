@@ -30,6 +30,7 @@ from __future__ import annotations
 import re
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._dxf import Dxf
 from pyofficeeditor.excel._formats import (
     PATTERN_GRAY125,
     PATTERN_NONE,
@@ -441,6 +442,38 @@ class Styles:
         self._refresh_count(container, "border")
         return len(entries)
 
+    def dxf_count(self) -> int:
+        """How many differential formats the workbook has."""
+        return len(self._table("dxfs"))
+
+    def dxf(self, index: int) -> Dxf:
+        """The differential format a ``dxfId`` points at.
+
+        An index the table does not have returns an empty :class:`Dxf`
+        rather than raising: a rule whose ``dxfId`` dangles formats nothing,
+        which is what Excel shows, and refusing to read the workbook over it
+        would be worse than reporting what it does.
+        """
+        entries = self._table("dxfs")
+        if not 0 <= index < len(entries):
+            return Dxf()
+        return Dxf.read(entries[index])
+
+    def ensure_dxf(self, dxf: Dxf) -> int:
+        """The ``dxfId`` for a differential format, appending it if new.
+
+        Unlike the fill and border tables this one reserves nothing: index 0
+        is an ordinary entry, because no cell refers to a dxf by default.
+        """
+        container = self._ensure_table("dxfs")
+        entries = list(container.children_named("dxf"))
+        for index, entry in enumerate(entries):
+            if Dxf.read(entry) == dxf:
+                return index
+        container.append(dxf.write())
+        self._refresh_count(container, "dxf")
+        return len(entries)
+
     def ensure_cell_format(self, wanted: CellFormat) -> int:
         """The ``s`` index for a whole format, building what is missing.
 
@@ -568,6 +601,7 @@ _ENTRY_NAMES = {
     "cellStyleXfs": "xf",
     "cellXfs": "xf",
     "cellStyles": "cellStyle",
+    "dxfs": "dxf",
 }
 
 
