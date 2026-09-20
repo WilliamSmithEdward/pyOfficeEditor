@@ -11,7 +11,8 @@ package and writing it back unchanged reproduces the input exactly.
 workflow extracts one section by reading to the next "## [" heading, so
 anything trailing the file is swept into the oldest release's notes. -->
 
-[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/WilliamSmithEdward/pyOfficeEditor/releases/tag/v0.1.0
@@ -19,6 +20,23 @@ anything trailing the file is swept into the oldest release's notes. -->
 ## [Unreleased]
 
 Nothing yet.
+
+## [0.2.1] - 2026-09-19
+
+### Added
+
+- **The preset geometry each MsoAutoShapeType maps to**, and
+  `Shape.auto_shape_type` reporting it back, measured by having Excel make
+  one shape of each of 33 types and reading the drawing.
+
+  This is an addition rather than a fix: pyOfficeEditor never carried the
+  table. It is worth measuring rather than transcribing, because every
+  plausible wrong answer is a real preset name belonging to some other
+  shape. A table pairing 11 with `cross`, 12 with `star5`, 16 with `can`
+  and 17 with `cube` looks right and is wrong on all four: Excel writes
+  `plus`, `pentagon`, `foldedCorner` and `smileyFace`. Nothing complains,
+  the file is valid, and the wrong shape appears. The five-pointed star is
+  92, not 12.
 
 ## [0.2.0] - 2026-09-19
 

@@ -366,6 +366,35 @@ Public Function Build(ByVal Target As String) As String
 End Function
 """
 
+
+#: One shape of each MsoAutoShapeType the table names, so the preset
+#: geometry mapping is held to what Excel writes rather than transcribed.
+_BUILD_GEOMETRY = r"""
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim s As Shape
+    Dim kinds As Variant
+    Dim i As Long
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "G"
+
+    kinds = Array(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, _
+                  19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 92, 93, 94, 95, 96)
+    For i = LBound(kinds) To UBound(kinds)
+        On Error Resume Next
+        Set s = ws.Shapes.AddShape(kinds(i), 10 + i * 5, 10, 40, 30)
+        If Err.Number = 0 Then s.Name = "T" & kinds(i)
+        Err.Clear
+        On Error GoTo 0
+    Next i
+
+    Build = "ok"
+End Function
+"""
+
 def main() -> int:
     try:
         from pyvbaharness import ExcelSession
@@ -385,6 +414,7 @@ def main() -> int:
         ("refused.xlsx", _BUILD_REFUSED),
         ("settings.xlsx", _BUILD_SETTINGS),
         ("links.xlsx", _BUILD_LINKS),
+        ("geometry.xlsx", _BUILD_GEOMETRY),
     ]
     if not force and all((FIXTURES / name).exists() for name, _ in wanted):
         print("every fixture is already there; nothing to do (pass --force to rebuild)")

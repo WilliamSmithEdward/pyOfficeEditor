@@ -48,6 +48,9 @@ LIVE_LINKS_XLSX = EXCEL_FIXTURES / "links.xlsx"
 #: what Excel then said about each through its own object model.
 LIVE_SHAPES_XLSM = EXCEL_FIXTURES / "shapes.xlsm"
 LIVE_SHAPES_ANSWERS = EXCEL_FIXTURES / "shapes_answers.json"
+#: Authored by Excel: one shape of each MsoAutoShapeType, so the preset
+#: geometry table is held to what Excel actually wrote for each number.
+LIVE_GEOMETRY_XLSX = EXCEL_FIXTURES / "geometry.xlsx"
 
 
 @pytest.fixture(scope="session")
@@ -186,3 +189,11 @@ def live_shapes_answers() -> Path:
     if not LIVE_SHAPES_ANSWERS.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to measure the shapes with real Excel")
     return LIVE_SHAPES_ANSWERS
+
+
+@pytest.fixture(scope="session")
+def live_geometry_xlsx() -> Path:
+    """One shape of each MsoAutoShapeType, authored by Excel."""
+    if not LIVE_GEOMETRY_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author geometry.xlsx with real Excel")
+    return LIVE_GEOMETRY_XLSX

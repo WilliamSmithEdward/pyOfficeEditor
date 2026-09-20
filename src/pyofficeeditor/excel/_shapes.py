@@ -97,6 +97,63 @@ _ELEMENT_KINDS: dict[str, ShapeKind] = {
     "graphicFrame": "chart",
 }
 
+
+#: The preset geometry Excel writes for each ``MsoAutoShapeType``, measured
+#: by making one shape of each and reading the drawing back.
+#:
+#: Worth measuring rather than transcribing, because every plausible wrong
+#: answer here is a real preset name belonging to some other shape. A table
+#: that pairs 11 with ``cross``, 12 with ``star5``, 16 with ``can`` and 17
+#: with ``cube`` looks right and is wrong on all four: Excel writes ``plus``,
+#: ``pentagon``, ``foldedCorner`` and ``smileyFace``. Nothing complains. The
+#: file is valid and the wrong shape appears.
+#:
+#: The five-pointed star is 92, not 12. The numbers are not contiguous:
+#: ``MsoAutoShapeType`` leaves gaps, and only the ones Excel actually made
+#: when asked are here.
+PRESET_GEOMETRY: dict[int, str] = {
+    1: "rect",  # msoShapeRectangle
+    2: "parallelogram",
+    3: "trapezoid",
+    4: "diamond",
+    5: "roundRect",  # msoShapeRoundedRectangle
+    6: "octagon",
+    7: "triangle",  # msoShapeIsoscelesTriangle
+    8: "rtTriangle",
+    9: "ellipse",  # msoShapeOval
+    10: "hexagon",
+    11: "plus",  # msoShapeCross
+    12: "pentagon",  # msoShapeRegularPentagon
+    13: "can",
+    14: "cube",
+    15: "bevel",
+    16: "foldedCorner",
+    17: "smileyFace",
+    18: "donut",
+    19: "noSmoking",
+    20: "blockArc",
+    21: "heart",
+    22: "lightningBolt",
+    23: "sun",
+    24: "moon",
+    25: "arc",
+    26: "bracketPair",
+    27: "bracePair",
+    28: "plaque",
+    92: "star5",  # msoShape5pointStar
+    93: "star8",
+    94: "star16",
+    95: "star24",
+    96: "star32",
+}
+
+#: The same the other way round, for reporting what a shape read from a
+#: file would answer for ``AutoShapeType``.
+AUTO_SHAPE_TYPES: dict[str, int] = {
+    preset: number for number, preset in PRESET_GEOMETRY.items()
+}
+
+
 #: The anchors a drawing is made of.
 ANCHORS = ("twoCellAnchor", "oneCellAnchor", "absoluteAnchor")
 
@@ -220,6 +277,16 @@ class Shape:
     def mso_type(self) -> int:
         """What ``Shape.Type`` answers for this kind."""
         return MSO_TYPE.get(self.kind, 1)
+
+    @property
+    def auto_shape_type(self) -> int | None:
+        """What ``Shape.AutoShapeType`` answers, or ``None`` for a geometry
+        this does not name.
+
+        A text box answers 1 as well as an AutoShape does, which is what
+        Excel reports, because both are drawn as a rectangle.
+        """
+        return AUTO_SHAPE_TYPES.get(self.geometry)
 
     def __repr__(self) -> str:
         where = f"{self.left:g},{self.top:g} {self.width:g}x{self.height:g}"
@@ -470,10 +537,12 @@ def _as_float(raw: str | None, fallback: float) -> float:
 
 __all__ = [
     "ANCHORS",
+    "AUTO_SHAPE_TYPES",
     "DEFAULT_COLUMN_POINTS",
     "DEFAULT_ROW_POINTS",
     "EMU_PER_POINT",
     "MSO_TYPE",
+    "PRESET_GEOMETRY",
     "Shape",
     "ShapeKind",
     "SheetGrid",

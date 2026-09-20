@@ -15,9 +15,11 @@ import pytest
 
 from pyofficeeditor.excel import Workbook, Worksheet
 from pyofficeeditor.excel._shapes import (
+    AUTO_SHAPE_TYPES,
     DEFAULT_COLUMN_POINTS,
     EMU_PER_POINT,
     MSO_TYPE,
+    PRESET_GEOMETRY,
     SheetGrid,
     characters_to_points,
     emu,
@@ -180,3 +182,57 @@ class TestASheetWithNoShapes:
         assert named >= {"shape", "textBox", "line", "group", "formControl"}
         assert "other" not in named, "the catch-all deliberately has no number"
         del ShapeKind
+
+
+class TestPresetGeometry:
+    """The table is held to a workbook in which Excel made one shape of
+    each type, because every plausible wrong answer here is a real preset
+    name belonging to some other shape: the file stays valid and the wrong
+    shape appears."""
+
+    def measured(self, path: Path) -> dict[int, str]:
+        import re
+
+        from pyofficeeditor.opc import OpcPackage
+
+        raw = OpcPackage.open(path).read("xl/drawings/drawing1.xml").decode()
+        return {
+            int(m.group(1)): m.group(2)
+            for m in re.finditer(r'name="T(\d+)".*?<a:prstGeom prst="([^"]+)"', raw, re.S)
+        }
+
+    def test_every_entry_is_what_excel_wrote(self, live_geometry_xlsx: Path) -> None:
+        for number, preset in self.measured(live_geometry_xlsx).items():
+            assert PRESET_GEOMETRY.get(number) == preset, number
+
+    def test_the_table_claims_nothing_unmeasured(self, live_geometry_xlsx: Path) -> None:
+        assert set(PRESET_GEOMETRY) == set(self.measured(live_geometry_xlsx))
+
+    @pytest.mark.parametrize(
+        ("number", "preset"),
+        [(11, "plus"), (12, "pentagon"), (16, "foldedCorner"), (17, "smileyFace")],
+    )
+    def test_the_four_that_are_easy_to_get_wrong(self, number: int, preset: str) -> None:
+        """cross, star5, can and cube are the plausible answers, and all
+        four are real presets belonging to other shapes."""
+        assert PRESET_GEOMETRY[number] == preset
+
+    def test_the_five_pointed_star_is_92_not_12(self) -> None:
+        assert PRESET_GEOMETRY[92] == "star5"
+        assert PRESET_GEOMETRY[12] != "star5"
+
+    def test_the_inverse_agrees(self) -> None:
+        for number, preset in PRESET_GEOMETRY.items():
+            assert AUTO_SHAPE_TYPES[preset] == number
+
+    def test_a_shape_reports_its_auto_shape_type(self, sheet: Worksheet) -> None:
+        assert sheet.shape("Box").auto_shape_type == 1
+        assert sheet.shape("Rounded").auto_shape_type == 5
+        assert sheet.shape("Oval").auto_shape_type == 9
+
+    def test_a_text_box_answers_one_too(self, sheet: Worksheet) -> None:
+        """Which is what Excel reports: both are drawn as a rectangle."""
+        assert sheet.shape("Note").auto_shape_type == 1
+
+    def test_a_geometry_with_no_number(self, sheet: Worksheet) -> None:
+        assert sheet.shape("Edge").auto_shape_type is None
