@@ -405,11 +405,17 @@ class Element(Node):
 
     def insert_before(self, reference: Node, node: Node) -> None:
         """Insert ``node`` immediately before ``reference``."""
-        try:
-            index = self._children.index(reference)
-        except ValueError:
-            raise XmlError(f"the reference node is not a child of <{self.name}>.") from None
-        self.insert(index, node)
+        self.insert(self._position_of(reference), node)
+
+    def insert_after(self, reference: Node, node: Node) -> None:
+        """Insert ``node`` immediately after ``reference``."""
+        self.insert(self._position_of(reference) + 1, node)
+
+    def _position_of(self, reference: Node) -> int:
+        for index, child in enumerate(self._children):
+            if child is reference:
+                return index
+        raise XmlError(f"the reference node is not a child of <{self.name}>.")
 
     def remove(self, node: Node) -> None:
         try:

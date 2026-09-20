@@ -39,6 +39,10 @@ with Workbook.open("orders.xlsx") as book:
     table.column_names                           # from the header row
     table.data_range                             # excludes header and totals
 
+    sheet.set_row_height(1, 24)                  # points, exact
+    sheet.set_column_hidden(4, True)
+    sheet.freeze_panes("B2")                     # pins row 1 and column A
+
     summary = book.add_sheet("Summary", index=0)
     summary["A1"].formula = "=SUM(Data!D2:D5)"
     book.rename_sheet("Data", "Q1 Data")     # the formula follows the rename
@@ -106,6 +110,7 @@ data descriptors.
 |   _formats    fonts, fills, borders, alignment, as     |
 |               immutable values                         |
 |   _tables     ListObjects: their own parts and wiring  |
+|   _dimensions widths, heights, hiding, frozen panes    |
 |   _formulas   shifting references, for shared formulas |
 |               and for repointing a renamed sheet       |
 |   _sharedstrings   the per-workbook string table       |

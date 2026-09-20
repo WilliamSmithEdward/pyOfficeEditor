@@ -469,6 +469,79 @@ def test_excel_accepts_a_table_this_library_created(
 
 
 # --------------------------------------------------------------------------
+# Dimensions and frozen panes
+# --------------------------------------------------------------------------
+
+_DIMENSION_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Tabled")
+
+    ' The width Excel reports back for what we stored, which is the number
+    ' a person would type rather than the one in the file.
+    parts = "Bwidth=" & CStr(ws.Columns("B").ColumnWidth)
+    parts = parts & "|Awidth=" & CStr(ws.Columns("A").ColumnWidth)
+    parts = parts & "|Dhidden=" & CStr(ws.Columns("D").Hidden)
+    parts = parts & "|Chidden=" & CStr(ws.Columns("C").Hidden)
+    parts = parts & "|row3=" & CStr(ws.Rows(3).RowHeight)
+    parts = parts & "|row5hidden=" & CStr(ws.Rows(5).Hidden)
+    parts = parts & "|row4hidden=" & CStr(ws.Rows(4).Hidden)
+
+    ' Freezing is the fiddly one: the wrong activePane leaves the cursor in
+    ' a pane the user cannot see.
+    '
+    ' Not SplitRow and SplitColumn. A workbook Excel froze itself reports 0
+    ' for both through this route, so they discriminate nothing. Panes.Count
+    ' and where the scrolling area starts do.
+    ws.Activate
+    parts = parts & "|frozen=" & CStr(ActiveWindow.FreezePanes)
+    parts = parts & "|panes=" & CStr(ActiveWindow.Panes.Count)
+    parts = parts & "|visibleTop=" & ActiveWindow.VisibleRange.Cells(1, 1).Address(False, False)
+
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+
+
+def test_excel_applies_the_dimensions_this_library_writes(
+    excel: object, live_structures_xlsx: Path, tmp_path: Path
+) -> None:
+    """A width without customWidth is ignored, and a freeze with the wrong
+    activePane leaves the cursor somewhere invisible. Only Excel can say."""
+    book = Workbook.open(live_structures_xlsx)
+    sheet = book["Tabled"]
+    # Copy the width Excel itself stored for column A onto column B, which
+    # is the one operation the units make exact.
+    sheet.set_column_width(2, sheet.column_width(1) or 20.0)
+    sheet.set_column_hidden(4, True)
+    sheet.set_row_height(3, 40)
+    sheet.set_row_hidden(5, True)
+    sheet.freeze_panes("B2")
+    target = tmp_path / "dimensions.xlsx"
+    book.save(target)
+
+    seen = probe(excel, _DIMENSION_PROBE, target, "dimensions")
+
+    assert seen["Bwidth"] == seen["Awidth"], "a copied width reproduces exactly"
+    assert seen["Dhidden"] == "True"
+    assert seen["Chidden"] == "False", "isolating D did not hide its neighbour"
+    assert seen["row3"] == "40", "row heights are points, and exact"
+    assert seen["row5hidden"] == "True"
+    assert seen["row4hidden"] == "False"
+
+    assert seen["frozen"] == "True"
+    assert seen["panes"] == "4", "frozen on both axes makes four panes"
+    assert seen["visibleTop"] == "B2", "row 1 and column A are pinned above and left"
+
+
+# --------------------------------------------------------------------------
 # The no-op case
 # --------------------------------------------------------------------------
 

@@ -29,6 +29,12 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._dimensions import (
+    COLUMN_ATTRIBUTES,
+    Freeze,
+    column_entry,
+    isolate_column,
+)
 from pyofficeeditor.excel._formats import (
     Alignment,
     Border,
@@ -53,6 +59,13 @@ from pyofficeeditor.exceptions import PackageError
 
 if TYPE_CHECKING:
     from pyofficeeditor.excel.workbook import Workbook
+
+
+def _format_dimension(value: float) -> str:
+    """A width or height as Excel writes it: no trailing ``.0``."""
+    if value == int(value):
+        return str(int(value))
+    return repr(value)
 
 
 class Worksheet:
@@ -281,6 +294,196 @@ class Worksheet:
         """Remove a cell, leaving the sheet as if it were never set."""
         self._remove_cell(reference)
         self._invalidate()
+
+    # ------------------------------------------------------------------
+    # Column and row dimensions
+    # ------------------------------------------------------------------
+
+    def column_width(self, column: int) -> float | None:
+        """A column's stored width, or ``None`` if it uses the default.
+
+        This is the file's own unit, not the number Excel's Column Width
+        dialog shows: a VBA ``ColumnWidth = 18`` stores ``18.6328125``. The
+        unit counts ``0`` glyphs in the default font plus padding, so
+        converting needs that font's maximum digit width in pixels, which is
+        not in the file. Copying a width from one column to another, or
+        reading one back, is exact; translating a number a person typed is
+        not something this library can do honestly.
+        """
+        container = self._root.child("cols")
+        if container is None:
+            return None
+        entry = column_entry(container, column)
+        if entry is None:
+            return None
+        raw = entry.get("width")
+        if raw is None:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
+    def set_column_width(self, column: int, width: float | None) -> None:
+        """Set a column's width, or ``None`` to restore the default.
+
+        ``customWidth`` goes with it: a ``width`` without that flag is
+        ignored by Excel, so the change would look like it never happened.
+        """
+        container = self._ensure_cols()
+        entry = isolate_column(container, column)
+        if width is None:
+            entry.unset("width")
+            entry.unset("customWidth")
+            entry.unset("bestFit")
+        else:
+            if width < 0:
+                raise ValueError(f"a column width cannot be negative; got {width}.")
+            entry.set("width", _format_dimension(width))
+            entry.set("customWidth", "1")
+        self._tidy_cols(container)
+        self._invalidate()
+
+    def column_hidden(self, column: int) -> bool:
+        container = self._root.child("cols")
+        if container is None:
+            return False
+        entry = column_entry(container, column)
+        return entry is not None and entry.get("hidden") in ("1", "true")
+
+    def set_column_hidden(self, column: int, hidden: bool) -> None:
+        container = self._ensure_cols()
+        entry = isolate_column(container, column)
+        if hidden:
+            entry.set("hidden", "1")
+        else:
+            entry.unset("hidden")
+        self._tidy_cols(container)
+        self._invalidate()
+
+    def row_height(self, row: int) -> float | None:
+        """A row's height in points, or ``None`` if it uses the default.
+
+        Unlike a column width, this is exact: a height of 24 stores as 24.
+        """
+        element = self._rows.get(row)
+        if element is None:
+            return None
+        raw = element.get("ht")
+        if raw is None:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
+    def set_row_height(self, row: int, height: float | None) -> None:
+        """Set a row's height in points, or ``None`` to restore the default.
+
+        ``customHeight`` goes with it, for the same reason ``customWidth``
+        does: without the flag Excel ignores the value.
+        """
+        element = self._ensure_row(row)
+        if height is None:
+            element.unset("ht")
+            element.unset("customHeight")
+        else:
+            if height < 0:
+                raise ValueError(f"a row height cannot be negative; got {height}.")
+            element.set("ht", _format_dimension(height))
+            element.set("customHeight", "1")
+        self._invalidate()
+
+    def row_hidden(self, row: int) -> bool:
+        element = self._rows.get(row)
+        return element is not None and element.get("hidden") in ("1", "true")
+
+    def set_row_hidden(self, row: int, hidden: bool) -> None:
+        element = self._ensure_row(row)
+        if hidden:
+            element.set("hidden", "1")
+        else:
+            element.unset("hidden")
+        self._invalidate()
+
+    @property
+    def default_row_height(self) -> float | None:
+        """The height rows use when they set none of their own."""
+        element = self._root.child("sheetFormatPr")
+        if element is None:
+            return None
+        raw = element.get("defaultRowHeight")
+        if raw is None:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
+    def _ensure_cols(self) -> Element:
+        container = self._root.child("cols")
+        if container is None:
+            container = Element.create("cols")
+            insert_in_schema_order(self._root, container, WORKSHEET_CHILD_ORDER)
+        return container
+
+    def _tidy_cols(self, container: Element) -> None:
+        """Drop entries that no longer say anything, and the block itself
+        when nothing is left.  Excel omits an empty ``<cols/>``."""
+        for entry in list(container.children_named("col")):
+            if not any(entry.get(name) is not None for name in COLUMN_ATTRIBUTES):
+                container.remove(entry)
+        if next(container.children_named("col"), None) is None:
+            self._root.remove(container)
+
+    # ------------------------------------------------------------------
+    # Frozen panes
+    # ------------------------------------------------------------------
+
+    @property
+    def freeze(self) -> Freeze:
+        """Which rows and columns are pinned while the rest scrolls."""
+        view = self._root.child("sheetViews")
+        if view is None:
+            return Freeze()
+        first = view.child("sheetView")
+        if first is None:
+            return Freeze()
+        return Freeze.read(first.child("pane"))
+
+    def freeze_panes(self, reference: str | CellRef | None) -> Freeze:
+        """Pin everything above and left of a cell.
+
+        ``freeze_panes("B2")`` pins row 1 and column A, which is how Excel's
+        own command is described. ``"A2"`` pins the first row only, ``"B1"``
+        the first column only, and ``None`` or ``"A1"`` unfreezes.
+        """
+        if reference is None:
+            wanted = Freeze()
+        else:
+            cell = CellRef.parse(reference) if isinstance(reference, str) else reference
+            wanted = Freeze.at(cell)
+
+        view = self._ensure_sheet_view()
+        existing = view.child("pane")
+        if existing is not None:
+            view.remove(existing)
+        if wanted.is_frozen:
+            # CT_SheetView is a sequence and pane is its first child.
+            view.insert(0, wanted.write())
+        self._invalidate()
+        return wanted
+
+    def _ensure_sheet_view(self) -> Element:
+        container = self._root.child("sheetViews")
+        if container is None:
+            container = Element.create("sheetViews")
+            insert_in_schema_order(self._root, container, WORKSHEET_CHILD_ORDER)
+        view = container.child("sheetView")
+        if view is None:
+            view = Element.create("sheetView", {"workbookViewId": "0"})
+            container.append(view)
+        return view
 
     # ------------------------------------------------------------------
     # Tables

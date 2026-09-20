@@ -51,6 +51,7 @@ Each layer knows the layer below it and not the layer above.
 |   worksheet     cells, rows, ranges, ordering rules     |
 |   _values       the six cell encodings, serial dates    |
 |   _tables       ListObjects: their own parts and wiring  |
+|   _dimensions   widths, heights, hiding, frozen panes    |
 |   _styles       the five style tables; is this a date?   |
 |   _formats      fonts, fills, borders, alignment, as     |
 |                 immutable values                         |
@@ -266,6 +267,7 @@ tests/
   test_excel_formats.py         fonts, fills, borders, alignment
   test_excel_merges.py          merged ranges and range intersection
   test_excel_tables.py          ListObjects: parts, columns, wiring
+  test_excel_dimensions.py      widths, heights, hiding, frozen panes
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               three committed Excel-authored packages,
                                 plus two built on demand; see its README
@@ -410,6 +412,33 @@ allocated from `Workbook` rather than from the sheet doing the adding. A
 headerless table is not supported: Excel makes one by inserting a row above
 the block, which shifts every row below it and every formula referring to
 them, and that belongs with row insertion.
+
+**A `<col>` entry covers a range, not a column.** `<col min="1" max="5"
+width="10"/>` sets five columns at once, so giving column 3 its own width
+means splitting that entry into up to three, copying every attribute to each
+piece. Editing it in place would resize all five, which is the shared-state
+trap cell formatting has in a different costume.
+
+**A column width is not the number a person types.** VBA's `ColumnWidth = 18`
+stores `18.6328125`; the offset was `+0.6328125` for every integer width
+measured, and `8.43`, Excel's default, broke even that by landing on
+`9.08984375`. The unit counts `0` glyphs in the default font plus padding, so
+converting needs that font's maximum digit width in pixels, which is not in
+the file. The stored number is exposed as-is, because a conversion right for
+one font and quietly wrong for the rest is worse than none. Row heights carry
+no such trap: they are points, and 24 stores as 24.
+
+**A dimension needs its companion flag.** A `width` without `customWidth="1"`
+and an `ht` without `customHeight="1"` are ignored, so the value looks like it
+never took.
+
+**`activePane` decides where the cursor lands** after a freeze: `bottomRight`
+when both axes are frozen, `bottomLeft` for rows only, `topRight` for columns
+only. Get it wrong and the cursor sits in a pane the user cannot see. The
+`<pane>` this library writes is byte-identical to Excel's for all four shapes.
+Note that `ActiveWindow.SplitRow` and `SplitColumn` are *not* how to verify a
+freeze: a workbook Excel froze itself reports 0 for both, so they discriminate
+nothing. `Panes.Count` and where `VisibleRange` starts do.
 
 ### 8.3 The live gate
 
