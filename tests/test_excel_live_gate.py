@@ -50,6 +50,7 @@ from pyofficeeditor.excel import (
     Alignment,
     Border,
     CellError,
+    DataValidation,
     Dxf,
     Workbook,
     cell_is,
@@ -1095,6 +1096,95 @@ End Function
     assert seen["shape"] == "E8", "anchored at zero-based row 5, so row 6"
     assert seen["button"] == "E12", "zero-based row 9, so row 10"
     assert seen["comment"] == "C5", "was C3, in two places that must agree"
+
+
+def test_excel_enforces_the_validations_this_library_writes(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """Excel's own object model, on rules this library authored.
+
+    ``InCellDropdown`` is the reason this gate exists. The attribute behind
+    it, ``showDropDown``, is inverted: Excel writes it for a list whose
+    dropdown is turned *off* and omits it for the ordinary list that has
+    one. Nothing offline can tell which way round that is, and getting it
+    backwards gives every dropdown in the workbook the wrong behaviour while
+    the file stays valid.
+    """
+    book = Workbook.open(live_sample_xlsx)
+    sheet = book["Data"]
+    sheet["K1"].value = "red"
+    sheet["K2"].value = "green"
+
+    sheet.add_data_validation("L2:L9", DataValidation.any_of(["red", "green", "blue"]))
+    sheet.add_data_validation(
+        "M2:M9", DataValidation.any_of(["red", "green"], hide_dropdown=True)
+    )
+    sheet.add_data_validation("N2:N9", DataValidation.any_of("=$K$1:$K$2"))
+    sheet.add_data_validation(
+        "O2:O9",
+        DataValidation.whole_number(1, 10)
+        .with_error("That is not one to ten.", title="No")
+        .with_prompt("One to ten.", title="Heads up"),
+    )
+    sheet.add_data_validation(
+        "Q2:Q9", DataValidation.date(dt.date(2026, 1, 1), operator="greaterThan")
+    )
+    sheet.add_data_validation("T2:T9", DataValidation.custom("=ISNUMBER(T2)"))
+    sheet.add_data_validation(
+        "U2:U9",
+        DataValidation.whole_number(5, operator="equal").with_error("nope", style="warning"),
+    )
+
+    target = tmp_path / "validated.xlsx"
+    book.save(target)
+
+    source = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+    parts = "listType=" & CStr(ws.Range("L3").Validation.Type)
+    parts = parts & "|listF1=" & ws.Range("L3").Validation.Formula1
+    parts = parts & "|listDrop=" & CStr(ws.Range("L3").Validation.InCellDropdown)
+    parts = parts & "|hiddenDrop=" & CStr(ws.Range("M3").Validation.InCellDropdown)
+    parts = parts & "|rangeF1=" & ws.Range("N3").Validation.Formula1
+    parts = parts & "|wholeOp=" & CStr(ws.Range("O3").Validation.Operator)
+    parts = parts & "|wholeF1=" & ws.Range("O3").Validation.Formula1
+    parts = parts & "|wholeF2=" & ws.Range("O3").Validation.Formula2
+    parts = parts & "|errTitle=" & ws.Range("O3").Validation.ErrorTitle
+    parts = parts & "|errMsg=" & ws.Range("O3").Validation.ErrorMessage
+    parts = parts & "|inTitle=" & ws.Range("O3").Validation.InputTitle
+    parts = parts & "|dateF1=" & ws.Range("Q3").Validation.Formula1
+    parts = parts & "|customF1=" & ws.Range("T3").Validation.Formula1
+    parts = parts & "|warnStyle=" & CStr(ws.Range("U3").Validation.AlertStyle)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+    seen = probe(excel, source, target, "validation")
+
+    assert seen["listType"] == "3", "xlValidateList"
+    assert seen["listF1"] == "red,green,blue", "the quotes are the file's, not the value's"
+    # The inverted pair, which is the whole point of the gate.
+    assert seen["listDrop"] == "True", "no showDropDown attribute means a dropdown"
+    assert seen["hiddenDrop"] == "False", 'showDropDown="1" means no dropdown'
+
+    assert seen["rangeF1"] == "=$K$1:$K$2"
+    assert seen["wholeOp"] == "1", "xlBetween, which the file leaves unwritten"
+    assert seen["wholeF1"] == "1"
+    assert seen["wholeF2"] == "10"
+    assert seen["errTitle"] == "No"
+    assert seen["errMsg"] == "That is not one to ten."
+    assert seen["inTitle"] == "Heads up"
+    # 46023 in the file. Excel shows the serial back as the date it denotes.
+    assert seen["dateF1"] == "1/1/2026"
+    # Relative to the range's top-left, so it reads as T3 on row 3.
+    assert seen["customF1"] == "=ISNUMBER(T3)"
+    assert seen["warnStyle"] == "2", "xlValidAlertWarning"
 
 
 _OPEN_PROBE = r"""

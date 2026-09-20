@@ -62,6 +62,7 @@ from pyofficeeditor.excel._tables import (
     build_table_part,
     unique_column_names,
 )
+from pyofficeeditor.excel._validation import DataValidation
 from pyofficeeditor.excel._values import CellValue, read_value, write_value
 from pyofficeeditor.exceptions import PackageError
 
@@ -721,6 +722,123 @@ class Worksheet:
             except ValueError:
                 continue
         return found
+
+    # ------------------------------------------------------------------
+    # Data validation
+    # ------------------------------------------------------------------
+
+    @property
+    def data_validations(self) -> list[DataValidation]:
+        """Every validation on the sheet, in the order the part lists them."""
+        container = self._root.child("dataValidations")
+        if container is None:
+            return []
+        return [
+            DataValidation.read(element)
+            for element in container.children_named("dataValidation")
+        ]
+
+    def data_validation_at(self, reference: str | CellRef) -> DataValidation | None:
+        """The validation covering a cell, if any.
+
+        The first one found, which is what Excel applies: a cell carries one
+        validation, and Excel replaces rather than stacks.
+        """
+        cell = CellRef.parse(reference) if isinstance(reference, str) else reference
+        for validation in self.data_validations:
+            if any(cell in block for block in validation.ranges):
+                return validation
+        return None
+
+    def add_data_validation(
+        self,
+        reference: str | RangeRef | Sequence[str | RangeRef],
+        validation: DataValidation,
+    ) -> DataValidation:
+        """Apply a validation to a range, or to several as one entry.
+
+        Any validation already covering those cells is removed first, which
+        is what Excel does: a cell has one rule, and leaving two behind
+        makes which one applies depend on document order.
+        """
+        ranges = _as_ranges(reference)
+        if not ranges:
+            raise ValueError("a data validation needs at least one range.")
+        if validation.kind == "none":
+            raise ValueError(
+                "this validation has no type, so it would accept anything. Build one "
+                "with DataValidation.any_of, whole_number, decimal, date, time, "
+                "text_length or custom."
+            )
+
+        for block in ranges:
+            self._drop_validations_over(block)
+
+        resolved = replace(validation, ranges=ranges)
+        container = self._root.child("dataValidations")
+        if container is None:
+            container = Element.create("dataValidations")
+            insert_in_schema_order(self._root, container, WORKSHEET_CHILD_ORDER)
+        container.append(resolved.write())
+        container.set("count", str(sum(1 for _ in container.children_named("dataValidation"))))
+        self._invalidate()
+        return resolved
+
+    def clear_data_validations(self, reference: str | RangeRef | None = None) -> int:
+        """Remove validations, and report how many entries went.
+
+        With no argument every one goes. With a range, an entry is dropped
+        only when all of its ranges fall inside it, so a rule that also
+        covers cells outside is left alone rather than silently narrowed.
+        """
+        container = self._root.child("dataValidations")
+        if container is None:
+            return 0
+        block = (
+            None
+            if reference is None
+            else (RangeRef.parse(reference) if isinstance(reference, str) else reference).normalized
+        )
+        removed = 0
+        for element in list(container.children_named("dataValidation")):
+            if block is not None:
+                covered = DataValidation.read(element).ranges
+                if not covered or not all(block.contains(area) for area in covered):
+                    continue
+            container.remove(element)
+            removed += 1
+        if removed:
+            self._tidy_validations(container)
+            self._invalidate()
+        return removed
+
+    def _drop_validations_over(self, block: RangeRef) -> None:
+        """Narrow or remove whatever already validates these cells."""
+        container = self._root.child("dataValidations")
+        if container is None:
+            return
+        for element in list(container.children_named("dataValidation")):
+            existing = DataValidation.read(element)
+            kept = tuple(area for area in existing.ranges if not area.intersects(block))
+            if len(kept) == len(existing.ranges):
+                continue
+            if not kept:
+                container.remove(element)
+                continue
+            # Excel does not split a range around a hole, and neither does
+            # this: an area that merely overlaps is dropped whole, which is
+            # visible in the result rather than silently partial.
+            replacement = replace(existing, ranges=kept).write()
+            container.insert_before(element, replacement)
+            container.remove(element)
+        self._tidy_validations(container)
+
+    def _tidy_validations(self, container: Element) -> None:
+        remaining = sum(1 for _ in container.children_named("dataValidation"))
+        if remaining:
+            container.set("count", str(remaining))
+        else:
+            self._root.remove(container)
 
     # ------------------------------------------------------------------
     # Conditional formatting

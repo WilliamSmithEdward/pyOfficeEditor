@@ -11,6 +11,7 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > values, formulas, dates, sheets, formatting, merged ranges, tables, row and
 > column dimensions, frozen panes and defined names, each verified against real
 > Excel. Conditional formatting reads and writes every rule family Excel has.
+> Data validation covers every rule Excel has, dropdowns included.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Nothing about a sheet makes that refuse any more: validation,
@@ -128,6 +129,8 @@ data descriptors.
 |   _tables     ListObjects: their own parts and wiring  |
 |   _dimensions widths, heights, hiding, frozen panes    |
 |   _names      defined names, and the rules tables share |
+|   _validation what a cell accepts, and the inverted    |
+|               attribute behind its dropdown            |
 |   _conditional  cfRules, and the compatibility formula |
 |                 that makes them fire                   |
 |   _dxf        differential formats: what a rule paints |

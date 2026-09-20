@@ -61,6 +61,8 @@ Each layer knows the layer below it and not the layer above.
 |                 transform may touch                        |
 |   _names        defined names, and the naming rules       |
 |                 tables share with them                    |
+|   _validation   what a cell accepts; showDropDown is      |
+|                 inverted and means hide it                |
 |   _conditional  cfRules, and the compatibility formula    |
 |                 that makes them fire                      |
 |   _dxf          differential formats: what a rule paints  |
@@ -289,6 +291,7 @@ tests/
   test_excel_rowcol.py          the tokenizer, shifting, insertion
   test_excel_delete.py          #REF!, shrinking ranges, orphaned groups
   test_excel_conditional.py     cfRules, and what makes them fire
+  test_excel_validation.py      what a cell accepts, and the dropdown
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               three committed Excel-authored packages,

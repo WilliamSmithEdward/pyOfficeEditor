@@ -201,6 +201,17 @@ def _rewrite_vml(raw: str, move: Callable[[int, bool], int]) -> str:
     return re.sub(r"-?\d+", swap, raw)
 
 
+def parse_sqref(raw: str) -> tuple[RangeRef, ...]:
+    """The ranges in an ``sqref``, which separates them with spaces."""
+    blocks: list[RangeRef] = []
+    for piece in raw.split():
+        try:
+            blocks.append(RangeRef.parse(piece))
+        except ValueError:
+            continue
+    return tuple(blocks)
+
+
 __all__ = [
     "collapse_index",
     "delete_cell",
@@ -208,6 +219,7 @@ __all__ = [
     "delete_ref",
     "delete_sqref",
     "delete_vml_anchor",
+    "parse_sqref",
     "shift_cell",
     "shift_index",
     "shift_ref",

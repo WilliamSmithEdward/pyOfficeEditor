@@ -68,6 +68,7 @@ from pyofficeeditor.excel._reference import (
 from pyofficeeditor.excel._sharedstrings import SharedStrings
 from pyofficeeditor.excel._styles import Styles
 from pyofficeeditor.excel._tables import Table, TableColumn, TableStyle
+from pyofficeeditor.excel._validation import DataValidation, ErrorStyle, ValidationOperator, ValidationType
 from pyofficeeditor.excel._values import CellError, CellValue, DateOutOfRangeError
 from pyofficeeditor.excel.workbook import Workbook
 from pyofficeeditor.excel.worksheet import Cell, Range, Worksheet
@@ -89,10 +90,12 @@ __all__ = [
     "ConditionalFormatting",
     "ConditionalRule",
     "DataBar",
+    "DataValidation",
     "DateOutOfRangeError",
     "Dxf",
     "DxfFill",
     "DxfFont",
+    "ErrorStyle",
     "Fill",
     "Font",
     "IconSet",
@@ -105,6 +108,8 @@ __all__ = [
     "Table",
     "TableColumn",
     "TableStyle",
+    "ValidationOperator",
+    "ValidationType",
     "Workbook",
     "Worksheet",
     "average",

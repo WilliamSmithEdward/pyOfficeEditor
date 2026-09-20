@@ -32,6 +32,7 @@ from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._addresses import parse_sqref
 from pyofficeeditor.excel._formats import Color
 from pyofficeeditor.excel._reference import CellRef, RangeRef
 
@@ -620,17 +621,6 @@ def _operand(value: object) -> str:
     if text.startswith('"') and text.endswith('"'):
         return text
     return '"' + text.replace('"', '""') + '"'
-
-
-def parse_sqref(raw: str) -> tuple[RangeRef, ...]:
-    """The ranges in an ``sqref``, which separates them with spaces."""
-    blocks: list[RangeRef] = []
-    for piece in raw.split():
-        try:
-            blocks.append(RangeRef.parse(piece))
-        except ValueError:
-            continue
-    return tuple(blocks)
 
 
 def _as_int(raw: str | None) -> int | None:
