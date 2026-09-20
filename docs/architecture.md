@@ -52,6 +52,10 @@ Each layer knows the layer below it and not the layer above.
 |   _values       the six cell encodings, serial dates    |
 |   _tables       ListObjects: their own parts and wiring  |
 |   _dimensions   widths, heights, hiding, frozen panes    |
+|   _insert       inserting rows and columns, and moving    |
+|                 everything that records a cell address    |
+|   _tokens       a formula, broken into the pieces a        |
+|                 transform may touch                        |
 |   _names        defined names, and the naming rules       |
 |                 tables share with them                    |
 |   _styles       the five style tables; is this a date?   |
@@ -271,6 +275,7 @@ tests/
   test_excel_tables.py          ListObjects: parts, columns, wiring
   test_excel_dimensions.py      widths, heights, hiding, frozen panes
   test_excel_names.py           defined names and their scope indices
+  test_excel_insert.py          the tokenizer, shifting, insertion
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               three committed Excel-authored packages,
                                 plus two built on demand; see its README
@@ -434,6 +439,27 @@ no such trap: they are points, and 24 stores as 24.
 **A dimension needs its companion flag.** A `width` without `customWidth="1"`
 and an `ht` without `customHeight="1"` are ignored, so the value looks like it
 never took.
+
+**Inserting a row is not a local edit.** A cell's address is written into the
+file in a dozen places, and missing one gives a workbook that opens cleanly
+and points at the wrong cells, which no byte comparison catches. `_insert.py`
+lists them and moves all of them: cell and row `r` attributes, every formula
+in the *workbook* that reads from the sheet, shared-formula `ref`s, merges,
+hyperlinks, the sheet and table filters, table extents, the dimension, page
+breaks, and defined names.
+
+Deciding which formulas move is why `_tokens.py` exists. A bare `A5` means
+the sheet its formula lives on; `Data!A5` means that sheet. Inserting rows
+into `Data` must move the second and leave the first, and only a token stream
+that tracks the qualifier can tell them apart. A regex cannot, and neither
+can it keep `LOG10` from looking like `G10`.
+
+**What cannot be shifted is refused.** Conditional formatting, data
+validation, protected ranges, drawings and extension content all carry cell
+addresses this library does not model. Shifting everything else and leaving
+those behind is the silent-corruption case, so `check_shiftable` refuses the
+insertion and names what it found. That list shrinks as those features get
+modelled.
 
 **A defined name's scope is a position, not a name.** `localSheetId="0"`
 means the first sheet in tab order, so adding, removing or moving a sheet

@@ -598,8 +598,129 @@ def test_excel_resolves_the_defined_names_this_library_writes(
 
 
 # --------------------------------------------------------------------------
-# The no-op case
+# Inserting rows and columns
 # --------------------------------------------------------------------------
+
+_INSERT_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+
+    ' The values moved down two rows, and the rows opened up are blank.
+    parts = "B2=" & CStr(ws.Range("B2").Value)
+    parts = parts & "|A3blank=" & CStr(IsEmpty(ws.Range("A3").Value))
+    parts = parts & "|A4blank=" & CStr(IsEmpty(ws.Range("A4").Value))
+    parts = parts & "|A5=" & ws.Range("A5").Value
+    parts = parts & "|B5=" & CStr(ws.Range("B5").Value)
+
+    ' The formulas moved and their ranges grew across the insertion. These
+    ' are computed values, so Excel had to accept and evaluate them.
+    parts = parts & "|D8formula=" & ws.Range("D8").Formula
+    parts = parts & "|D8=" & CStr(ws.Range("D8").Value)
+    parts = parts & "|D5formula=" & ws.Range("D5").Formula
+    parts = parts & "|D5=" & CStr(ws.Range("D5").Value)
+
+    ' The merge moved with its row.
+    parts = parts & "|merge=" & ws.Range("A13").MergeArea.Address(False, False)
+
+    ' A formula on another sheet that reads from this one, and a defined
+    ' name pointing into it, both had to follow.
+    parts = parts & "|summary=" & wb.Worksheets("Summary").Range("A1").Formula
+    parts = parts & "|summaryValue=" & CStr(wb.Worksheets("Summary").Range("A1").Value)
+    parts = parts & "|above=" & wb.Worksheets("Summary").Range("A2").Formula
+    parts = parts & "|name=" & wb.Names("Totals").RefersTo
+    parts = parts & "|nameSum=" & CStr(Application.Evaluate("SUM(Totals)"))
+
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+
+
+def test_excel_accepts_inserted_rows_and_follows_every_reference(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """The riskiest operation here. A cell's address is written into the file
+    in a dozen places; missing one gives a workbook that opens cleanly and is
+    wrong, which no byte comparison can catch."""
+    book = Workbook.open(live_sample_xlsx)
+    summary = book.add_sheet("Summary")
+    summary["A1"].formula = "=SUM(Data!D2:D5)"
+    summary["A2"].formula = "=Data!B2"
+    book.add_defined_name("Totals", "Data!$D$2:$D$5")
+
+    book["Data"].insert_rows(3, 2)
+    target = tmp_path / "inserted.xlsx"
+    book.save(target)
+
+    seen = probe(excel, _INSERT_PROBE, target, "insert")
+
+    assert seen["B2"] == "120", "the row above the insertion did not move"
+    assert seen["A3blank"] == "True", "two blank rows opened up"
+    assert seen["A4blank"] == "True"
+    assert seen["A5"] == "South", "what was in row 3 is now in row 5"
+    assert seen["B5"] == "340"
+
+    # SUM(D2:D5) spanned the insertion, so it grew rather than sliding.
+    assert seen["D8formula"] == "=SUM(D2:D7)"
+    assert seen["D8"] == "3265", "and still totals the same four rows"
+    # D3's shared formula became D5's, reading the row its inputs moved to.
+    assert seen["D5formula"] == "=B5*C5"
+    assert seen["D5"] == "1445", "340 * 4.25"
+
+    assert seen["merge"] == "A13:C13", "the merge moved down two rows"
+
+    assert seen["summary"] == "=SUM(Data!D2:D7)", "a formula on another sheet followed"
+    assert seen["summaryValue"] == "3265"
+    assert seen["above"] == "=Data!B2", "and one pointing above the insertion did not"
+
+    assert seen["name"] == "=Data!$D$2:$D$7", "the defined name followed too"
+    assert seen["nameSum"] == "3265"
+
+
+def test_excel_accepts_inserted_columns(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    book = Workbook.open(live_sample_xlsx)
+    book["Data"].insert_columns(2, 1)
+    target = tmp_path / "inserted_columns.xlsx"
+    book.save(target)
+
+    source = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+    parts = "A1=" & ws.Range("A1").Value
+    parts = parts & "|B1blank=" & CStr(IsEmpty(ws.Range("B1").Value))
+    parts = parts & "|C1=" & ws.Range("C1").Value
+    parts = parts & "|E2formula=" & ws.Range("E2").Formula
+    parts = parts & "|E2=" & CStr(ws.Range("E2").Value)
+    parts = parts & "|E6=" & CStr(ws.Range("E6").Value)
+    parts = parts & "|merge=" & ws.Range("A11").MergeArea.Address(False, False)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+    seen = probe(excel, source, target, "insertcols")
+
+    assert seen["A1"] == "Region", "the column before the insertion stayed"
+    assert seen["B1blank"] == "True", "a blank column opened up"
+    assert seen["C1"] == "Units", "what was in B is now in C"
+    assert seen["E2formula"] == "=C2*D2", "the formula's inputs moved with it"
+    assert seen["E2"] == "510", "and it still computes the same answer"
+    assert seen["E6"] == "3265"
+    assert seen["merge"] == "A11:D11", "the merge grew across the insertion"
 
 _OPEN_PROBE = r"""
 Public Function Probe(ByVal Target As String) As String

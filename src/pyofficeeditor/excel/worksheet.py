@@ -44,6 +44,7 @@ from pyofficeeditor.excel._formats import (
     Font,
 )
 from pyofficeeditor.excel._formulas import shared_formula_for
+from pyofficeeditor.excel._insert import insert_columns, insert_rows
 from pyofficeeditor.excel._reference import CellRef, RangeRef, column_letter
 from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._tables import (
@@ -294,6 +295,32 @@ class Worksheet:
         """Remove a cell, leaving the sheet as if it were never set."""
         self._remove_cell(reference)
         self._invalidate()
+
+    # ------------------------------------------------------------------
+    # Inserting rows and columns
+    # ------------------------------------------------------------------
+
+    def insert_rows(self, at: int, count: int = 1) -> None:
+        """Insert blank rows, pushing everything at or below ``at`` down.
+
+        Everything that records a cell address moves with the data: the
+        cells themselves, every formula in the workbook that reads from this
+        sheet, shared-formula groups, merged ranges, hyperlinks, tables, the
+        sheet's filter and dimension, its page breaks, and the workbook's
+        defined names.
+
+        The insertion is refused when the sheet carries something that
+        addresses cells and this library cannot move, such as conditional
+        formatting or data validation. Moving everything else and leaving
+        those behind produces a workbook that opens cleanly and points at
+        the wrong cells, which is worse than not doing it.
+        """
+        insert_rows(self, at, count)
+
+    def insert_columns(self, at: int, count: int = 1) -> None:
+        """Insert blank columns, pushing everything at or right of ``at``
+        over.  The same shifting and the same refusal as :meth:`insert_rows`."""
+        insert_columns(self, at, count)
 
     # ------------------------------------------------------------------
     # Column and row dimensions
@@ -947,6 +974,34 @@ class Worksheet:
                         continue
             self._masters = masters
         return self._masters.get(index)
+
+    def rows_by_number(self) -> dict[int, Element]:
+        """The ``<row>`` elements this sheet has, keyed by row number.
+
+        A copy, so a caller may renumber the rows while walking it.
+        """
+        return dict(self._rows)
+
+    def reindex_rows(self) -> None:
+        """Rebuild the row lookup after the rows were renumbered."""
+        self._rows = {}
+        for row in self._data.children_named("row"):
+            raw = row.get("r")
+            if raw is None:
+                continue
+            try:
+                self._rows[int(raw)] = row
+            except ValueError:
+                continue
+
+    def invalidate(self) -> None:
+        """Record that this sheet changed.
+
+        Drops the shared-formula lookup, which the change may have
+        invalidated, and tells the workbook so the file is saved with
+        ``fullCalcOnLoad``.
+        """
+        self._invalidate()
 
     def _invalidate(self) -> None:
         self._masters = None

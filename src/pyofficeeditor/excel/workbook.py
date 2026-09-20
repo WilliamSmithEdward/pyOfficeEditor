@@ -168,6 +168,11 @@ class Workbook:
     def path(self) -> Path | None:
         return self._package.path
 
+    @property
+    def workbook_part(self) -> str:
+        """The part name of ``xl/workbook.xml``, found by relationship."""
+        return self._workbook_part
+
     # ------------------------------------------------------------------
     # Sheets
     # ------------------------------------------------------------------

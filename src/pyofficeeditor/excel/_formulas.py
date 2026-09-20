@@ -31,8 +31,10 @@ goals will need one; this does the one job a shared formula requires.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
-from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef
+from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef
+from pyofficeeditor.excel._tokens import TokenKind, render, tokenize
 
 #: A cell reference inside formula text.
 #:
@@ -206,6 +208,121 @@ def _rename_bare(text: str, bare: str, replacement: str) -> str:
     return pattern.sub(replacement, text)
 
 
+@dataclass(frozen=True)
+class Shift:
+    """How far, and from where, an insertion moves things.
+
+    One value rather than four loose arguments, because it travels through
+    every function that has to move something and a transposed pair would be
+    a silent corruption.
+    """
+
+    rows_at: int | None = None
+    row_count: int = 0
+    columns_at: int | None = None
+    column_count: int = 0
+
+    @classmethod
+    def rows(cls, at: int, count: int) -> Shift:
+        return cls(rows_at=at, row_count=count)
+
+    @classmethod
+    def columns(cls, at: int, count: int) -> Shift:
+        return cls(columns_at=at, column_count=count)
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.row_count and not self.column_count
+
+    def moved(self, reference: CellRef) -> CellRef | None:
+        """Where a reference lands, or ``None`` if it would leave the sheet."""
+        row = reference.row
+        column = reference.column
+        if self.rows_at is not None and self.row_count and row >= self.rows_at:
+            row += self.row_count
+        if self.columns_at is not None and self.column_count and column >= self.columns_at:
+            column += self.column_count
+        if row == reference.row and column == reference.column:
+            return reference
+        if not (1 <= row <= MAX_ROW and 1 <= column <= MAX_COLUMN):
+            return None
+        return CellRef(row, column, reference.absolute_row, reference.absolute_column)
+
+
+def shift_formula(
+    formula: str,
+    shift: Shift,
+    *,
+    formula_sheet: str,
+    target_sheet: str,
+) -> str:
+    """Move the references a row or column insertion pushed along.
+
+    Only references addressing ``target_sheet`` move. A bare reference
+    addresses the sheet its formula lives on, so ``formula_sheet`` decides
+    whether it counts; a qualified one says which sheet outright. That
+    distinction is the whole reason this goes through the tokenizer: a
+    formula on ``Summary`` reading ``Data!A5`` has to move when rows are
+    inserted into ``Data`` and stay put when they are inserted into
+    ``Summary``.
+
+    A reference at or after the insertion point moves by the count. One
+    before it does not, which is what makes a range spanning the insertion
+    grow rather than slide.
+    """
+    if shift.is_empty:
+        return formula
+    if formula_sheet != target_sheet and "!" not in formula:
+        # Nothing here can address the edited sheet.
+        return formula
+
+    tokens = tokenize(formula)
+    changed = False
+    for token in tokens:
+        if token.kind is not TokenKind.REFERENCE or not isinstance(token.value, CellRef):
+            continue
+        addresses = token.sheet if token.sheet is not None else formula_sheet
+        if addresses != target_sheet:
+            continue
+
+        moved = shift.moved(token.value)
+        if moved is None:
+            # Pushed off the sheet. Excel turns such a formula into #REF!;
+            # leaving it as written is the conservative half of that, and
+            # the caller refuses the insertion before it can happen.
+            continue
+        if moved == token.value:
+            continue
+        token.raw = moved.a1
+        token.value = moved
+        changed = True
+
+    return render(tokens) if changed else formula
+
+
+def shift_range(block: RangeRef, shift: Shift) -> RangeRef:
+    """The same shift, applied to a stored range such as a merge or a table.
+
+    Each corner moves on its own, so a block spanning the insertion point
+    grows and one entirely after it slides. A corner that would leave the
+    sheet is clamped to its edge rather than dropped, since a range has to
+    keep two corners.
+    """
+
+    def move(reference: CellRef) -> CellRef:
+        moved = shift.moved(reference)
+        if moved is not None:
+            return moved
+        return CellRef(
+            min(MAX_ROW, reference.row),
+            min(MAX_COLUMN, reference.column),
+            reference.absolute_row,
+            reference.absolute_column,
+        )
+
+    return RangeRef(move(block.start), move(block.end))
+
+
 def shared_formula_for(master: str, master_cell: CellRef, target: CellRef) -> str:
     """A follower's formula, derived from its group's master.
 
@@ -220,8 +337,11 @@ def shared_formula_for(master: str, master_cell: CellRef, target: CellRef) -> st
 
 
 __all__ = [
+    "Shift",
     "quote_sheet_name",
     "rename_sheet_in_formula",
     "shared_formula_for",
+    "shift_formula",
+    "shift_range",
     "translate_formula",
 ]
