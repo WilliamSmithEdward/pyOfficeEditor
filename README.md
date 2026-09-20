@@ -26,6 +26,10 @@ with Workbook.open("orders.xlsx") as book:
     sheet["B2"].value = 200
     sheet["G1"].value = dt.date(2026, 7, 4)
     sheet["G2"].formula = "=SUM(B2:B5)"
+
+    summary = book.add_sheet("Summary", index=0)
+    summary["A1"].formula = "=SUM(Data!D2:D5)"
+    book.rename_sheet("Data", "Q1 Data")     # the formula follows the rename
     book.save()
 ```
 
@@ -88,7 +92,9 @@ data descriptors.
 |   _styles     number formats, which is how a date is   |
 |               told from a number                       |
 |   _formulas   shifting references, for shared formulas |
+|               and for repointing a renamed sheet       |
 |   _sharedstrings   the per-workbook string table       |
+|   _schema     where a child element has to go          |
 +--------------------------------------------------------+
 | word / powerpoint / access   to follow, in that order  |
 +--------------------------------------------------------+
@@ -168,6 +174,14 @@ workbook this library modified is saved with `fullCalcOnLoad` set and the
 `calcChain` part dropped, so Excel recalculates on open. The live gate proves
 it: after changing an input, Excel reports the recomputed number rather than
 the stale one still written in the file.
+
+**A worksheet's children are a sequence, not a set.** SpreadsheetML declares
+them in order, and Excel refuses a file that breaks it rather than repairing
+one. The natural thing to do with a missing element is append it, and that is
+wrong whenever anything that must follow it is already there: a sheet Excel
+authored starts with `sheetPr`, so a missing `dimension` does not go at the
+front, and a workbook usually ends with `extLst`, so a missing `calcPr` does
+not go at the end. `_schema.py` writes both orders down.
 
 ## Lower-level access
 

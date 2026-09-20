@@ -51,9 +51,12 @@ Each layer knows the layer below it and not the layer above.
 |   worksheet     cells, rows, ranges, ordering rules     |
 |   _values       the six cell encodings, serial dates    |
 |   _styles       number formats: is this number a date?  |
-|   _formulas     reference shifting for shared formulas  |
+|   _formulas     reference shifting for shared formulas, |
+|                 and repointing a renamed sheet          |
 |   _sharedstrings  the per-workbook string table         |
 |   _reference    A1 notation, bijective base-26          |
+|   _schema       the child order CT_Worksheet and         |
+|                 CT_Workbook require                     |
 +--------------------------------------------------------+
 | word / powerpoint / access   to follow, in that order  |
 +--------------------------------------------------------+
@@ -185,7 +188,7 @@ The Excel surface is exported from `pyofficeeditor.excel`:
 
 | Public name | Defined in | Purpose |
 |---|---|---|
-| `Workbook` | `excel/workbook.py` | a workbook; context manager |
+| `Workbook` | `excel/workbook.py` | a workbook; sheets, context manager |
 | `Worksheet`, `Cell`, `Range` | `excel/worksheet.py` | the sheet and views onto it |
 | `CellRef`, `RangeRef` | `excel/_reference.py` | A1 notation |
 | `CellError` | `excel/_values.py` | an Excel error value, distinct from its text |
@@ -256,6 +259,7 @@ tests/
   test_excel_styles.py          number formats and date classification
   test_excel_sharedstrings.py   the string table, whitespace, rich text
   test_excel_workbook.py        the Excel surface end to end
+  test_excel_sheets.py          adding, removing, renaming, reordering
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               three committed Excel-authored packages,
                                 plus two built on demand; see its README
@@ -325,6 +329,25 @@ recomputed value and not the one still in the bytes.
 row's cells in ascending column order. Excel refuses a worksheet that breaks
 either rule rather than repairing it, so `_ensure_cell` and `_ensure_row`
 insert in place instead of appending.
+
+**Nor is element order.** `CT_Worksheet` and `CT_Workbook` are sequences, so
+a missing element cannot simply be appended. A sheet Excel authored begins
+with `sheetPr`, so a missing `dimension` belongs after it, not at the front;
+a workbook usually ends with `extLst`, so a missing `calcPr` belongs before
+it, not at the end. `_schema.py` holds both orders and
+`insert_in_schema_order` consults them. Both mistakes were live in this
+codebase before a test caught them.
+
+**A sheet's name lives in four places.** Adding a sheet needs the part, its
+content-type override, a relationship from the workbook part, and an entry in
+`<sheets>`. Renaming one needs the entry, every formula that reads from the
+sheet, and every defined name scoped to it. Renaming rewrites only the
+formulas that carry text, which leaves a shared-formula group intact: writing
+each follower its own text would destroy the group.
+
+**`activeTab` is an index.** Removing or moving a sheet shifts it, so it is
+adjusted to keep pointing at the sheet that was active. Leaving it past the
+end makes Excel offer to repair the file.
 
 ### 8.3 The live gate
 

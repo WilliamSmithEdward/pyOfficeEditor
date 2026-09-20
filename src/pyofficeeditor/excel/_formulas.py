@@ -127,6 +127,85 @@ def _end_of_literal(formula: str, start: int, quote: str) -> int:
     return len(formula)
 
 
+#: How a sheet name is written inside a formula.  It is quoted with
+#: apostrophes when it is not a bare identifier, and an apostrophe inside it
+#: is doubled.
+_BARE_SHEET_NAME = re.compile(r"^[A-Za-z_\\][A-Za-z0-9_.\\]*$")
+
+
+def quote_sheet_name(name: str) -> str:
+    """A sheet name as a formula must spell it.
+
+    Excel quotes a name that is not a bare identifier, and doubles any
+    apostrophe inside it. A name that looks like a cell reference has to be
+    quoted too, or ``=A1!B2`` would read as a reference to column A.
+    """
+    if _BARE_SHEET_NAME.match(name) and not _looks_like_a_reference(name):
+        return name
+    return "'" + name.replace("'", "''") + "'"
+
+
+def _looks_like_a_reference(name: str) -> bool:
+    try:
+        CellRef.parse(name)
+    except ValueError:
+        return False
+    return True
+
+
+def rename_sheet_in_formula(formula: str, old: str, new: str) -> str:
+    """``formula`` with references to one sheet repointed at another.
+
+    A sheet reference is a name followed by ``!``, and the name may be bare
+    or apostrophe-quoted. Both spellings are rewritten, and the result is
+    quoted according to the new name rather than the old one, because
+    renaming ``Data`` to ``Q1 Data`` turns a bare reference into a quoted
+    one.
+
+    Text is left alone: a string literal that happens to contain the sheet's
+    name is not a reference to it.
+    """
+    if old == new:
+        return formula
+
+    replacement = quote_sheet_name(new) + "!"
+    bare = quote_sheet_name(old)
+    quoted = "'" + old.replace("'", "''") + "'"
+
+    out: list[str] = []
+    parts = _split_literals(formula)
+    index = 0
+    while index < len(parts):
+        chunk, is_literal = parts[index]
+        if is_literal:
+            # A quoted sheet name is a literal run, and it is a reference
+            # only when a '!' follows it.
+            follows = parts[index + 1][0] if index + 1 < len(parts) else ""
+            if chunk == quoted and follows.startswith("!"):
+                out.append(replacement)
+                parts[index + 1] = (follows[1:], parts[index + 1][1])
+                index += 1
+                continue
+            out.append(chunk)
+            index += 1
+            continue
+        out.append(_rename_bare(chunk, bare, replacement))
+        index += 1
+    return "".join(out)
+
+
+def _rename_bare(text: str, bare: str, replacement: str) -> str:
+    """Rewrite ``Name!`` where the name is unquoted.
+
+    The boundary check keeps ``MyData!A1`` from matching a rename of
+    ``Data``, which a plain substring replacement would corrupt.
+    """
+    if "!" not in text:
+        return text
+    pattern = re.compile(r"(?<![A-Za-z0-9_.'])" + re.escape(bare) + r"!")
+    return pattern.sub(replacement, text)
+
+
 def shared_formula_for(master: str, master_cell: CellRef, target: CellRef) -> str:
     """A follower's formula, derived from its group's master.
 
@@ -140,4 +219,9 @@ def shared_formula_for(master: str, master_cell: CellRef, target: CellRef) -> st
     )
 
 
-__all__ = ["shared_formula_for", "translate_formula"]
+__all__ = [
+    "quote_sheet_name",
+    "rename_sheet_in_formula",
+    "shared_formula_for",
+    "translate_formula",
+]

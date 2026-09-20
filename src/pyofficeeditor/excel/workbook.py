@@ -28,6 +28,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from pyofficeeditor._xml import Element
+from pyofficeeditor.excel._formulas import rename_sheet_in_formula
+from pyofficeeditor.excel._schema import WORKBOOK_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._sharedstrings import (
     CT_SHARED_STRINGS,
     RT_SHARED_STRINGS,
@@ -41,6 +43,67 @@ from pyofficeeditor.opc import OpcPackage
 RT_WORKSHEET = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
 RT_STYLES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
 RT_CALC_CHAIN = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/calcChain"
+
+CT_WORKSHEET = "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"
+
+NS_SPREADSHEETML = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+NS_OFFICE_RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+#: The longest sheet name Excel accepts.
+MAX_SHEET_NAME_LENGTH = 31
+#: Characters a sheet name may not contain, because they mean something in a
+#: formula reference: a colon separates a range, brackets delimit a table
+#: column, and the rest are path or wildcard characters.
+FORBIDDEN_SHEET_NAME_CHARS = frozenset(r":\/?*[]")
+#: Excel reserves this name for its change-tracking sheet.
+RESERVED_SHEET_NAMES = frozenset({"history"})
+
+#: A new worksheet part, in the order ``CT_Worksheet`` requires.  Excel adds
+#: revision-tracking namespaces of its own; none is required, and leaving
+#: them out keeps a sheet this library creates honest about who made it.
+_NEW_WORKSHEET = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n'
+    f'<worksheet xmlns="{NS_SPREADSHEETML}" xmlns:r="{NS_OFFICE_RELATIONSHIPS}">'
+    '<dimension ref="A1"/>'
+    '<sheetViews><sheetView workbookViewId="0"/></sheetViews>'
+    '<sheetFormatPr defaultRowHeight="14.5"/>'
+    "<sheetData/>"
+    '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>'
+    "</worksheet>"
+).encode()
+
+
+def check_sheet_name(name: str, *, taken: set[str] | None = None) -> None:
+    """Refuse a sheet name Excel would refuse.
+
+    Excel rejects the file rather than repairing the name, so the check
+    happens here instead of at save. Uniqueness is case-insensitive: Excel
+    will not have both ``Data`` and ``data``.
+    """
+    if not name:
+        raise ValueError("a sheet name cannot be empty.")
+    if len(name) > MAX_SHEET_NAME_LENGTH:
+        raise ValueError(
+            f"{name!r} is {len(name)} characters; Excel allows at most {MAX_SHEET_NAME_LENGTH}."
+        )
+    bad = sorted(FORBIDDEN_SHEET_NAME_CHARS & set(name))
+    if bad:
+        raise ValueError(
+            f"{name!r} contains {''.join(bad)!r}, which a sheet name may not: "
+            f"those characters mean something in a formula reference."
+        )
+    if name.startswith("'") or name.endswith("'"):
+        raise ValueError(
+            f"{name!r} starts or ends with an apostrophe, which is how a formula quotes a "
+            f"sheet name, so Excel does not allow it."
+        )
+    if name.lower() in RESERVED_SHEET_NAMES:
+        raise ValueError(f"{name!r} is reserved by Excel for change tracking.")
+    if taken and name.casefold() in {existing.casefold() for existing in taken}:
+        raise ValueError(
+            f"the workbook already has a sheet called {name!r}; names are unique "
+            f"regardless of case."
+        )
 
 #: Extensions whose package this class understands.  ``.xlsb`` is a ZIP too,
 #: but its parts are binary records rather than XML, so it is refused by
@@ -180,6 +243,206 @@ class Workbook:
         if not 0 <= index < len(self._order):
             index = 0
         return self._sheets[self._order[index]]
+
+    @active.setter
+    def active(self, sheet: Worksheet | str) -> None:
+        """Choose the sheet Excel shows when the workbook opens."""
+        name = sheet if isinstance(sheet, str) else sheet.name
+        if name not in self._sheets:
+            raise KeyError(f"no sheet named {name!r}. The workbook has: {', '.join(self._order)}")
+        self._set_active_tab(self._order.index(name))
+        self.mark_changed()
+
+    # ------------------------------------------------------------------
+    # Adding, removing, renaming and reordering sheets
+    # ------------------------------------------------------------------
+
+    def add_sheet(self, name: str, index: int | None = None) -> Worksheet:
+        """Add an empty worksheet, by default after the existing ones.
+
+        Four things have to line up or Excel will not show the sheet: the
+        part itself, its content-type override, a relationship from the
+        workbook part, and an entry in ``<sheets>``. Missing any one of them
+        produces a file that opens with the sheet silently absent, or does
+        not open at all.
+        """
+        check_sheet_name(name, taken=set(self._order))
+        position = len(self._order) if index is None else max(0, min(index, len(self._order)))
+
+        part_name = self._free_worksheet_part_name()
+        self._package.write(part_name, _NEW_WORKSHEET, content_type=CT_WORKSHEET)
+        relationship = self._package.relationships(self._workbook_part).add_part(
+            RT_WORKSHEET, part_name
+        )
+
+        entry = Element.create(
+            "sheet",
+            {"name": name, "sheetId": str(self._free_sheet_id()), "r:id": relationship.id},
+        )
+        container = self._document.root.require("sheets")
+        existing = list(container.children_named("sheet"))
+        if position < len(existing):
+            container.insert_before(existing[position], entry)
+        else:
+            container.append(entry)
+
+        sheet = Worksheet(self, name, part_name, self._package.xml(part_name))
+        self._order.insert(position, name)
+        self._sheets[name] = sheet
+        self.mark_changed()
+        return sheet
+
+    def remove_sheet(self, name: str) -> None:
+        """Delete a worksheet, its part, its relationship and its entry.
+
+        A workbook must keep at least one sheet, so removing the last is
+        refused. Formulas elsewhere that referenced the sheet are left as
+        they are: Excel turns them into ``#REF!`` itself when it opens the
+        file, and rewriting them here would be guessing at what the author
+        wanted instead.
+        """
+        sheet = self.sheet(name)
+        if len(self._order) == 1:
+            raise ValueError(
+                f"{name!r} is the only sheet; a workbook must have at least one, so Excel "
+                f"would refuse the file."
+            )
+
+        container = self._document.root.require("sheets")
+        for entry in list(container.children_named("sheet")):
+            if entry.get("name") == name:
+                relationship_id = entry.get("r:id") or entry.get("id")
+                container.remove(entry)
+                if relationship_id is not None:
+                    self._package.relationships(self._workbook_part).remove(relationship_id)
+                break
+
+        self._package.remove_part(sheet.part_name)
+        position = self._order.index(name)
+        del self._order[position]
+        del self._sheets[name]
+        self._clamp_active_tab()
+        self.mark_changed()
+
+    def rename_sheet(self, old: str, new: str) -> Worksheet:
+        """Rename a worksheet, repointing every reference to it.
+
+        A sheet's name appears in more places than its ``<sheets>`` entry:
+        every formula that reads from it, and every defined name scoped to
+        it. Renaming only the entry leaves those pointing at a sheet that no
+        longer exists, which Excel reports as ``#REF!``.
+
+        The rewrite is textual over formula bodies, with string literals
+        skipped, so a formula containing the sheet's name as text is left
+        alone.
+        """
+        sheet = self.sheet(old)
+        if old == new:
+            return sheet
+        check_sheet_name(new, taken={n for n in self._order if n != old})
+
+        container = self._document.root.require("sheets")
+        for entry in container.children_named("sheet"):
+            if entry.get("name") == old:
+                entry.set("name", new)
+                break
+
+        for other in self._sheets.values():
+            _rename_in_formulas(other, old, new)
+        self._rename_in_defined_names(old, new)
+
+        position = self._order.index(old)
+        self._order[position] = new
+        del self._sheets[old]
+        self._sheets[new] = sheet
+        sheet.rename(new)
+        self.mark_changed()
+        return sheet
+
+    def move_sheet(self, name: str, index: int) -> None:
+        """Move a sheet's tab to a new position.
+
+        The active tab is recorded as an index, so it is adjusted to keep
+        pointing at whichever sheet was active before the move.
+        """
+        if name not in self._sheets:
+            raise KeyError(f"no sheet named {name!r}. The workbook has: {', '.join(self._order)}")
+        target = max(0, min(index, len(self._order) - 1))
+        current = self._order.index(name)
+        if current == target:
+            return
+
+        active = self.active.name
+        container = self._document.root.require("sheets")
+        entries = list(container.children_named("sheet"))
+        moving = entries[current]
+        container.remove(moving)
+
+        remaining = list(container.children_named("sheet"))
+        if target < len(remaining):
+            container.insert_before(remaining[target], moving)
+        else:
+            container.append(moving)
+
+        self._order.insert(target, self._order.pop(current))
+        self._set_active_tab(self._order.index(active))
+        self.mark_changed()
+
+    def _free_worksheet_part_name(self) -> str:
+        number = 1
+        while self._package.has_part(f"xl/worksheets/sheet{number}.xml"):
+            number += 1
+        return f"xl/worksheets/sheet{number}.xml"
+
+    def _free_sheet_id(self) -> int:
+        used: set[int] = set()
+        container = self._document.root.child("sheets")
+        if container is not None:
+            for entry in container.children_named("sheet"):
+                raw = entry.get("sheetId")
+                if raw is None:
+                    continue
+                try:
+                    used.add(int(raw))
+                except ValueError:
+                    continue
+        candidate = 1
+        while candidate in used:
+            candidate += 1
+        return candidate
+
+    def _rename_in_defined_names(self, old: str, new: str) -> None:
+        container = self._document.root.child("definedNames")
+        if container is None:
+            return
+        for entry in container.children_named("definedName"):
+            text = entry.text
+            if text:
+                entry.set_text(rename_sheet_in_formula(text, old, new))
+
+    def _workbook_view(self) -> Element | None:
+        views = self._document.root.child("bookViews")
+        return None if views is None else views.child("workbookView")
+
+    def _set_active_tab(self, index: int) -> None:
+        view = self._workbook_view()
+        if view is None:
+            return
+        view.set("activeTab", str(index))
+
+    def _clamp_active_tab(self) -> None:
+        view = self._workbook_view()
+        if view is None:
+            return
+        raw = view.get("activeTab")
+        if raw is None:
+            return
+        try:
+            current = int(raw)
+        except ValueError:
+            return
+        if current >= len(self._order):
+            view.set("activeTab", str(max(0, len(self._order) - 1)))
 
     # ------------------------------------------------------------------
     # Shared parts
@@ -329,9 +592,11 @@ class Workbook:
         """
         properties = self._document.root.child("calcPr")
         if properties is None:
-            properties = Element.create("calcPr", {"calcId": "0", "fullCalcOnLoad": "1"})
-            self._document.root.append(properties)
-            return
+            # Not appended: CT_Workbook is a sequence, and a workbook that
+            # ends with extLst would then carry calcPr after an element it
+            # has to precede, which Excel refuses rather than repairs.
+            properties = Element.create("calcPr", {"calcId": "0"})
+            insert_in_schema_order(self._document.root, properties, WORKBOOK_CHILD_ORDER)
         properties.set("fullCalcOnLoad", "1")
 
     def _drop_calc_chain(self) -> None:
@@ -378,6 +643,30 @@ class Workbook:
     def __repr__(self) -> str:
         where = self.path.name if self.path is not None else "<bytes>"
         return f"Workbook({where!r}, sheets={self._order})"
+
+
+def _rename_in_formulas(sheet: Worksheet, old: str, new: str) -> None:
+    """Repoint every ``<f>`` in one sheet from one sheet name to another.
+
+    This works on the element rather than through the cell API because a
+    shared formula's followers carry no text: rewriting the master's text is
+    enough, and going through ``Cell.formula`` would write each follower its
+    own copy and break the group.
+    """
+    data = sheet.document.root.child("sheetData")
+    if data is None:
+        return
+    for row in data.children_named("row"):
+        for cell in row.children_named("c"):
+            formula = cell.child("f")
+            if formula is None:
+                continue
+            text = formula.text
+            if not text:
+                continue
+            updated = rename_sheet_in_formula(text, old, new)
+            if updated != text:
+                formula.set_text(updated)
 
 
 def _check_suffix(path: Path) -> None:

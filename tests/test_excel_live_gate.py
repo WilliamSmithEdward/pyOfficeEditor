@@ -133,6 +133,72 @@ def test_excel_opens_the_edited_workbook_and_recalculates(written: Path) -> None
     assert seen["sheets"] == "2"
 
 
+_SHEET_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+    Dim i As Long
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+
+    ' Tab order, straight from Excel.
+    For i = 1 To wb.Worksheets.Count
+        parts = parts & wb.Worksheets(i).Name & ","
+    Next i
+    parts = "order=" & parts
+
+    ' The added sheet has to be a real, usable sheet, and its formula has to
+    ' survive a rename of the sheet it reads from.
+    Set ws = wb.Worksheets("Summary")
+    parts = parts & "|A1=" & ws.Range("A1").Value
+    parts = parts & "|B1formula=" & ws.Range("B1").Formula
+    parts = parts & "|B1=" & CStr(ws.Range("B1").Value)
+    parts = parts & "|renamed=" & wb.Worksheets("Q1 Data").Range("A2").Value
+    parts = parts & "|D3=" & wb.Worksheets("Q1 Data").Range("D3").Formula
+
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+
+
+def test_excel_accepts_added_renamed_and_reordered_sheets(
+    live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """A part this library created from nothing is where Excel is strictest:
+    the content type, the relationship and the schema's child order all have
+    to be right or it refuses the file."""
+    book = Workbook.open(live_sample_xlsx)
+    summary = book.add_sheet("Summary")
+    summary["A1"].value = "Total"
+    summary["B1"].formula = "=SUM(Data!D2:D5)"
+    book.add_sheet("Scratch", index=0)
+    book.move_sheet("Summary", 1)
+    book.rename_sheet("Data", "Q1 Data")
+    book.remove_sheet("Scratch")
+    target = tmp_path / "sheets.xlsx"
+    book.save(target)
+
+    from pyvbaharness import ExcelSession
+
+    with ExcelSession() as excel:
+        excel.new_workbook()
+        result = excel.run_vba(_SHEET_PROBE, proc="Probe", args=(str(target),), timeout=180)
+        assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+        seen = dict(part.split("=", 1) for part in str(result.value).split("|"))
+
+    assert seen["order"] == "Summary,Q1 Data,Notes,"
+    assert seen["A1"] == "Total"
+    # Excel spells the rename back with the quoting the new name needs.
+    assert seen["B1formula"] == "=SUM('Q1 Data'!D2:D5)"
+    assert seen["B1"] == "3265", "the formula computed against the renamed sheet"
+    assert seen["renamed"] == "North", "the renamed sheet kept its contents"
+    assert seen["D3"] == "=B3*C3", "the shared formula group survived the rename"
+
+
 def test_excel_opens_an_untouched_workbook(live_sample_xlsx: Path, tmp_path: Path) -> None:
     """A no-op save must produce a file Excel is equally happy with."""
     book = Workbook.open(live_sample_xlsx)

@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 from pyofficeeditor._xml import Element, XmlDocument
 from pyofficeeditor.excel._formulas import shared_formula_for
 from pyofficeeditor.excel._reference import CellRef, RangeRef, column_letter
+from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._values import CellValue, read_value, write_value
 
 if TYPE_CHECKING:
@@ -55,7 +56,7 @@ class Worksheet:
         data = self._root.child("sheetData")
         if data is None:
             data = Element.create("sheetData")
-            self._root.append(data)
+            insert_in_schema_order(self._root, data, WORKSHEET_CHILD_ORDER)
         self._data: Element = data
 
         self._rows: dict[int, Element] = {}
@@ -88,6 +89,17 @@ class Worksheet:
     @property
     def workbook(self) -> Workbook:
         return self._workbook
+
+    def rename(self, name: str) -> None:
+        """Record a new name on this object.
+
+        A sheet's name lives in the workbook part, not in its own, so this
+        only updates what the object reports. Call
+        :meth:`Workbook.rename_sheet`, which validates the name, moves the
+        entry, and repoints every formula and defined name that referred to
+        the old one.
+        """
+        self._name = name
 
     # ------------------------------------------------------------------
     # Addressing
@@ -401,11 +413,7 @@ class Worksheet:
         element = self._root.child("dimension")
         if element is None:
             element = Element.create("dimension", {"ref": reference.relative.a1})
-            first = next(iter(self._root.elements()), None)
-            if first is None:
-                self._root.append(element)
-            else:
-                self._root.insert_before(first, element)
+            insert_in_schema_order(self._root, element, WORKSHEET_CHILD_ORDER)
             return
         current = element.get("ref")
         if current is None:
