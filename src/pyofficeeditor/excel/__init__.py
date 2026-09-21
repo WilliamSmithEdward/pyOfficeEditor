@@ -73,6 +73,14 @@ from pyofficeeditor.excel._reference import (
     column_index,
     column_letter,
 )
+from pyofficeeditor.excel._shapes import (
+    XL_MIXED,
+    XL_OFF,
+    XL_ON,
+    FormControl,
+    Shape,
+    ShapeKind,
+)
 from pyofficeeditor.excel._sharedstrings import SharedStrings
 from pyofficeeditor.excel._styles import Styles
 from pyofficeeditor.excel._tables import Table, TableColumn, TableStyle
@@ -84,6 +92,9 @@ from pyofficeeditor.excel.worksheet import Cell, Range, Worksheet
 __all__ = [
     "MAX_COLUMN",
     "MAX_ROW",
+    "XL_MIXED",
+    "XL_OFF",
+    "XL_ON",
     "Alignment",
     "Border",
     "BorderStyle",
@@ -106,6 +117,7 @@ __all__ = [
     "ErrorStyle",
     "Fill",
     "Font",
+    "FormControl",
     "HeaderFooter",
     "HeaderFooterText",
     "IconSet",
@@ -115,6 +127,8 @@ __all__ = [
     "Protection",
     "Range",
     "RangeRef",
+    "Shape",
+    "ShapeKind",
     "SharedStrings",
     "SheetProtection",
     "Side",

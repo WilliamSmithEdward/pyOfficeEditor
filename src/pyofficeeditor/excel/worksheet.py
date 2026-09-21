@@ -58,6 +58,7 @@ from pyofficeeditor.excel._protection import SheetProtection
 from pyofficeeditor.excel._reference import CellRef, RangeRef, column_letter
 from pyofficeeditor.excel._rowcol import (
     RT_DRAWING,
+    RT_VML,
     delete_columns,
     delete_rows,
     insert_columns,
@@ -69,7 +70,36 @@ from pyofficeeditor.excel._schema import (
     WORKSHEET_CHILD_ORDER,
     insert_in_schema_order,
 )
-from pyofficeeditor.excel._shapes import Shape, SheetGrid, read_drawing
+from pyofficeeditor.excel._shapes import (
+    CT_CONTROL_PROPERTIES,
+    CT_DRAWING,
+    CT_VML,
+    EMPTY_DRAWING,
+    EMPTY_VML,
+    FIRST_CONTROL_ID,
+    NS_MARKUP_COMPATIBILITY,
+    NS_SPREADSHEET_DRAWING,
+    NS_X14,
+    RT_CONTROL_PROPERTIES,
+    FormControl,
+    Shape,
+    ShapeKind,
+    SheetGrid,
+    anchor_holding,
+    check_control_kind,
+    control_drawing,
+    control_entry,
+    control_properties,
+    control_vml,
+    find_shape_element,
+    new_anchor,
+    qualified_macro,
+    read_control,
+    read_drawing,
+    set_vml_macro,
+    with_vml_shape,
+    without_vml_shape,
+)
 from pyofficeeditor.excel._tables import (
     CT_TABLE,
     RT_TABLE,
@@ -962,7 +992,12 @@ class Worksheet:
         if not controls:
             return found
         return [
-            replace(shape, kind="formControl", macro=controls[shape.shape_id])
+            replace(
+                shape,
+                kind="formControl",
+                macro=controls[shape.shape_id][0],
+                control=controls[shape.shape_id][1],
+            )
             if shape.shape_id in controls
             else shape
             for shape in found
@@ -976,18 +1011,473 @@ class Worksheet:
         available = ", ".join(s.name for s in self.shapes) or "none"
         raise KeyError(f"no shape named {name!r} on {self._name!r}. It has: {available}")
 
-    def _form_controls(self) -> dict[int, str]:
-        """Each form control's macro, by the shape id the drawing gave it.
+    def add_shape(
+        self,
+        name: str,
+        *,
+        left: float,
+        top: float,
+        width: float,
+        height: float,
+        kind: ShapeKind = "shape",
+        geometry: str = "",
+        text: str = "",
+        macro: str = "",
+    ) -> Shape:
+        """Put a drawing shape on the sheet.
 
-        Two things make this awkward, and both are measured. A control
-        carries no macro on its drawing shape: the sheet's ``<control>``
-        holds ``macro="[1]!Clicked"``, where the bracketed number names the
-        workbook. And Excel wraps ``<controls>`` in an
+        ``kind`` is ``"shape"`` for an AutoShape, ``"textBox"`` or
+        ``"line"``. ``geometry`` is a preset name such as ``roundRect`` or
+        ``ellipse``; left empty each kind gets its own default, which is
+        ``rect`` for a shape and a text box and ``line`` for a line.
+
+        The box is in points, the unit the object model uses,
+        and it is stored as a two-cell anchor: which cells the shape spans
+        is worked out from this sheet's own column widths and row heights,
+        because Excel clamps an offset to the cell holding it and a corner
+        left to be clamped lands somewhere other than where it was put.
+
+        That placement is close rather than exact, and the error grows
+        with how far across the sheet the shape sits. Excel reports a
+        shape's position from its anchor, and turning points back into a
+        column needs the standard font's maximum digit width, which the
+        file does not carry: see :mod:`pyofficeeditor.excel._shapes` for
+        what is used instead. Measured against Excel, a shape put at 300
+        points came back at 300 on one sheet and 298.5 on another whose
+        columns had been resized. Rows are exact, because a row height is
+        already in points.
+
+        A sheet with no drawing part gets one, with its content type and
+        its relationship. Every other part of the package is left alone.
+
+        For a Forms-toolbar control use :meth:`add_form_control`: it is
+        four parts that have to agree rather than one, and it takes the
+        wiring this does not.
+        """
+        if kind == "formControl":
+            raise ValueError(
+                "a form control is made with add_form_control: it needs a control "
+                "part, a VML shape and a record on the sheet as well as a drawing."
+            )
+        self._check_new_shape_name(name)
+        part, document = self._drawing_part()
+        shape = Shape(
+            name=name,
+            kind=kind,
+            geometry=geometry,
+            left=left,
+            top=top,
+            width=width,
+            height=height,
+            text=text,
+            macro=macro,
+            shape_id=self._next_shape_id(),
+        )
+        markup = new_anchor(shape, SheetGrid.of(self._root))
+        document.root.append(XmlDocument.parse(markup.encode("utf-8")).root)
+        self._workbook.package.write(part, document.to_bytes(), content_type=CT_DRAWING)
+        self._invalidate()
+        return self.shape(name)
+
+    def add_form_control(
+        self,
+        name: str,
+        *,
+        left: float,
+        top: float,
+        width: float,
+        height: float,
+        kind: str = "Button",
+        text: str = "",
+        macro: str = "",
+        linked_cell: str = "",
+        list_range: str = "",
+        value: int = 0,
+        minimum: int | None = None,
+        maximum: int | None = None,
+    ) -> Shape:
+        """Put a Forms-toolbar control on the sheet.
+
+        ``kind`` is Excel's own ``objectType``: Button, CheckBox, Drop,
+        List, Radio, Spin, Scroll, GBox or Label.
+
+        ``value`` is the control's stored state, and it loses to
+        ``linked_cell``: a control with one takes its state from that cell
+        when the workbook opens, so a tick box stored ticked and linked to
+        an empty cell opens unticked. Setting both sets the cell.
+
+        ``minimum`` and ``maximum`` bound a spinner or a scroll bar. Left
+        alone they get Excel's own defaults, 30000 for a spinner and 100
+        for a scroll bar, rather than 0: a control that cannot exceed zero
+        sits at zero whatever value it was given, in a file that is
+        perfectly valid and silently useless.
+
+        Four parts have to agree for Excel to draw one, and all four are
+        written here:
+
+        - the drawing, which holds the anchor, wrapped in an
+          ``mc:AlternateContent``
+        - the sheet's own ``<control>``, which is where the macro that a
+          click runs actually lives
+        - a control part of its own, holding the linked cell, the list
+          range and the current value
+        - the VML, which is what Excel draws the control from
+
+        Leave any of them out and the control is invisible, inert, or the
+        file does not open.
+        """
+        self._check_new_shape_name(name)
+        # Before anything is written: this makes four parts, and the last
+        # of them is where an unknown kind would otherwise be noticed,
+        # leaving the other three behind for a control that never existed.
+        check_control_kind(kind)
+        package = self._workbook.package
+        grid = SheetGrid.of(self._root)
+        shape = Shape(
+            name=name,
+            kind="formControl",
+            left=left,
+            top=top,
+            width=width,
+            height=height,
+            text=text,
+            macro=qualified_macro(macro),
+            shape_id=self._next_control_id(),
+            control=FormControl(
+                kind=kind,
+                linked_cell=linked_cell,
+                list_range=list_range,
+                value=value,
+                minimum=minimum,
+                maximum=maximum,
+            ),
+        )
+
+        drawing_part, drawing = self._drawing_part()
+        drawing.root.append(
+            XmlDocument.parse(control_drawing(shape, grid).encode("utf-8")).root
+        )
+        package.write(drawing_part, drawing.to_bytes(), content_type=CT_DRAWING)
+
+        control_part = self._free_control_part_name()
+        package.write(
+            control_part,
+            control_properties(shape.control or FormControl()).encode("utf-8"),
+            content_type=CT_CONTROL_PROPERTIES,
+        )
+        relationship = package.relationships(self._part_name).add_part(
+            RT_CONTROL_PROPERTIES, control_part
+        )
+
+        vml_part = self._vml_part()
+        package.write(
+            vml_part,
+            with_vml_shape(
+                package.read(vml_part).decode("utf-8"), control_vml(shape, grid)
+            ).encode("utf-8"),
+        )
+
+        container = self._controls_container()
+        container.append(
+            XmlDocument.parse(
+                control_entry(shape, relationship.id, grid).encode("utf-8")
+            ).root
+        )
+        self._invalidate()
+        return self.shape(name)
+
+    def remove_shape(self, name: str) -> None:
+        """Take a shape off the sheet, and its parts with it.
+
+        A drawing shape is one anchor. A form control is four things, and
+        leaving any of them behind is worse than leaving all of them: an
+        orphaned relationship pointing at a part that is gone is the
+        failure that stays invisible until Excel next opens the file, and
+        then it is the whole workbook that gets repaired rather than the
+        control that goes missing.
+        """
+        shape = self.shape(name)
+        package = self._workbook.package
+
+        for part in related_parts(self, RT_DRAWING):
+            document = package.xml(part)
+            anchor = anchor_holding(document.root, name)
+            if anchor is None:
+                continue
+            document.root.remove(anchor)
+            package.write(part, document.to_bytes(), content_type=CT_DRAWING)
+            break
+
+        if shape.control is not None:
+            self._remove_control_record(shape)
+        self._invalidate()
+
+    def _unwrap_control(self, control: Element) -> None:
+        """Take one ``<control>`` off the sheet, wrapper and all.
+
+        Excel wraps each one in an ``mc:AlternateContent`` of its own
+        inside ``<controls>``, so removing the element found leaves an
+        empty wrapper behind. This walks up to whatever child of
+        ``<controls>`` holds it and removes that, then drops ``<controls>``
+        and its own wrapper once the last control has gone.
+        """
+        node: Element = control
+        while True:
+            parent = node.parent
+            if parent is None:
+                return
+            if parent.name.rpartition(":")[2] != "controls":
+                node = parent
+                continue
+
+            parent.remove(node)
+            if any(True for _ in parent.elements()):
+                return
+            # The last one: take the empty container and its wrapper too,
+            # rather than leaving a <controls/> Excel never writes.
+            container = parent.parent
+            if container is not None:
+                container.remove(parent)
+                outer = container.parent
+                if outer is not None and not any(True for _ in container.elements()):
+                    outer.remove(container)
+            return
+
+    def _remove_control_record(self, shape: Shape) -> None:
+        """The three parts besides the drawing: sheet record, part, VML."""
+        package = self._workbook.package
+        relationships = package.relationships(self._part_name)
+
+        for control in list(self._root.descendants("control")):
+            if control.get("shapeId") != str(shape.shape_id):
+                continue
+            self._unwrap_control(control)
+            break
+
+        control = shape.control
+        if control is not None and control.relationship:
+            try:
+                relationships.remove(control.relationship)
+            except PackageError:
+                # Already gone, which is the state this is trying to reach.
+                # Raising here would abandon the removal half done, leaving
+                # the VML shape and the control part behind.
+                pass
+        if control is not None and control.part_name and package.has_part(control.part_name):
+            package.remove_part(control.part_name)
+
+        for part in related_parts(self, RT_VML):
+            text = package.read(part).decode("utf-8")
+            stripped = without_vml_shape(text, shape.shape_id)
+            if stripped != text:
+                package.write(part, stripped.encode("utf-8"))
+                break
+
+    def _check_new_shape_name(self, name: str) -> None:
+        if not name.strip():
+            raise ValueError("a shape needs a name; Excel names every shape it makes.")
+        for existing in self.shapes:
+            if existing.name == name:
+                raise ValueError(
+                    f"{self._name!r} already has a shape named {name!r}. Excel allows "
+                    f"two shapes to share a name, but then neither can be reached by it."
+                )
+
+    def _next_shape_id(self) -> int:
+        """One past the highest id in use, and never into control territory."""
+        used = [shape.shape_id for shape in self.shapes]
+        return max([one for one in used if one < FIRST_CONTROL_ID] + [1]) + 1
+
+    def _next_control_id(self) -> int:
+        """Controls are numbered from 1025, apart from drawing shapes."""
+        used = [shape.shape_id for shape in self.shapes if shape.shape_id >= FIRST_CONTROL_ID]
+        return max(used) + 1 if used else FIRST_CONTROL_ID
+
+    def _drawing_part(self) -> tuple[str, XmlDocument]:
+        """The sheet's drawing part, made if it has none."""
+        package = self._workbook.package
+        for part in related_parts(self, RT_DRAWING):
+            return part, package.xml(part)
+
+        part = self._workbook.free_part_name("xl/drawings/drawing{n}.xml")
+        package.write(part, EMPTY_DRAWING.encode("utf-8"), content_type=CT_DRAWING)
+        relationship = package.relationships(self._part_name).add_part(RT_DRAWING, part)
+        element = Element.create("drawing", {"r:id": relationship.id})
+        insert_in_schema_order(self._root, element, WORKSHEET_CHILD_ORDER)
+        return part, package.xml(part)
+
+    def _vml_part(self) -> str:
+        """The sheet's legacy drawing, made if it has none.
+
+        The content type is a Default by extension rather than an Override,
+        which is how Excel writes it, and :meth:`OpcPackage.set_default`
+        keeps it ahead of the Overrides because Excel refuses a package
+        where a Default comes after one.
+        """
+        package = self._workbook.package
+        for part in related_parts(self, RT_VML):
+            return part
+
+        part = self._workbook.free_part_name("xl/drawings/vmlDrawing{n}.vml")
+        package.content_types.set_default("vml", CT_VML)
+        package.write(part, EMPTY_VML.encode("utf-8"))
+        relationship = package.relationships(self._part_name).add_part(RT_VML, part)
+        element = Element.create("legacyDrawing", {"r:id": relationship.id})
+        insert_in_schema_order(self._root, element, WORKSHEET_CHILD_ORDER)
+        return part
+
+    def _declare_control_namespaces(self) -> None:
+        """Declare the prefixes a control's markup uses on the sheet root.
+
+        A worksheet that has never held one declares neither, and both are
+        needed the moment it does:
+
+        - ``xdr``, because the anchor inside ``<controlPr>`` names its
+          corners with ``<xdr:col>`` and friends
+        - ``x14``, because the wrapper is an ``mc:Choice Requires="x14"``
+          and ``Requires`` names a prefix that has to be bound
+
+        Either one missing leaves the part malformed rather than merely
+        unusual, and Excel refuses the workbook instead of repairing it.
+        Excel writes both on any sheet that carries a control.
+        """
+        for prefix, uri in (
+            ("xmlns:xdr", NS_SPREADSHEET_DRAWING),
+            ("xmlns:x14", NS_X14),
+            ("xmlns:mc", NS_MARKUP_COMPATIBILITY),
+        ):
+            if not self._root.has(prefix):
+                self._root.set(prefix, uri)
+
+    def _controls_container(self) -> Element:
+        """The sheet's ``<controls>``, made if it has none.
+
+        Excel wraps it in an ``mc:AlternateContent`` requiring ``x14``, and
+        wraps each ``<control>`` inside it in another, so this reaches for
+        the inner container by name at any depth rather than by position.
+        """
+        self._declare_control_namespaces()
+        for found in self._root.descendants("controls"):
+            return found
+
+        container = Element.create("controls")
+        wrapper = XmlDocument.parse(
+            b'<mc:AlternateContent'
+            b' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+            b'<mc:Choice Requires="x14"/></mc:AlternateContent>'
+        ).root
+        choice = wrapper.require("Choice")
+        choice.append(container)
+        insert_in_schema_order(self._root, wrapper, WORKSHEET_CHILD_ORDER)
+        return container
+
+    def _free_control_part_name(self) -> str:
+        return self._workbook.free_part_name("xl/ctrlProps/ctrlProp{n}.xml")
+
+    def set_shape_macro(self, name: str, macro: str) -> None:
+        """Point a shape at a procedure, or clear it with ``""``.
+
+        The two kinds keep it in different places, and a form control keeps
+        it in two at once:
+
+        - a drawing shape carries ``macro="Clicked"`` on its own element
+        - a form control carries nothing there. The sheet's ``<controlPr
+          macro="[0]!Clicked">`` is what a click runs, and the VML holds a
+          second copy in ``<x:FmlaMacro>``
+
+        Measured: Excel reads the sheet's copy. A workbook whose VML
+        disagrees opens cleanly and runs what the sheet says, so the VML is
+        not load-bearing here, unlike a comment's owning cell, where a
+        disagreement makes Excel refuse the file. Both are written anyway,
+        because Excel writes both and a stale name left behind is a trap
+        for whatever reads it next.
+
+        The procedure is not checked for existence. Excel does not check
+        either: a button pointing at a Sub nobody wrote is a normal state
+        for a workbook being assembled.
+        """
+        shape = self.shape(name)
+        if shape.control is not None:
+            self._set_control_macro(shape, macro)
+        else:
+            self._set_drawing_macro(shape, macro)
+        self._invalidate()
+
+    def _set_drawing_macro(self, shape: Shape, macro: str) -> None:
+        """Set ``macro`` on the shape's own element in the drawing part."""
+        for part in related_parts(self, RT_DRAWING):
+            document = self._workbook.package.xml(part)
+            element = find_shape_element(document.root, shape.name)
+            if element is None:
+                continue
+            # Excel writes macro="" rather than dropping the attribute, and
+            # a shape that never had one has no attribute at all. Both are
+            # left as Excel leaves them.
+            if macro or element.has("macro"):
+                element.set("macro", macro)
+            return
+        raise KeyError(
+            f"{shape.name!r} is on {self._name!r} but not in any of its drawing parts, "
+            "so there is nothing to attach a macro to."
+        )
+
+    def _set_control_macro(self, shape: Shape, macro: str) -> None:
+        """Set it on the sheet's own record, and on the VML beside it."""
+        for control in self._root.descendants("control"):
+            if control.get("shapeId") != str(shape.shape_id):
+                continue
+            properties = next(control.descendants("controlPr"), None)
+            if properties is None:
+                raise KeyError(
+                    f"the <control> for {shape.name!r} on {self._name!r} has no "
+                    "<controlPr>, so there is nowhere to record a macro."
+                )
+            wanted = qualified_macro(macro, properties.get("macro") or "")
+            if wanted:
+                properties.set("macro", wanted)
+            else:
+                properties.unset("macro")
+            self._set_vml_macro(shape.shape_id, wanted)
+            return
+        raise KeyError(
+            f"{shape.name!r} reads as a form control on {self._name!r} but the sheet "
+            f"has no <control> with shapeId {shape.shape_id}."
+        )
+
+    def _set_vml_macro(self, shape_id: int, macro: str) -> None:
+        """The second copy, in the legacy drawing.
+
+        VML is not XML this library parses -- an HTML-ish dialect with
+        unquoted attributes and unclosed tags -- so it is rewritten as text,
+        the same way row and column shifting reaches its anchors.
+        """
+        package = self._workbook.package
+        for part in related_parts(self, RT_VML):
+            raw = package.read(part)
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:  # pragma: no cover - Excel writes UTF-8
+                continue
+            rewritten = set_vml_macro(text, shape_id, macro)
+            if rewritten != text:
+                package.write(part, rewritten.encode("utf-8"))
+                return
+
+    def _form_controls(self) -> dict[int, tuple[str, FormControl | None]]:
+        """Each form control's macro and wiring, by its drawing shape id.
+
+        Three things make this awkward, and all three are measured. A
+        control carries no macro on its drawing shape: the sheet's
+        ``<control>`` holds ``macro="[1]!Clicked"``, where the bracketed
+        number names the workbook. Excel wraps ``<controls>`` in an
         ``mc:AlternateContent`` of its own, so looking for it among the
         worksheet's children finds nothing; the search is by name at any
-        depth instead.
+        depth instead. And what the control is wired to is in neither
+        place: the ``<control>`` points at a part of its own by
+        relationship id, and the linked cell, the list range and the
+        current value are in there.
         """
-        found: dict[int, str] = {}
+        found: dict[int, tuple[str, FormControl | None]] = {}
         for control in self._root.descendants("control"):
             raw = control.get("shapeId")
             if raw is None:
@@ -998,8 +1488,29 @@ class Worksheet:
                 continue
             properties = next(control.descendants("controlPr"), None)
             macro = None if properties is None else properties.get("macro")
-            found[shape_id] = macro or ""
+            found[shape_id] = (macro or "", self._control_part(control.get("r:id")))
         return found
+
+    def _control_part(self, relationship_id: str | None) -> FormControl | None:
+        """The control part a ``<control>`` points at, read.
+
+        A missing relationship or part is not an error here. Excel writes
+        both, but a package assembled by something else may not, and a
+        shape with no wiring to report is better than a read that raises.
+        """
+        if not relationship_id:
+            return None
+        package = self._workbook.package
+        try:
+            relationship = package.relationships(self.part_name).by_id(relationship_id)
+        except PackageError:
+            return None
+        name = relationship.target_part
+        if relationship.is_external or not package.has_part(name):
+            return None
+        return read_control(
+            package.xml(name).root, part_name=name, relationship=relationship_id
+        )
 
     # ------------------------------------------------------------------
     # Hyperlinks

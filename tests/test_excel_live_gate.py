@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import shutil
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -1399,3 +1400,228 @@ def test_excel_opens_an_untouched_workbook(
     seen = probe(excel, _OPEN_PROBE, target, "untouched")
     assert seen["D2"] == "510", "nothing changed, so the cached value stands"
     assert seen["A2"] == "North"
+
+
+# --------------------------------------------------------------------------
+# Shapes this library adds
+# --------------------------------------------------------------------------
+
+_SHAPE_PROBE = r"""
+Private Function Safe(ByVal s As Shape, ByVal which As String) As String
+    On Error Resume Next
+    If which = "link" Then Safe = s.ControlFormat.LinkedCell
+    If which = "list" Then Safe = s.ControlFormat.ListFillRange
+    If which = "value" Then Safe = CStr(s.ControlFormat.Value)
+    If Err.Number <> 0 Then Safe = ""
+    Err.Clear
+End Function
+
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim s As Shape
+    Dim parts As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets(1)
+
+    parts = "count=" & CStr(ws.Shapes.Count)
+
+    Set s = ws.Shapes("Box")
+    parts = parts & "|boxType=" & CStr(s.Type)
+    parts = parts & "|boxTop=" & CStr(s.Top)
+    parts = parts & "|boxWidth=" & CStr(s.Width)
+    parts = parts & "|boxHeight=" & CStr(s.Height)
+    parts = parts & "|boxText=" & s.TextFrame.Characters.Text
+    parts = parts & "|boxMacro=" & s.OnAction
+
+    Set s = ws.Shapes("Edge")
+    parts = parts & "|edgeType=" & CStr(s.Type)
+
+    Set s = ws.Shapes("Note")
+    parts = parts & "|noteType=" & CStr(s.Type)
+
+    Set s = ws.Shapes("Press")
+    parts = parts & "|btnType=" & CStr(s.Type)
+    parts = parts & "|btnMacro=" & s.OnAction
+    parts = parts & "|btnText=" & s.TextFrame.Characters.Text
+
+    Set s = ws.Shapes("Tick")
+    parts = parts & "|tickType=" & CStr(s.Type)
+    parts = parts & "|tickValue=" & Safe(s, "value")
+
+    Set s = ws.Shapes("Pick")
+    parts = parts & "|pickList=" & Safe(s, "list")
+    parts = parts & "|pickValue=" & Safe(s, "value")
+
+    Set s = ws.Shapes("Step")
+    parts = parts & "|stepValue=" & Safe(s, "value")
+
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+
+
+def test_excel_accepts_shapes_this_library_adds(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """The gate for writing shapes, on a sheet that has none of the parts.
+
+    It has to make the drawing, the VML and a control part, declare the
+    content types and prefixes, and wire four relationships. Every one of
+    those was got wrong first time and Excel refused the workbook rather
+    than repairing it, which is why this test opens the file rather than
+    comparing bytes.
+
+    The values are deliberately set without a linked cell. Measured: a
+    control with one takes its state from that cell on load, so a tick box
+    stored ticked and linked to an empty cell opens unticked, and the
+    stored value would prove nothing.
+    """
+    target = tmp_path / "added.xlsx"
+    shutil.copy(live_sample_xlsx, target)
+
+    with Workbook.open(target) as book:
+        sheet = book["Data"]
+        sheet.add_shape(
+            "Box", left=300, top=20, width=120, height=50,
+            text="Hello", macro="Run", geometry="roundRect",
+        )
+        sheet.add_shape("Edge", left=300, top=90, width=120, height=10, kind="line")
+        sheet.add_shape(
+            "Note", left=300, top=110, width=120, height=40, kind="textBox", text="Two"
+        )
+        sheet.add_form_control(
+            "Press", left=300, top=160, width=100, height=30, text="Click", macro="Run"
+        )
+        sheet.add_form_control(
+            "Tick", kind="CheckBox", left=300, top=200, width=110, height=20, value=1
+        )
+        sheet.add_form_control(
+            "Pick", kind="Drop", left=300, top=230, width=110, height=20,
+            list_range="$A$1:$A$3", value=2,
+        )
+        sheet.add_form_control(
+            "Step", kind="Spin", left=300, top=260, width=20, height=30,
+            value=7, maximum=50,
+        )
+        book.save()
+
+    seen = probe(excel, _SHAPE_PROBE, target, "added")
+
+    assert seen["count"] == "7"
+
+    # A drawing shape: msoAutoShape, at the box it was given, with its
+    # text and the macro a click runs.
+    assert seen["boxType"] == "1"
+    assert seen["boxTop"] == "20"
+    assert seen["boxWidth"] == "120"
+    assert seen["boxHeight"] == "50"
+    assert seen["boxText"] == "Hello"
+    # A drawing shape reports the bare name it stores. Only a control is
+    # reported qualified by the workbook, because only a control stores
+    # it that way: see btnMacro below.
+    assert seen["boxMacro"] == "Run"
+
+    # msoLine, which needs prst="line": a connector carrying the rect
+    # every other shape gets makes Excel refuse the package.
+    assert seen["edgeType"] == "9"
+    assert seen["noteType"] == "17", "msoTextBox, which is an sp with a flag"
+
+    # msoFormControl for all four, which is the whole four-part assembly
+    # agreeing: drawing, sheet record, control part and VML.
+    assert seen["btnType"] == "8"
+    assert seen["btnMacro"].endswith("!Run")
+    assert seen["btnText"] == "Click"
+
+    assert seen["tickType"] == "8"
+    assert seen["tickValue"] == "1", "xlOn"
+    assert seen["pickList"] == "$A$1:$A$3"
+    assert seen["pickValue"] == "2", "the second item, which is sel and not val"
+    assert seen["stepValue"] == "7", "a spinner whose maximum was left at 0 reads 0"
+
+
+_REMOVED_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim s As Shape
+    Dim names As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets(1)
+    For Each s In ws.Shapes
+        names = names & s.Name & ","
+    Next s
+    Probe = "count=" & CStr(ws.Shapes.Count) & "|names=" & names
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+End Function
+"""
+
+
+def test_excel_accepts_a_workbook_with_shapes_removed(
+    excel: object, live_controls_xlsm: Path, tmp_path: Path
+) -> None:
+    """Removing a control has to take four things with it.
+
+    A relationship left pointing at a control part that is gone is the
+    failure that stays invisible until Excel opens the file, and then it
+    is the whole workbook that gets repaired rather than the one control.
+    """
+    target = tmp_path / "removed.xlsm"
+    shutil.copy(live_controls_xlsm, target)
+
+    with Workbook.open(target) as book:
+        sheet = book["Controls"]
+        sheet.remove_shape("Plain")
+        sheet.remove_shape("Tick")
+        sheet.remove_shape("Step")
+        book.save()
+
+    seen = probe(excel, _REMOVED_PROBE, target, "removed")
+    assert seen["count"] == "10"
+    gone = {"Plain", "Tick", "Step"}
+    left = {name for name in seen["names"].split(",") if name}
+    assert not (gone & left)
+    assert "Go" in left, "the others are untouched"
+
+
+_MACRO_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets(1)
+    Probe = "control=" & ws.Shapes("Go").OnAction & _
+            "|drawing=" & ws.Shapes("Plain").OnAction
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+End Function
+"""
+
+
+def test_excel_runs_the_macro_a_shape_was_pointed_at(
+    excel: object, live_controls_xlsm: Path, tmp_path: Path
+) -> None:
+    """Measured: the sheet's ``<controlPr macro=...>`` is what Excel
+    reads, and the VML's ``<x:FmlaMacro>`` is ignored. Both are written,
+    and this checks the one that counts."""
+    target = tmp_path / "macros.xlsm"
+    shutil.copy(live_controls_xlsm, target)
+
+    with Workbook.open(target) as book:
+        sheet = book["Controls"]
+        sheet.set_shape_macro("Go", "Renamed")
+        sheet.set_shape_macro("Plain", "OnPlain")
+        book.save()
+
+    seen = probe(excel, _MACRO_PROBE, target, "macros")
+    assert seen["control"].endswith("!Renamed")
+    assert seen["drawing"] == "OnPlain", "a drawing shape carries a bare name"

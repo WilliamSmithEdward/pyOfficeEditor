@@ -699,11 +699,21 @@ class Workbook:
             candidate += 1
         return candidate
 
-    def free_table_part_name(self) -> str:
+    def free_part_name(self, template: str) -> str:
+        """The first unused name from a numbered template.
+
+        ``template`` carries a single ``{n}``, as in
+        ``"xl/drawings/drawing{n}.xml"``. Office numbers these from 1 and
+        does not reuse a gap, but a gap is free to take and taking it
+        keeps the numbering dense.
+        """
         number = 1
-        while self._package.has_part(f"xl/tables/table{number}.xml"):
+        while self._package.has_part(template.format(n=number)):
             number += 1
-        return f"xl/tables/table{number}.xml"
+        return template.format(n=number)
+
+    def free_table_part_name(self) -> str:
+        return self.free_part_name("xl/tables/table{n}.xml")
 
     # ------------------------------------------------------------------
     # Shared parts

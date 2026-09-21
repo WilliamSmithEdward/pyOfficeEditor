@@ -51,6 +51,12 @@ LIVE_SHAPES_ANSWERS = EXCEL_FIXTURES / "shapes_answers.json"
 #: Authored by Excel: one shape of each MsoAutoShapeType, so the preset
 #: geometry table is held to what Excel actually wrote for each number.
 LIVE_GEOMETRY_XLSX = EXCEL_FIXTURES / "geometry.xlsx"
+#: Authored by Excel: one of every Forms control that has something to
+#: say, wired to cells and ranges, and beside it what Excel's own object
+#: model answered for each. ``shapes.xlsm`` carries a Button and nothing
+#: else, so it can prove nothing about a linked cell or a value.
+LIVE_CONTROLS_XLSM = EXCEL_FIXTURES / "controls.xlsm"
+LIVE_CONTROLS_ANSWERS = EXCEL_FIXTURES / "controls_answers.json"
 
 
 @pytest.fixture(scope="session")
@@ -197,3 +203,19 @@ def live_geometry_xlsx() -> Path:
     if not LIVE_GEOMETRY_XLSX.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to author geometry.xlsx with real Excel")
     return LIVE_GEOMETRY_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_controls_xlsm() -> Path:
+    """The Excel-authored workbook carrying wired-up Forms controls."""
+    if not LIVE_CONTROLS_XLSM.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author controls.xlsm with real Excel")
+    return LIVE_CONTROLS_XLSM
+
+
+@pytest.fixture(scope="session")
+def live_controls_answers() -> Path:
+    """What Excel said about those controls, measured beside the workbook."""
+    if not LIVE_CONTROLS_ANSWERS.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to measure the controls with real Excel")
+    return LIVE_CONTROLS_ANSWERS

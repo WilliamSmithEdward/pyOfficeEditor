@@ -28,18 +28,35 @@ cells with cached values, and the ZIP data-descriptor shape a streaming
 writer produces. Nothing is committed, so the suite stays runnable with no
 fixtures to refresh.
 
-## Authored by Excel, built on demand
+## Authored by Excel, built by script
 
 `scripts/build_excel_fixtures.py` drives real Excel through
 [pyvbaharness](https://github.com/WilliamSmithEdward/pyVBAharness) to author
-three more. Run it on a Windows machine with Excel; tests that need them skip
-when they are absent.
+eight more. These are committed like the rest: the script exists so a
+fixture's *content* can be changed deliberately and reproduced, not so the
+suite rebuilds them. Run it on a Windows machine with Excel; tests that need
+a fixture skip when it is absent.
 
 | File | What it carries |
 |------|-----------------|
 | `empty.xlsx` | The smallest thing Excel will save as `.xlsx`. |
 | `sample.xlsx` | Shared strings, formulas, dates, booleans, an error cell, a merged range, escaped and space-padded text, two sheets. |
 | `structures.xlsx` | Two ListObjects, one with a totals row and a calculated column; defined names at workbook and sheet scope; column widths; a hyperlink with its own external relationship. |
+| `refused.xlsx` | Every element that used to make an insertion refuse, on one sheet: all five address notations, including the two zero-based ones and the two cases Excel checks for agreement. |
+| `settings.xlsx` | Sheet protection, tab colour, view settings and the three visibility states. |
+| `links.xlsx` | Hyperlinks of every kind, an autofilter with two sorts of criteria, and outline grouping on rows and columns. |
+| `geometry.xlsx` | One shape of each `MsoAutoShapeType`, so the preset geometry table is held to what Excel wrote rather than to a transcription. |
+| `controls.xlsm` | One of every Forms control, wired to cells and ranges, with `controls_answers.json` beside it recording what Excel's object model answered for each. |
+
+`shapes.xlsm` is committed but has no recipe here: it predates the script.
+It carries one of every shape a sheet can hold, with `shapes_answers.json`
+beside it, and a Button wired to nothing, which is why `controls.xlsm`
+exists.
+
+A measured fixture is worth more than its workbook. `controls_answers.json`
+is what settles a disagreement, because the reader is held to what Excel
+said rather than to a reading of the markup: the current value alone is
+spelled three ways, and the off state is -4146 rather than 0.
 
 A fixture that already exists is left alone, because Excel stamps every part
 with a fresh revision GUID and so never produces the same bytes twice.

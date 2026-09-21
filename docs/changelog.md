@@ -20,7 +20,94 @@ anything trailing the file is swept into the oldest release's notes. -->
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **What a form control is wired to.** `Shape.control` carries the linked
+  cell, the list range, the current value and which kind of control it
+  is, read from the part the sheet points at. `Shape` and `ShapeKind`
+  are exported now too; they never were, so a consumer got the objects
+  but could not name the type.
+
+  The value is worth the measuring. It is spelled three different ways
+  and none of them is a plain `val`: a check box and an option button
+  write `checked="Checked"` and write nothing at all when off, a drop
+  down and a list box write `sel` and leave `val` at 0, and only a
+  spinner and a scroll bar write `val`. A reader that takes `val` alone
+  answers 0 for a ticked box and 0 for a drop down with the second item
+  chosen. Both look right. Excel's own answer for an unticked box is
+  -4146 rather than 0.
+
+- **`Worksheet.add_shape`** for an AutoShape, a text box or a line, and
+  **`Worksheet.add_form_control`** for all nine Forms controls: Button,
+  CheckBox, Drop, List, Radio, Spin, Scroll, GBox and Label. A sheet
+  with no drawing part gets one, with its content type and relationship;
+  a control gets four parts that have to agree.
+
+- **`Worksheet.remove_shape`**, which takes a control's four parts with
+  it rather than leaving a relationship pointing at a part that is gone.
+
+- **`Worksheet.set_shape_macro`**, pointing a shape at a procedure or
+  clearing it. A drawing shape keeps a bare name on its own element; a
+  control keeps `[0]!Name` on the sheet and a second copy in the VML.
+  Measured: Excel reads the sheet's and ignores the VML's, and a file
+  where the two disagree opens cleanly. Both are written anyway.
+
+  The bracketed number indexes the workbook holding the procedure and is
+  not always 0. An existing one is kept rather than replaced.
+
+### Verified
+
+Four rules cost a refused workbook each to find, since Excel declines to
+open a package it disagrees with rather than repairing it:
+
+- a control's anchor writes `<from><xdr:col>`: the wrapper loses the
+  prefix and its children keep it
+- a connector is `prst="line"`, not the `rect` every other shape gets
+- the VML spells a tick box `Checkbox` where its own part spells it
+  `CheckBox`
+- a sheet that has never held a control declares neither `xdr` nor
+  `x14`, and a control's markup needs both
+
+Two more are measured rather than assumed. A spinner or scroll bar with
+no maximum is pinned at zero whatever value it holds, in a file that is
+perfectly valid, so Excel's own defaults are written instead: 30000 and
+100. And a control with a linked cell takes its state from that cell on
+load, so a tick box stored ticked and linked to an empty cell opens
+unticked. Setting both is setting the cell.
+
+`controls.xlsm` is a new Excel-authored fixture carrying one of every
+control, wired up, with `controls_answers.json` recording what Excel's
+object model answered for each. The committed `shapes.xlsm` carries a
+Button and nothing else, so it could prove none of this.
+
+### Internal
+
+- The kind of control being added is checked before any of its four
+  parts is written. The VML is what knows an unknown kind is wrong, and
+  noticing it there left behind a control part, a relationship and an
+  anchor for a control that was never made.
+
+- The reader and the writer share one vocabulary, Excel's own
+  `objectType`, so a control read from a file writes straight back. A
+  test pins all nine kinds through that round trip. Keying the writer on
+  a second set of names is how a control silently becomes a Button in a
+  file that opens cleanly, which is
+  [pyOpenVBA#25](https://github.com/WilliamSmithEdward/pyOpenVBA/issues/25).
+
+### Known limits
+
+A shape's placement is close rather than exact, and the error grows with
+how far across the sheet it sits. Excel reports a shape's position from
+its anchor, and turning points back into a column needs the standard
+font's maximum digit width, which the file does not carry. A shape put
+at 300 points came back at 300 on one sheet and 298.5 on another whose
+columns had been resized. Rows are exact.
+
+An option button group stores its linked cell once, on the button marked
+`firstButton`. Excel's object model resolves the group and answers that
+cell for every member; `linked_cell` reports what the part says, which is
+empty for all but the first, because what makes a group is not measured
+here.
 
 ## [0.2.2] - 2026-09-20
 

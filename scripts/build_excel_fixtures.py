@@ -24,6 +24,7 @@ process id even if a step wedges.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -395,6 +396,208 @@ Public Function Build(ByVal Target As String) As String
 End Function
 """
 
+#: One of every Forms control that has something to say, wired up, so the
+#: control reader is held to what Excel writes rather than to the schema.
+#:
+#: The committed shapes fixture carries a Button and nothing else, whose
+#: whole part is ``objectType="Button" lockText="1"``. It cannot show that
+#: a linked cell is read correctly because it has no linked cell, and it
+#: cannot show a value at all.
+#:
+#: The measuring matters because the current value is spelled three
+#: different ways and none of them is a single ``val`` attribute:
+#:
+#: - a check box and an option button write ``checked="Checked"`` or
+#:   ``checked="Mixed"``, and write nothing when they are off
+#: - a drop down and a list box write ``sel``, the 1-based selection,
+#:   and leave ``val`` at 0
+#: - a spinner and a scroll bar write ``val``
+#:
+#: So a reader that reports ``val`` answers 0 for a ticked box and 0 for a
+#: drop down with the third item chosen. Both look plausible and both are
+#: wrong. Excel's own object model answers -4146 for an unticked box,
+#: which is ``xlOff`` and not 0, and that is the number recorded here.
+_BUILD_CONTROLS = r"""
+Private Function SafeLinked(ByVal s As Shape) As String
+    On Error Resume Next
+    SafeLinked = s.ControlFormat.LinkedCell
+    If Err.Number <> 0 Then SafeLinked = ""
+    Err.Clear
+End Function
+
+Private Function SafeList(ByVal s As Shape) As String
+    On Error Resume Next
+    SafeList = s.ControlFormat.ListFillRange
+    If Err.Number <> 0 Then SafeList = ""
+    Err.Clear
+End Function
+
+Private Function SafeValue(ByVal s As Shape) As String
+    On Error Resume Next
+    SafeValue = CStr(s.ControlFormat.Value)
+    If Err.Number <> 0 Then SafeValue = ""
+    Err.Clear
+End Function
+
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim s As Shape
+    Dim out As String
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Controls"
+
+    ws.Range("A1").Value = "Alpha"
+    ws.Range("A2").Value = "Beta"
+    ws.Range("A3").Value = "Gamma"
+
+    ' A button: a macro, and nothing wired to a cell.
+    Set s = ws.Shapes.AddFormControl(xlButtonControl, 200, 20, 90, 30)
+    s.Name = "Go"
+    s.TextFrame.Characters.Text = "Press"
+    s.OnAction = "Clicked"
+
+    ' A ticked check box with a linked cell: the case the consumer pins.
+    Set s = ws.Shapes.AddFormControl(xlCheckBox, 200, 60, 110, 20)
+    s.Name = "Tick"
+    s.TextFrame.Characters.Text = "Enabled"
+    s.ControlFormat.LinkedCell = "$D$6"
+    s.ControlFormat.Value = xlOn
+
+    ' An unticked one, which writes no checked attribute at all.
+    Set s = ws.Shapes.AddFormControl(xlCheckBox, 200, 90, 110, 20)
+    s.Name = "Untick"
+    s.ControlFormat.LinkedCell = "$D$7"
+    s.ControlFormat.Value = xlOff
+
+    ' And the third state, which is neither.
+    Set s = ws.Shapes.AddFormControl(xlCheckBox, 200, 120, 110, 20)
+    s.Name = "Part"
+    s.ControlFormat.Value = xlMixed
+
+    ' A drop down with the second item chosen: sel moves, val stays 0.
+    Set s = ws.Shapes.AddFormControl(xlDropDown, 200, 150, 110, 20)
+    s.Name = "Pick"
+    s.ControlFormat.ListFillRange = "$A$1:$A$3"
+    s.ControlFormat.LinkedCell = "$D$8"
+    s.ControlFormat.Value = 2
+
+    ' A list box, wired the same way.
+    Set s = ws.Shapes.AddFormControl(xlListBox, 200, 180, 110, 50)
+    s.Name = "Many"
+    s.ControlFormat.ListFillRange = "$A$1:$A$3"
+    s.ControlFormat.LinkedCell = "$D$9"
+
+    ' Two option buttons, so firstButton shows up on the first of them.
+    Set s = ws.Shapes.AddFormControl(xlOptionButton, 200, 240, 110, 20)
+    s.Name = "First"
+    s.TextFrame.Characters.Text = "Choose me"
+    s.ControlFormat.LinkedCell = "$D$10"
+    s.ControlFormat.Value = xlOn
+
+    Set s = ws.Shapes.AddFormControl(xlOptionButton, 200, 270, 110, 20)
+    s.Name = "Second"
+    s.TextFrame.Characters.Text = "Or me"
+
+    ' A spinner and a scroll bar, which carry val and a range.
+    Set s = ws.Shapes.AddFormControl(xlSpinner, 200, 300, 20, 30)
+    s.Name = "Step"
+    s.ControlFormat.LinkedCell = "$D$11"
+    s.ControlFormat.Min = 0
+    s.ControlFormat.Max = 50
+    s.ControlFormat.Value = 7
+
+    Set s = ws.Shapes.AddFormControl(xlScrollBar, 200, 340, 110, 20)
+    s.Name = "Slide"
+    s.ControlFormat.LinkedCell = "$D$12"
+    s.ControlFormat.Min = 0
+    s.ControlFormat.Max = 100
+    s.ControlFormat.Value = 25
+
+    ' A group box and a label, wired to nothing, to prove absence reads
+    ' as absence rather than as zero.
+    Set s = ws.Shapes.AddFormControl(xlGroupBox, 340, 240, 130, 50)
+    s.Name = "Set"
+    s.TextFrame.Characters.Text = "A group"
+
+    Set s = ws.Shapes.AddFormControl(xlLabel, 340, 300, 110, 20)
+    s.Name = "Caption"
+    s.TextFrame.Characters.Text = "A label"
+
+    ' An ordinary AutoShape too, so the reader is made to tell a drawing
+    ' shape from a control on one sheet.
+    Set s = ws.Shapes.AddShape(1, 20, 20, 80, 40)
+    s.Name = "Plain"
+
+    ' Saved before the measuring, deliberately. OnAction reports the macro
+    ' qualified by the workbook holding it, so reading it from an unsaved
+    ' book records "Book8!Clicked" and the number changes every rebuild.
+    Application.DisplayAlerts = False
+    wb.SaveAs Target, 52
+    Application.DisplayAlerts = True
+
+    For Each s In ws.Shapes
+        out = out & s.Name & "|" & s.Type & "|" & s.OnAction & "|" _
+            & SafeLinked(s) & "|" & SafeList(s) & "|" & SafeValue(s) & vbLf
+    Next s
+
+    Build = out
+End Function
+"""
+
+#: Which fields of the reported line mean what.
+_CONTROL_FIELDS = ("type", "macro", "linked_cell", "list_range", "value")
+
+
+def build_answers(session: object, source: str, target: Path, label: str, *, force: bool) -> None:
+    """Author a fixture and record what Excel's object model said about it.
+
+    The measurements are the point of this one, so they are written beside
+    the workbook instead of being read once and remembered. A reader that
+    disagrees with them is wrong about Excel, which is the only authority
+    that settles it.
+    """
+    from pyvbaharness import ExcelSession
+
+    assert isinstance(session, ExcelSession)
+    answers_path = target.with_name(f"{target.stem}_answers.json")
+    if target.exists() and answers_path.exists():
+        if not force:
+            print(f"  kept  {target.name} (already there; pass --force to rebuild)")
+            return
+        target.unlink()
+        answers_path.unlink(missing_ok=True)
+
+    session.reset_sheets()
+    result = session.run_vba(source, proc="Build", args=(str(target),), timeout=180)
+    if result.outcome != "passed":
+        raise SystemExit(f"{label}: Excel refused the build ({result.outcome}): {result!r}")
+    if not target.is_file():
+        raise SystemExit(f"{label}: Excel reported success but {target} is not there.")
+
+    answers: dict[str, dict[str, object]] = {}
+    for line in str(result.value or "").splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        name = parts[0]
+        fields = (parts[1:] + [""] * len(_CONTROL_FIELDS))[: len(_CONTROL_FIELDS)]
+        entry: dict[str, object] = {}
+        for key, raw in zip(_CONTROL_FIELDS, fields, strict=True):
+            if key in ("type", "value"):
+                entry[key] = int(raw) if raw.strip("-").isdigit() else raw
+            else:
+                entry[key] = raw
+        answers[name] = entry
+
+    answers_path.write_text(
+        json.dumps(answers, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    print(f"  wrote {target.name} ({target.stat().st_size} bytes) and {answers_path.name}")
+
+
 def main() -> int:
     try:
         from pyvbaharness import ExcelSession
@@ -416,7 +619,14 @@ def main() -> int:
         ("links.xlsx", _BUILD_LINKS),
         ("geometry.xlsx", _BUILD_GEOMETRY),
     ]
-    if not force and all((FIXTURES / name).exists() for name, _ in wanted):
+    #: Fixtures whose measurements are recorded beside them.
+    measured = [
+        ("controls.xlsm", _BUILD_CONTROLS),
+    ]
+
+    everything = [name for name, _ in wanted + measured]
+    everything += [f"{Path(name).stem}_answers.json" for name, _ in measured]
+    if not force and all((FIXTURES / name).exists() for name in everything):
         print("every fixture is already there; nothing to do (pass --force to rebuild)")
         return 0
 
@@ -426,6 +636,9 @@ def main() -> int:
         for name, source in wanted:
             excel.new_workbook()
             build(excel, source, FIXTURES / name, name, force=force)
+        for name, source in measured:
+            excel.new_workbook()
+            build_answers(excel, source, FIXTURES / name, name, force=force)
     print("done")
     return 0
 

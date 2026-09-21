@@ -301,10 +301,12 @@ tests/
   test_excel_pagesetup.py       margins, orientation, headers, print area
   test_excel_links.py           hyperlinks and outline grouping
   test_excel_shapes.py          shapes, against what Excel said of them
+  test_excel_controls.py        what a form control is wired to
+  test_excel_shapes_write.py    adding, removing and rewiring shapes
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               three committed Excel-authored packages,
-                                plus two built on demand; see its README
+  fixtures/excel/               twelve Excel-authored packages: three
+                                sourced, nine scripted; see its README
 ```
 
 - **Always** run pytest with `-p no:randomly` to keep ordering reproducible.
