@@ -75,7 +75,11 @@ anything trailing the file is swept into the oldest release's notes. -->
   away, stopping where a step and its residual both come under 1e-7, so
   each stops short of the root exactly where Excel does. IRR gives up on a
   guess after 200 steps or a repeated residual and starts again from 0.1,
-  as Excel does. Where Excel's own approximation is not yet reproduced, as for
+  as Excel does. XIRR is not Newton's method but halving: from the guess
+  it doubles outward until the root is bracketed, then halves until the
+  bracket is narrower than 1e-8 of `0.5+|r|` and XNPV is under 1e-8 of
+  the discounted amounts' sizes, the documented 0.000001 percent. Where
+  Excel's own approximation is not yet reproduced, as for
   the error and incomplete gamma and beta functions and GAMMALN from 0.7
   to 3, the engine gives the double nearest the exact value, and the
   corpus test records how many units in the last place each function
@@ -569,8 +573,8 @@ such function with the most it may differ by: SINH, TANH and ASIN below 1
 and the functions built on them, the PMT family, the error and gamma
 functions, most of the statistical distributions and the tests and
 intervals built on them, LINEST past three points and TREND with it, and
-GEOMEAN. XIRR and YIELD converge further than Excel's iteration goes, and
-agree with it to a relative 1e-12, XIRR to 1e-8. When IRR's secant fails
+GEOMEAN. YIELD converges further than Excel's iteration goes, and agrees
+with it to a relative 1e-12. When IRR's secant fails
 from the guess and again from 0.1, Excel finds the root a third way not
 yet reproduced; the engine halves down to it, within 1e-11 of Excel's
 answer.

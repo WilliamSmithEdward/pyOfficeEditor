@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from pyofficeeditor.excel import CellError, FilterColumn, FormulaSyntaxError, Workbook, criteria
+from pyofficeeditor.excel import CellError, FilterColumn, FormulaSyntaxError, Workbook, column_letter, criteria
 from pyofficeeditor.excel._calc import parse, special
 from pyofficeeditor.excel._calc.functions.distributions import normal_inverse
 from pyofficeeditor.excel._calc.nodes import (
@@ -602,6 +602,36 @@ def test_irr_starts_again_from_a_tenth_when_its_guess_fails(book: Workbook) -> N
         ],
     )
     assert book["Data"].evaluate(f"IRR({flows},1)") == 0.06297805183414074
+
+
+def _dated(book: Workbook, flows: list[float], days: list[float]) -> str:
+    sheet = book["Data"]
+    for column, (flow, day) in enumerate(zip(flows, days, strict=True), start=1):
+        sheet.cell(1, column).value = flow
+        sheet.cell(2, column).value = day
+    last = column_letter(len(flows))
+    return f"A1:{last}1,A2:{last}2"
+
+
+def test_xirr_halves_a_bracket_rather_than_stepping_to_the_root(book: Workbook) -> None:
+    # A guess 1e-11 above the root: bisection from [0, 2g] still halves
+    # down to g (1 - 2^-24) before its tolerance is met.
+    series = _dated(book, [-1000.0, 300.0, 400.0, 500.0], [43000.0, 43365.0, 43730.0, 44095.0])
+    # In a cell: typed into the formula, the guess would keep 15 digits.
+    book["Data"]["A3"] = 0.08896339470224628
+    assert book["Data"].evaluate(f"XIRR({series},A3)") == 0.08896338939961473
+
+
+def test_xirr_edges(book: Workbook) -> None:
+    sheet = book["Data"]
+    year = [43000.0, 43365.0]
+    # A guess of 0 stands for 0.00001.
+    assert sheet.evaluate(f"XIRR({_dated(book, [-1000.0, 1200.0], year)},0)") == 0.19999999511718752
+    # The root exactly at the end of a bracket, where XNPV is exactly 0.
+    assert sheet.evaluate(f"XIRR({_dated(book, [1000.0, -1200.0], year)},0.1)") == 0.19999999403953553
+    # Above a negative guess only [g, 0] is searched; below 1 only down to -1.
+    assert sheet.evaluate(f"XIRR({_dated(book, [-1000.0, 1250.0], year)},-0.1)") == CellError("#NUM!")
+    assert sheet.evaluate(f"XIRR({_dated(book, [-1000.0, 800.0], year)},1)") == CellError("#NUM!")
 
 
 def test_irr_needs_a_residual_under_its_tolerance(book: Workbook) -> None:

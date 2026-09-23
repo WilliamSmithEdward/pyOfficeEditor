@@ -86,11 +86,10 @@ NEAR: dict[str, int] = {
     "GEOMEAN": 1,
 }  # fmt: skip
 
-#: Functions Excel solves by iteration and stops short of the root, a few
-#: hundred units in the last place away, XIRR within its documented
-#: 0.000001 percent. The engine converges fully; the two agree to this
-#: fraction of the result.
-ITERATIVE: dict[str, float] = {"XIRR": 1e-8, "YIELD": 1e-12}
+#: YIELD, which Excel solves by iteration and stops short of the root, a
+#: few hundred units in the last place away. The engine converges fully;
+#: the two agree to this fraction of the result.
+ITERATIVE: dict[str, float] = {"YIELD": 1e-12}
 
 
 def _groups() -> list[str]:
