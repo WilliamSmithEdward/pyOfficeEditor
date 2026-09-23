@@ -18,14 +18,18 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > removed and pointed at a macro, with a control's linked cell, list range
 > and value. Autofilters, on a sheet or a table, read and write every
 > criterion but colour and icon, and hide the rows they exclude, because
-> Excel does not recompute a filter when the workbook opens. A cell's
-> text is what Excel shows for it, number format and all. Notes and
-> threaded comments, replies included, read and write the way Excel
-> writes them, and so do pictures, text in more than one font, and named
-> cell styles, all of Excel's own among them. Charts are read, series by
-> series, and added in eight kinds as Excel's Insert Chart writes them;
-> their references move with the cells they read, and so do pivot tables
-> and their caches, refusing the edits Excel refuses.
+> Excel does not recompute a filter when the workbook opens. A cell's text
+> is what Excel shows for it, number format and all. Notes and threaded
+> comments, replies included, read and write the way Excel writes them,
+> and so do pictures, text in more than one font, and named cell styles,
+> all of Excel's own among them. Charts are read, series by series, and
+> added in eight kinds as Excel's Insert Chart writes them; their
+> references move with the cells they read, and so do pivot tables and
+> their caches, refusing the edits Excel refuses. Formulas calculate:
+> 493 of Excel's 525 functions, held to 10,958 formulas Excel
+> calculated, to the last bit for all but the few functions the tests
+> name, with the results written into the cells as Excel's
+> recalculation would write them.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Nothing about a sheet makes that refuse any more: validation,
@@ -80,6 +84,9 @@ with Workbook.open("orders.xlsx") as book:
     summary["A1"].formula = "=SUM(Data!D2:D5)"
     book.add_defined_name("Totals", "Data!$D$2:$D$5")
     book.rename_sheet("Data", "Q1 Data")     # formulas and names both follow
+
+    summary.evaluate("SUM(Totals)/4")            # what a formula would give
+    book.calculate()                             # every formula, results cached
     book.save()
 ```
 
@@ -183,6 +190,10 @@ data descriptors.
 |   _formulas   shifting and breaking references, for    |
 |               shared formulas, a renamed sheet, and    |
 |               the #REF! a deletion leaves behind       |
+|   _calc/      the formula engine: a parser, an         |
+|               evaluator with Excel's arithmetic, the   |
+|               functions, and whole-workbook            |
+|               calculation                              |
 |   _sharedstrings   the per-workbook string table       |
 |   _xstring    text as SpreadsheetML spells it: _xHHHH_ |
 |               for what XML cannot carry                |

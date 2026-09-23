@@ -2745,3 +2745,107 @@ def test_excel_applies_each_table_filter_as_this_library_did(
         assert before == after, f"{name}: this library hid {before}, Excel hides {after}"
         assert before, f"{name}: the criterion should hide something"
         assert sheet_filter == "False", f"{name}: the sheet's own filter is off"
+
+
+# --------------------------------------------------------------------------
+# Calculation
+# --------------------------------------------------------------------------
+
+_RECALCULATE_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Application.CalculateFull
+    wb.SaveCopyAs Replace(Target, ".xlsx", "-excel.xlsx")
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = "saved=1"
+End Function
+"""
+
+#: Formulas across the engine's reach, each in a cell of its own on
+#: ``Calc``, over the inputs on ``Data``.
+_CALCULATED = [
+    "SUM(Data!A1:A10)", "AVERAGE(Data!A1:A10)", "SUMPRODUCT(Data!A1:A10,Data!A1:A10)",
+    'SUMIFS(Data!A1:A10,Data!A1:A10,">3",Data!A1:A10,"<>7")', 'COUNTIF(Data!B1:B5,"a*")',
+    'VLOOKUP("ink",Stock,3,FALSE)', 'VLOOKUP("ink",Stock[],3,FALSE)', 'INDEX(Stock[Price],MATCH("pen",Stock[Item],0))',
+    "SUM(Stock[Qty])", 'TEXT(Data!A5/7,"0.000")', '"x"&Data!A3&TRUE', "0.1+0.2-0.3", "(0.1+0.2-0.3)",
+    "ROUNDUP(2.675,2)", "2^0.5", "(-8)^(-1/3)", "SIN(PI())", "ATAN(7)", '"1,000"+1', '"12:30 PM"+0',
+    'DATE(2024,2,29)+"1/2/2024"', "EDATE(DATE(2020,1,31),1)", 'IFERROR(1/0,"none")', "NA()", "1/0",
+    'INDIRECT("Data!A"&4)', "SUM(OFFSET(Data!A1,2,0,3,1))", "Rate*Data!A10", "SUM(Data:Calc!Z1)",
+    'IF(Data!B2="",1,2)', "MOD(10,3.3)", "INT(2.9999999999999996)", "Data!A1:A10*2", 'LEFT("hello",2)',
+    'SUBSTITUTE("a-b-c","-","+")', "LARGE(Data!A1:A10,2.5)", "ISBLANK(Data!B2)", "ROWS(Stock[#All])",
+    "_xlfn.LET(_xlpm.x,Data!A3,_xlpm.x*_xlpm.x+1)", "_xlfn.LAMBDA(_xlpm.n,_xlpm.n*3)(Data!A4)",
+    "SUM(_xlfn.SEQUENCE(4))", "INDEX(_xlfn._xlws.SORT(Data!A1:A10,1,-1),2)",
+    "_xlfn.REDUCE(0,Data!A1:A4,_xlfn.LAMBDA(_xlpm.a,_xlpm.b,_xlpm.a+_xlpm.b))",
+    'DSUM(Stock[#All],"Qty",Data!H1:H2)', 'DSUM(Stock[#All],"Qty",Data!I1:I2)', "SUBTOTAL(9,Data!A1:A10)",
+    "MDETERM({1,3,8,5;1,3,6,1;1,1,1,0;7,3,10,2})", "BESSELJ(1.9,2)", 'CONVERT(6,"tsp","tbs")',
+    "EFFECT(0.0525,4)", "FVSCHEDULE(1,{0.09,0.11,0.1})", "DDB(2400,300,10,10)", "NPV(0.1,-10000,3000,4200,6800)",
+    "PRICE(DATE(2008,2,15),DATE(2017,11,15),0.0575,0.065,100,2,0)", 'CELL("address",Data!B5)',
+    '_xlfn.TEXTAFTER("a-b-c","-",-1)', "ERF(1)", "GAMMALN(4.5)", "_xlfn.NORM.S.DIST(1.333333,TRUE)",
+]  # fmt: skip
+
+
+def test_excel_calculates_what_this_library_calculates(excel: object, live_empty_xlsx: Path, tmp_path: Path) -> None:
+    """Every formula calculated and cached here has to be what Excel
+    calculates for it, to the bit: Excel opens the file, recalculates and
+    saves a copy, and the two files' cached values are compared. A chain
+    of running totals rides along, calculated bottom up."""
+    from pyofficeeditor.excel import CellRef
+    from pyofficeeditor.excel._values import read_value
+
+    target = tmp_path / "calculated.xlsx"
+    shutil.copy(live_empty_xlsx, target)
+    with Workbook.open(target) as book:
+        data = book.rename_sheet(book.sheet_names[0], "Data")
+        for row in range(1, 11):
+            data[f"A{row}"] = row
+        for row, value in enumerate(["abc", None, "apple", 5, "Avocado"], start=1):
+            if value is not None:
+                data[f"B{row}"] = value
+        for row, values in enumerate([("Item", "Qty", "Price"), ("pen", 3, 1.5), ("ink", 5, 4.25)], start=1):
+            for column, value in enumerate(values, start=4):
+                data.set_value(CellRef(row, column), value)
+        data.add_table("Stock", "D1:F3")
+        # Database criteria: text with no operator, and with one.
+        data["H1"] = "Item"
+        data["H2"] = "p"
+        data["I1"] = "Item"
+        data["I2"] = "=p"
+        data["Z1"] = 7
+        book.add_defined_name("Rate", "0.075")
+        calc = book.add_sheet("Calc")
+        calc["Z1"] = 2
+        for row, formula in enumerate(_CALCULATED, start=1):
+            calc[f"A{row}"].formula = formula
+        for row in range(1, 301):
+            calc[f"C{row}"].formula = "Data!A1" if row == 1 else f"C{row - 1}+1"
+        report = book.calculate()
+        assert report.complete, report
+        book.save()
+
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _RECALCULATE_PROBE, proc="Probe", args=(str(target),), timeout=180, module_name="Probe_calculate"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+
+    def cached(path: Path) -> dict[str, object]:
+        found: dict[str, object] = {}
+        with Workbook.open(path) as book:
+            sheet = book["Calc"]
+            for reference, element in sheet.cell_elements():
+                if element.child("f") is not None:
+                    found[reference.a1] = read_value(element, shared_strings=book.shared_strings, styles=None)
+        return found
+
+    ours = cached(target)
+    theirs = cached(target.with_name("calculated-excel.xlsx"))
+    wrong = [
+        f"{address} ={formula}: here {ours.get(address)!r}, Excel {theirs.get(address)!r}"
+        for address, formula in [(f"A{row}", text) for row, text in enumerate(_CALCULATED, start=1)]
+        + [(f"C{row}", "chain") for row in range(1, 301)]
+        if ours.get(address) != theirs.get(address)
+    ]
+    assert not wrong, "\n".join(wrong)

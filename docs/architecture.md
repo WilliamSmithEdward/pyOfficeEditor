@@ -93,6 +93,15 @@ Each layer knows the layer below it and not the layer above.
 |                 its own                                  |
 |   _formulas     reference shifting for shared formulas, |
 |                 and repointing a renamed sheet          |
+|   _calc/        the formula engine                      |
+|     lexer, parser, nodes   formula text into a tree,    |
+|                 with Excel's precedence                 |
+|     values, numbers, dates, precise   Excel's scalars,  |
+|                 coercion, and arithmetic past IEEE's    |
+|     evaluator, registry, functions/   a tree evaluated |
+|                 against a workbook, function by family  |
+|     engine      every formula in dependency order,     |
+|                 results written back                    |
 |   _sharedstrings  the per-workbook string table         |
 |   _xstring      text as SpreadsheetML spells it, with   |
 |                 _xHHHH_ for what XML cannot carry       |
@@ -250,6 +259,11 @@ The Excel surface is exported from `pyofficeeditor.excel`:
 | `ChartSheet` | `excel/_charts.py` | a tab that is one chart and holds no cells |
 | `PivotTable` | `excel/_pivots.py` | where a pivot table is, and what its cache was read from |
 | `format_value` | `excel/_numfmt.py` | the text Excel shows for a value under a format code |
+| `Calculation` | `excel/_calc/engine.py` | what `Workbook.calculate()` did, and which formulas kept their cached value |
+| `FormulaSyntaxError` | `excel/_calc/lexer.py` | formula text Excel would refuse, and where |
+
+`UnsupportedFormulaError`, in `exceptions.py`, is what `Worksheet.evaluate`
+raises for a formula needing something the engine does not have.
 
 `opc.py` also exports the path helpers (`normalize_part_name`,
 `rels_part_for`, `resolve_target`, `relative_target`) and the content-type
@@ -358,10 +372,14 @@ tests/
   test_excel_chartbuild.py      charts added, against the parts Excel
                                 wrote for the same charts
   test_excel_dxf.py             differential formats and the dxfs table
+  test_excel_calc.py            the formula parser, Excel's arithmetic,
+                                and calculating a whole workbook
+  test_excel_formula_corpus.py  every formula in formulas.xlsx,
+                                calculated and held to Excel's result
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               twenty-one Excel-authored packages:
                                 three sourced, eighteen scripted, and
-                                two measured corpora; see its README
+                                three measured corpora; see its README
 ```
 
 - **Always** run pytest with `-p no:randomly` to keep ordering reproducible.
@@ -376,9 +394,10 @@ tests/
   rules.
 - Richer Excel-authored fixtures come from
   `scripts/build_excel_fixtures.py`, which drives real Excel through
-  `pyvbaharness`. Tests needing them skip when they are absent. The two
-  measured corpora come from `scripts/measure_number_formats.py` and
-  `scripts/measure_filters.py` the same way.
+  `pyvbaharness`. Tests needing them skip when they are absent. The three
+  measured corpora come from `scripts/measure_number_formats.py`,
+  `scripts/measure_filters.py` and `scripts/measure_formulas.py` the same
+  way.
 
 ### 8.1 The fidelity gate
 
@@ -716,6 +735,28 @@ only. Get it wrong and the cursor sits in a pane the user cannot see. The
 Note that `ActiveWindow.SplitRow` and `SplitColumn` are *not* how to verify a
 freeze: a workbook Excel froze itself reports 0 for both, so they discriminate
 nothing. `Panes.Count` and where `VisibleRange` starts do.
+
+**A formula's value is Excel's arithmetic, not IEEE's.** The engine in
+`excel/_calc` is held to `formulas.xlsx`, where each of 10,958 formulas sits
+beside the value Excel calculated for it, and what that corpus pinned down
+is written into the modules that follow it. Equality reads both sides to
+fifteen digits. A formula's last `+` or `-`, and SUM's last addition, give
+0 under eight units in the last place of the left operand, which the
+corpus found by measuring each pair of numbers both ways round. A number
+literal or a number read from text keeps fifteen digits, cut. Arithmetic
+reproduces the x87 unit Excel computes in (`precise.py`): each operation
+rounds to 64 bits and then to 53, so `8^(-1/3)` is exactly 0.5 though
+`1/1.9999999999999998` is not, EXP and LN follow F2XM1 and FYL2X, and SIN,
+COS and TAN reduce with pi to 64 bits. Sums run in order through
+`precise.summed`, never Python's `sum`, which compensates from 3.12 on.
+Where the corpus narrowed a function to a few units in the last place
+without fixing it, the test says so by name.
+
+The engine calculates without recursion. Reading a cell whose formula is
+not calculated raises `PendingCellsError` naming every such cell the read
+touched; those go on an explicit stack and the reader is tried again.
+A range read names all its uncalculated cells at once, so a SUM over a
+column of formulas retries once, not once per cell.
 
 ### 8.3 The live gate
 

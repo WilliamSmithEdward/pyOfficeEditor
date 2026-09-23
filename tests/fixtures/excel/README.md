@@ -69,20 +69,22 @@ spelled three ways, and the off state is -4146 rather than 0.
 
 ## Measured by script
 
-Two corpora record what Excel did rather than what it wrote, and each case
-in them is a test. Both came from Excel 16.0 build 20326 in en-US. The
-first script runs beside other harness sessions, since it only runs
-hidden macros; the second waits for the lock like the fixture builder.
+Three corpora record what Excel did rather than what it wrote, and each case
+in them is a test. All three came from Excel 16.0 build 20326 in en-US. The
+first two scripts run beside other harness sessions, since they only run
+hidden macros; the third waits for the lock like the fixture builder.
 
 | File | Built by | What it records |
 |------|----------|-----------------|
+| `formulas.xlsx` | `scripts/measure_formulas.py` | 10,958 formulas on 115 sheets, each sheet named for what it probes, and the value Excel calculated for each. The inputs, sixteen sheets such as `Numbers`, `Pairs` and `Powers`, were written by this library as exact doubles into a copy of `empty.xlsx`; Excel then typed in the formulas, calculated and saved. `About` records the build and the day it was measured, which a text naming a day without a year needs. `test_excel_formula_corpus.py` calculates every formula and holds it to Excel's result. |
 | `number_formats.json` | `scripts/measure_number_formats.py` | The text Excel showed for 503 format codes, each under 21 to 73 values, 27,898 texts in all across both date systems, and the nine codes it refused; the code of all 164 built-in ids with its text for five sample values; and the text of 782 cells of the committed fixtures. `test_excel_numfmt.py` renders every one. |
 | `filter_semantics.json` | `scripts/measure_filters.py` | 358 criteria, each applied by Excel to one of 31 columns built to trip it, with the rows it hid and the markup it stored. 261 went through the object model; 93 were written straight into a package and applied from the file, for markup the object model will not write; 4 are special cases, such as rows hidden by hand. `test_excel_filter_semantics.py` evaluates every one. |
 
-Rebuilding either of them replaces it, since a corpus has no content to
-keep: what it holds is whatever Excel answers. The dates in
+Rebuilding any of them replaces it, since a corpus has no content to keep:
+what it holds is whatever Excel answers. The dates in
 `filter_semantics.json` are relative to the day it was built, which it
-records, and its tests measure "today" from that day.
+records, and its tests measure "today" from that day; `formulas.xlsx` does
+the same for the texts in it that name a day without a year.
 
 A fixture that already exists is left alone, because Excel stamps every part
 with a fresh revision GUID and so never produces the same bytes twice.

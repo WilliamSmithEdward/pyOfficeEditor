@@ -29,10 +29,16 @@ class PackageError(PyOfficeEditorError):
     a content type that cannot be resolved."""
 
 
+class UnsupportedFormulaError(PyOfficeEditorError):
+    """A formula the library cannot calculate: one that calls a function it
+    does not implement, or reads another workbook."""
+
+
 __all__ = [
     "PackageError",
     "PyOfficeEditorError",
     "UnsupportedFormatError",
+    "UnsupportedFormulaError",
     "XmlError",
     "ZipError",
 ]

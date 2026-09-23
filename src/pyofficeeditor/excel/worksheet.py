@@ -31,6 +31,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._calc.engine import Engine
+from pyofficeeditor.excel._calc.values import Empty
 from pyofficeeditor.excel._chartbuild import CHART_KINDS, CT_CHART, ChartKind, SeriesData, chart_frame, chart_part
 from pyofficeeditor.excel._charts import RT_CHART, Chart, charts_in_drawing
 from pyofficeeditor.excel._comments import (
@@ -422,6 +424,11 @@ class Worksheet:
         element = self._find_cell(reference)
         if element is None:
             return None
+        return self.formula_of(element, reference)
+
+    def formula_of(self, element: Element, reference: CellRef) -> str | None:
+        """The formula a ``<c>`` element of this sheet holds, as
+        :meth:`get_formula` gives it, for a caller walking the elements."""
         formula = element.child("f")
         if formula is None:
             return None
@@ -438,6 +445,24 @@ class Worksheet:
             return None
         master_cell, master_text = master
         return decode(shared_formula_for(master_text, master_cell, reference))
+
+    def cell_elements(self) -> Iterator[tuple[CellRef, Element]]:
+        """Every ``<c>`` element the sheet has, in reading order, with its
+        address. A cell whose ``r`` Excel could not have written is left
+        out."""
+        for number in sorted(self._rows):
+            for element in self._rows[number].children_named("c"):
+                raw = element.get("r")
+                if raw is None:
+                    continue
+                try:
+                    yield CellRef.parse(raw), element
+                except ValueError:
+                    continue
+
+    def cell_element(self, reference: CellRef) -> Element:
+        """The ``<c>`` element of a cell, created if the sheet has none."""
+        return self._ensure_cell(reference)
 
     def set_formula(self, reference: CellRef, formula: str | None) -> None:
         """Put a formula in a cell, or remove the one it has.
@@ -459,6 +484,33 @@ class Worksheet:
         node.set_text(encode_text(formula[1:] if formula.startswith("=") else formula))
         element.insert(0, node)
         self._invalidate()
+
+    def evaluate(
+        self,
+        formula: str,
+        at: str | CellRef = "A1",
+        *,
+        today: dt.date | None = None,
+        now: dt.datetime | None = None,
+    ) -> CellValue:
+        """What ``formula`` gives in a cell of this sheet, without putting it
+        there: ``sheet.evaluate("SUM(B2:B9)")``.
+
+        The cell matters where a range stands for one value, as in
+        ``=A1:A10*2``, which takes the row of ``at``, and to ROW() and the
+        like. Formulas the workbook's cells hold are calculated as needed,
+        not taken from their cached values. Raises ``FormulaSyntaxError``
+        for text Excel would refuse, and ``UnsupportedFormulaError`` when
+        the formula needs something the engine does not have.
+        """
+        cell = CellRef.parse(at) if isinstance(at, str) else at
+        value = Engine(self._workbook, today=today, now=now).evaluate(formula, self._name, cell.row, cell.column)
+        if isinstance(value, Empty):
+            return 0
+        if isinstance(value, float) and value.is_integer() and abs(value) < 2**53:
+            # As the cell would read back once saved.
+            return int(value)
+        return value
 
     def get_text(self, reference: CellRef) -> str:
         """The text Excel shows for a cell: its value under its number format.

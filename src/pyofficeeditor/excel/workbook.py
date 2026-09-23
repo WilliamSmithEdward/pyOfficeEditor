@@ -24,10 +24,12 @@ Excel itself does when it cannot trust the cache. Excel rebuilds both.
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 from pyofficeeditor._xml import Element
+from pyofficeeditor.excel._calc.engine import Calculation, Engine
 from pyofficeeditor.excel._cellstyles import (
     ASPECTS,
     DEFAULT_BODY_FONT,
@@ -1040,6 +1042,32 @@ class Workbook:
             return None
         target = found[0].target_part
         return target if self._package.has_part(target) else None
+
+    # ------------------------------------------------------------------
+    # Calculation
+    # ------------------------------------------------------------------
+
+    def calculate(self, *, today: dt.date | None = None, now: dt.datetime | None = None) -> Calculation:
+        """Calculate every formula and store each result in its cell, as
+        Excel's own recalculation would.
+
+        ``today`` and ``now`` are the moment TODAY and NOW see, and the year
+        a date typed without one, such as ``"1/15"``, falls in; they default
+        to the clock's.
+
+        A formula the engine cannot calculate, because it calls a function
+        the engine does not have or reads another workbook, keeps the value
+        Excel cached for it, and so does every formula that reads it; the
+        result says which. The file is still saved with ``fullCalcOnLoad``,
+        so Excel recalculates it on opening anyway.
+        """
+        engine = Engine(self, today=today, now=now)
+        engine.calculate()
+        engine.write()
+        report = engine.report()
+        self.mark_changed()
+        self._values_changed = not report.complete
+        return report
 
     # ------------------------------------------------------------------
     # Saving

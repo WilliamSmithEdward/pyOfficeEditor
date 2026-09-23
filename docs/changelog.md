@@ -22,6 +22,66 @@ anything trailing the file is swept into the oldest release's notes. -->
 
 ### Added
 
+- **A formula engine.** `Workbook.calculate()` calculates every formula
+  and writes each result into its cell as Excel's own recalculation
+  would; `Worksheet.evaluate("SUM(B2:B9)", at="C1")` gives what a formula
+  would give in a cell without putting it there. Formulas read one
+  another in whatever order their inputs allow, on an explicit stack, so
+  a column of thousands of running totals calculates without deep
+  recursion; a circular reference keeps the values Excel cached.
+
+  Behind them are a parser for formula text as a file stores it, sheet
+  qualifiers, 3D references, whole rows and columns, structured
+  references, array constants and the reference operators included, and
+  an evaluator with Excel's precedence (`-2^2` is 4, `2^3^2` is 64), its
+  implicit intersection of a range where one value is wanted, array
+  formulas, defined names, tables, `INDIRECT` and `OFFSET`, and 493 of
+  Excel's 525 functions: math and trigonometry, statistics and the
+  distributions, financial, engineering, text, information, lookup and
+  reference, dates and times, the database functions, the dynamic array
+  functions but `GROUPBY` and `PIVOTBY`, and `LET` and `LAMBDA` with its
+  helpers.
+
+  Every result is held to Excel, in `formulas.xlsx`: 10,958 formulas Excel
+  typed in and calculated over inputs written here as exact doubles, and
+  the engine gives the value Excel cached for each, to the last bit where
+  the corpus can tell. That settled rules no reference states. A number
+  becomes text with fifteen digits, plain while it fits in twenty
+  characters. `=` compares numbers read to fifteen digits, so
+  `0.1+0.2=0.3`. A formula's last `+` or `-` gives 0 when the result is
+  under eight units in the last place of its left operand, and so does
+  SUM's last addition, while `(0.1+0.2-0.3)` keeps its rounding error.
+  Text reads as a number the way typing it would, `"$1,000"`, `"(5)"`,
+  `"1 1/2"`, `"12:30 PM"` and `"Jan 15, 2020"` among them, fifteen digits
+  cut, not rounded. `^` is square-and-multiply for a whole exponent and
+  takes a negative one's reciprocal in an x87 register, SIN, COS and TAN
+  reduce with pi to 64 bits, and ROUNDUP adds its step in floating point:
+  `ROUNDUP(2.675,2)` is `2.6799999999999997`.
+
+  Arithmetic is the x87's, as Excel's is: every `+`, `-`, `*`, `/` and
+  square root rounds to a 64-bit mantissa and then to a double, and EXP
+  and LN follow the x87's own instructions to the bit. Where the corpus
+  pinned an algorithm down the engine uses it: GAMMALN from 8 up is
+  Stirling's series to ten terms, and below 8 is reduced into [2, 3)
+  by the logarithm of a product; the normal density multiplies
+  `EXP(-z*z/2)` by 1/sqrt(2 pi) as a double; ERF, ERFC and NORM.S.DIST
+  square their argument to a double before the error function, which is
+  most of how far Excel's tail values are from the exact ones; LINEST
+  takes a Householder QR of a column of ones followed by the centred
+  data. Where Excel's own approximation is not yet reproduced, as for
+  the error and incomplete gamma and beta functions and GAMMALN from 0.7
+  to 3, the engine gives the double nearest the exact value, and the
+  corpus test records how many units in the last place each function
+  may be from Excel's. Sums run in order, never through Python's `sum`,
+  which compensates from Python 3.12 on and would make a result depend
+  on the interpreter.
+
+  A function the engine does not have, a reference to another workbook
+  or a data table keeps its cell's cached value, and so does everything
+  that reads it; the `Calculation` that `calculate()` returns lists
+  them, and only a complete calculation makes the cached values trusted
+  again. `Worksheet.evaluate` raises `UnsupportedFormulaError` instead.
+
 - **Autofilters, on a sheet and on a table.** Every criterion Excel's
   object model sets is read and written, colour and icon aside: value
   lists and blanks, date groups from a year down to a second, one or two
@@ -372,7 +432,7 @@ Button and nothing else, so it could prove none of this.
 `filters_answers.json` recording how many rows Excel hid on each, and
 `comments.xlsx` a third, with notes of every shape and
 `comments_answers.json` recording what Excel's object model said of each,
-and `pictures.xlsx` a fourth, with `pictures_answers.json`, and
+`pictures.xlsx` a fourth, with `pictures_answers.json`, and
 `richtext.xlsx` a fifth, with `richtext_answers.json` recording the font
 Excel reported at every change in its text, and `escapes.xlsx` a sixth,
 with text XML cannot carry as it is everywhere a workbook keeps text and
@@ -382,16 +442,23 @@ with text XML cannot carry as it is everywhere a workbook keeps text and
 each style includes, and `charts.xlsx` an eighth, with charts on three
 kinds of sheet and `charts_answers.json` recording every reference in them
 as Excel wrote it, before any edit and after each of nine. Those are read
-from the files Excel saved: its object model reports a deleted reference
-by its old address, and once the file is reopened refuses to report the
-series at all. `pivots.xlsx` is a ninth, two pivot tables reading one
-range, with `pivots_answers.json` recording where each was and what its
-cache read after each of nineteen edits, or that Excel refused the edit,
-and `chartkinds.xlsx` a tenth, one chart of each kind Excel's Insert Chart
-makes, the markup a chart added here is held to. `filter_semantics.json`
-and `number_formats.json` are new measured corpora, rebuilt by
-`scripts/measure_filters.py` and `scripts/measure_number_formats.py` on a
-machine with Excel; every case in them is a test.
+from the files Excel saved: its object model reports a deleted reference by
+its old address, and once the file is reopened refuses to report the series
+at all. `pivots.xlsx` is a ninth, two pivot tables reading one range, with
+`pivots_answers.json` recording where each was and what its cache read
+after each of nineteen edits, or that Excel refused the edit, and
+`chartkinds.xlsx` a tenth, one chart of each kind Excel's Insert Chart
+makes, the markup a chart added here is held to.
+`filter_semantics.json` and `number_formats.json` are new measured
+corpora, rebuilt by `scripts/measure_filters.py` and
+`scripts/measure_number_formats.py` on a machine with Excel; every case
+in them is a test. `formulas.xlsx` is a third, rebuilt by
+`scripts/measure_formulas.py`: every formula in it is calculated by the
+engine and has to give what Excel cached.
+
+Measuring it turned up one more refusal: Excel will not open a file whose
+formula holds a number it cannot hold, such as `1E-320` or `1.8E+308`,
+although a cell's value that small opens.
 
 ### Internal
 
@@ -476,6 +543,27 @@ stands behind, as Excel writes someone who is not signed in. Excel names
 the signed-in account in its own, which is also why no Excel-authored
 thread is committed as a fixture: the tests hold the reader to Excel's
 measured markup with the person replaced.
+
+The formula engine calculates in the en-US locale the corpus was measured
+in, which decides the dates text reads as: `"1/2/2020"` is 2 January. A
+formula that spills is calculated over the block its file records, which
+is not grown or shrunk to fit. Thirty-two of Excel's functions are not
+implemented, and a cell calling one keeps its cached value: those that
+reach outside the workbook, `WEBSERVICE`, `FILTERXML`, `RTD`,
+`STOCKHISTORY`, `TRANSLATE`, `DETECTLANGUAGE`, `IMAGE`, `PY`, `CALL`,
+`REGISTER.ID` and the seven cube functions, and `GETPIVOTDATA`,
+`GROUPBY`, `PIVOTBY`, the four `FORECAST.ETS` functions, the four
+odd-period bond functions, `BAHTTEXT`, `EUROCONVERT`, `INFO` and
+`PHONETIC`.
+
+Where Excel's own approximation is not yet reproduced, a result may be a
+few units in the last place from Excel's, and the corpus test names each
+such function with the most it may differ by: SINH, TANH and ASIN below 1
+and the functions built on them, the PMT family, the error and gamma
+functions, most of the statistical distributions and the tests and
+intervals built on them, LINEST past three points and TREND with it, and
+GEOMEAN. RATE, IRR, XIRR and YIELD converge further than Excel's
+iteration goes, and agree with it to a relative 1e-12, XIRR to 1e-8.
 
 ## [0.2.2] - 2026-09-20
 

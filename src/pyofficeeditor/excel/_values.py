@@ -341,6 +341,45 @@ def _format_for(value: dt.datetime | dt.date | dt.time) -> str:
     return ISO_DATE_FORMAT
 
 
+def write_cached(cell: Element, value: str | float | bool | CellError | None) -> None:
+    """Put a formula's result into its cell, keeping the formula.
+
+    Text is stored in the cell as ``t="str"``, not in the shared string
+    table, as Excel stores a formula's text; an empty text is an empty
+    ``<v/>``. ``None`` leaves the cell with its formula and no result.
+    """
+    for name in ("v", "is"):
+        existing = cell.child(name)
+        while existing is not None:
+            cell.remove(existing)
+            existing = cell.child(name)
+    if value is None:
+        cell.unset("t")
+        return
+    if isinstance(value, bool):
+        cell.set("t", "b")
+        text = "1" if value else "0"
+    elif isinstance(value, CellError):
+        cell.set("t", "e")
+        text = value.code
+    elif isinstance(value, str):
+        cell.set("t", "str")
+        text = encode_text(value)
+    else:
+        cell.unset("t")
+        text = format_number(value)
+    element = Element.create("v")
+    element.set_text(text)
+    formula = cell.child("f")
+    extensions = cell.child("extLst")
+    if extensions is not None:
+        cell.insert_before(extensions, element)
+    elif formula is not None:
+        cell.insert_after(formula, element)
+    else:
+        cell.append(element)
+
+
 def write_shared_index(cell: Element, index: int) -> None:
     """Point a cell at a shared string by index, as :func:`write_value`
     does for text, for an entry written some other way, such as runs."""
@@ -380,6 +419,7 @@ __all__ = [
     "parse_number",
     "read_value",
     "serial_to_datetime",
+    "write_cached",
     "write_shared_index",
     "write_value",
 ]
