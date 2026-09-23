@@ -25,6 +25,7 @@ process id even if a step wedges.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -601,6 +602,7 @@ def build_answers(session: object, source: str, target: Path, label: str, *, for
 def main() -> int:
     try:
         from pyvbaharness import ExcelSession
+        from pyvbaharness.session import HarnessConfig
     except ImportError:
         print(
             'pyvbaharness is not installed. Install the live extra:\n'
@@ -608,6 +610,9 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+    # Seconds to wait for another session to finish with Excel, as the live
+    # gate waits; by default the build does not wait.
+    wait = float(os.environ.get("LIVE_EXCEL_LOCK_WAIT", "0"))
 
     force = "--force" in sys.argv
     wanted = [
@@ -632,7 +637,7 @@ def main() -> int:
 
     FIXTURES.mkdir(parents=True, exist_ok=True)
     print(f"authoring fixtures in {FIXTURES}")
-    with ExcelSession() as excel:
+    with ExcelSession(HarnessConfig(lock_wait_s=wait)) as excel:
         for name, source in wanted:
             excel.new_workbook()
             build(excel, source, FIXTURES / name, name, force=force)

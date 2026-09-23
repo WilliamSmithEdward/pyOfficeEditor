@@ -34,7 +34,8 @@ previous one's teardown and fails intermittently. Office automation is
 sequential by contract, so these tests share a single Excel instance: it is
 also three times faster. If the lock is genuinely held by other work on the
 machine, the fixture skips rather than fails, because that is not a defect in
-the code under test.
+the code under test. ``LIVE_EXCEL_LOCK_WAIT`` gives it that many seconds to
+wait for the other work to finish first.
 """
 
 from __future__ import annotations
@@ -80,11 +81,15 @@ def excel() -> Iterator[object]:
     """One Excel instance for every test in this module."""
     try:
         from pyvbaharness import ExcelSession, SessionLockHeld
+        from pyvbaharness.session import HarnessConfig
     except ImportError:  # pragma: no cover - depends on the environment
         pytest.skip('pyvbaharness is not installed; pip install -e ".[dev]" --group live')
 
+    # How long to wait for another session to finish with Excel, in seconds;
+    # by default the gate does not wait.
+    wait = float(os.environ.get("LIVE_EXCEL_LOCK_WAIT", "0"))
     try:
-        session = ExcelSession()
+        session = ExcelSession(HarnessConfig(lock_wait_s=wait))
     except SessionLockHeld as exc:  # pragma: no cover - depends on the machine
         pytest.skip(f"another pyvbaharness session holds the Excel lock: {exc}")
 
