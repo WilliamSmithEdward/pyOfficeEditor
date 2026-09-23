@@ -148,6 +148,18 @@ anything trailing the file is swept into the oldest release's notes. -->
   fill and keeps the decimals and the centring. A cell's own `apply...`
   flags now mark what differs from its style, as Excel marks them.
 
+- **Charts, read**: `Worksheet.charts` and `ChartSheet.chart` give each
+  chart's kind, its series with where each takes its name, categories and
+  values, and its title, as `Chart` and `ChartSeries`. A series' `formula`
+  is the one Excel's formula bar shows, `=SERIES(Data!$B$1,...,1)`, the
+  same character for character for every chart in `charts.xlsx`.
+
+- **Chart sheets**, `Workbook.chart_sheets` and `chart_sheet`, as
+  `ChartSheet`. They keep their place among the tabs, in `sheet_names` and
+  in the positions a defined name's scope and the active tab count by, and
+  can be renamed, moved and removed. `sheets`, iteration and `book[0]` are
+  the worksheets, and `Workbook.active` may be a chart sheet.
+
 - **What a form control is wired to.** `Shape.control` carries the linked
   cell, the list range, the current value and which kind of control it
   is, read from the part the sheet points at. `Shape` and `ShapeKind`
@@ -268,6 +280,23 @@ anything trailing the file is swept into the oldest release's notes. -->
   when it makes a table, measured for each such character. `add_table`
   does the same.
 
+- **Inserting or deleting rows or columns left charts reading the old
+  cells.** A chart's references were not moved at all, so a series kept
+  reading the rows it read before an insertion above it. Every chart in the
+  workbook moves now, on any sheet or a chart sheet, as Excel moves it,
+  measured edit by edit: a series grows with rows inserted inside it and
+  shrinks with rows deleted from it, and one deleted outright is written
+  `Data!#REF!`, as is a title linked to a deleted cell. Renaming a sheet
+  renames it in every chart too.
+
+- **A chart sheet was opened as a worksheet.** Writing a cell or inserting
+  a row there would have put cells in a part that holds a chart.
+
+- **Removing a sheet left its drawing, charts, comments and the like
+  behind** in the package, unused. Every part only that sheet used goes
+  with it now, as it does when Excel saves; a picture another sheet also
+  shows stays.
+
 - **`Worksheet.rename` did not rename the sheet.** It changed the name
   the object reported and nothing in the file, so the two disagreed and
   every formula still named the old sheet. It does what
@@ -324,8 +353,13 @@ with text XML cannot carry as it is everywhere a workbook keeps text and
 `escapes_answers.json` recording each character Excel read back, and
 `styles.xlsx` a seventh, every built-in cell style applied by Excel, with
 `styles_answers.json` recording what Excel showed for each cell and what
-each style includes. `filter_semantics.json` and `number_formats.json` are
-new measured corpora, rebuilt by `scripts/measure_filters.py` and
+each style includes, and `charts.xlsx` an eighth, with charts on three
+kinds of sheet and `charts_answers.json` recording every reference in them
+as Excel wrote it, before any edit and after each of nine. Those are read
+from the files Excel saved: its object model reports a deleted reference
+by its old address, and once the file is reopened refuses to report the
+series at all. `filter_semantics.json` and `number_formats.json` are new
+measured corpora, rebuilt by `scripts/measure_filters.py` and
 `scripts/measure_number_formats.py` on a machine with Excel; every case in
 them is a test.
 

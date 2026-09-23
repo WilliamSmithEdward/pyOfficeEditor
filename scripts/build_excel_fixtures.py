@@ -24,10 +24,14 @@ process id even if a step wedges.
 
 from __future__ import annotations
 
+import html
 import json
 import os
+import posixpath
+import re
 import struct
 import sys
+import zipfile
 import zlib
 from collections.abc import Callable
 from pathlib import Path
@@ -1072,6 +1076,137 @@ Public Function Build(ByVal Target As String) As String
 End Function
 '''
 
+#: Charts on a data sheet, on another sheet and on a chart sheet: columns
+#: with a typed title, a line over two areas, a pie whose title is linked
+#: to a cell, a scatter, and bars. After the workbook is saved, each edit a
+#: chart's references have to follow is made on a fresh copy by Excel and
+#: saved to the temporary folder. The references are read from those files
+#: rather than from Excel's object model, which reports a deleted reference
+#: by its old address until the file is reopened, and then refuses to
+#: report the series at all. The reply is each chart's series formulas and
+#: title before any edit, and where each edited file is.
+_BUILD_CHARTS = r'''
+Private Function Report(ByVal wb As Workbook, ByVal label As String) As String
+    Dim out As String
+    Dim co As ChartObject
+    Dim ws As Worksheet
+    Dim ch As Chart
+    For Each ws In wb.Worksheets
+        For Each co In ws.ChartObjects
+            out = out & label & "|" & ws.Name & "/" & co.Name & "|" & Series(co.Chart) & vbLf
+        Next co
+    Next ws
+    For Each ch In wb.Charts
+        out = out & label & "|" & ch.Name & "|" & Series(ch) & vbLf
+    Next ch
+    Report = out
+End Function
+
+Private Function Series(ByVal ch As Chart) As String
+    Dim s As Series
+    Dim out As String
+    For Each s In ch.SeriesCollection
+        out = out & s.Formula & ";"
+    Next s
+    out = out & "|"
+    If ch.HasTitle Then out = out & ch.ChartTitle.Formula
+    Series = out
+End Function
+
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim rep As Worksheet
+    Dim co As ChartObject
+    Dim cs As Chart
+    Dim r As Long
+    Dim out As String
+    Dim ops As Variant
+    Dim i As Long
+    Dim again As Workbook
+    Dim edited As String
+    Dim base As String
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Data"
+    ws.Range("A1:D1").Value = Array("Month", "Sales", "Costs", "Profit")
+    For r = 2 To 6
+        ws.Cells(r, 1).Value = "M" & CStr(r - 1)
+        ws.Cells(r, 2).Value = r * 10
+        ws.Cells(r, 3).Value = r * 4
+        ws.Cells(r, 4).Formula = "=B" & CStr(r) & "-C" & CStr(r)
+    Next r
+
+    Set co = ws.ChartObjects.Add(Left:=300, Top:=10, Width:=300, Height:=200)
+    co.Name = "Columns"
+    co.Chart.ChartType = xlColumnClustered
+    co.Chart.SetSourceData Source:=ws.Range("A1:C6")
+    co.Chart.HasTitle = True
+    co.Chart.ChartTitle.Text = "Plain title"
+
+    Set co = ws.ChartObjects.Add(Left:=300, Top:=220, Width:=300, Height:=200)
+    co.Name = "Line"
+    co.Chart.ChartType = xlLine
+    co.Chart.SetSourceData Source:=ws.Range("A1:A6,D1:D6")
+
+    Set rep = wb.Worksheets.Add(After:=ws)
+    rep.Name = "Report"
+    Set co = rep.ChartObjects.Add(Left:=10, Top:=10, Width:=300, Height:=200)
+    co.Name = "Pie"
+    co.Chart.ChartType = xlPie
+    co.Chart.SetSourceData Source:=ws.Range("A1:B6")
+    co.Chart.HasTitle = True
+    co.Chart.ChartTitle.Formula = "=Data!$B$1"
+
+    Set co = rep.ChartObjects.Add(Left:=10, Top:=220, Width:=300, Height:=200)
+    co.Name = "Scatter"
+    co.Chart.ChartType = xlXYScatter
+    co.Chart.SetSourceData Source:=ws.Range("B1:C6")
+
+    Set cs = wb.Charts.Add(After:=wb.Sheets(wb.Sheets.Count))
+    cs.Name = "Bars"
+    cs.ChartType = xlBarClustered
+    cs.SetSourceData Source:=ws.Range("A1:B6")
+
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+
+    ' The fixture stays open as the active workbook, so everything is read
+    ' from a copy of it opened afresh, as each edit's result is. The copies
+    ' go in the temporary folder, so a build that fails leaves none beside
+    ' the fixtures.
+    base = Environ("TEMP") & "\pyofficeeditor_charts_base.xlsx"
+    wb.SaveCopyAs base
+    Set again = Workbooks.Open(base)
+    out = Report(again, "base")
+    again.Close SaveChanges:=False
+    out = out & "file|base|" & base & vbLf
+    ops = Array("insert rows 3:4", "insert row 1", "delete row 4", "delete rows 2:6", "delete row 1", _
+                "insert column B", "delete column C", "delete column A", "rename Data")
+    For i = 0 To UBound(ops)
+        Set again = Workbooks.Open(base)
+        Select Case ops(i)
+            Case "insert rows 3:4": again.Worksheets("Data").Rows("3:4").Insert
+            Case "insert row 1": again.Worksheets("Data").Rows(1).Insert
+            Case "delete row 4": again.Worksheets("Data").Rows(4).Delete
+            Case "delete rows 2:6": again.Worksheets("Data").Rows("2:6").Delete
+            Case "delete row 1": again.Worksheets("Data").Rows(1).Delete
+            Case "insert column B": again.Worksheets("Data").Columns("B").Insert
+            Case "delete column C": again.Worksheets("Data").Columns("C").Delete
+            Case "delete column A": again.Worksheets("Data").Columns("A").Delete
+            Case "rename Data": again.Worksheets("Data").Name = "Q1 Data"
+        End Select
+        edited = Environ("TEMP") & "\pyofficeeditor_charts_" & CStr(i) & ".xlsx"
+        again.SaveAs Filename:=edited, FileFormat:=51
+        again.Close SaveChanges:=False
+        out = out & "file|" & ops(i) & "|" & edited & vbLf
+    Next i
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+'''
+
 #: What each field of a described cell is.
 _STYLE_FIELDS = (
     "style", "number_format", "font_name", "font_size", "bold", "italic", "font_color",
@@ -1178,6 +1313,77 @@ def richtext_answers(reply: str) -> Answers:
             })
         answers[address] = {"runs": runs}
     return answers
+
+
+def chart_answers(reply: str) -> Answers:
+    """Each chart's series formulas and title before any edit, as Excel's
+    object model gave them, and each chart's references, as Excel wrote
+    them, in the file saved before any edit and in each saved after one.
+    The files are in the temporary folder and are removed once read."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        if parts[0] == "file":
+            _, state, where = parts
+            path = Path(where)
+            for chart, references in _chart_references(path).items():
+                answers[f"{state}|{chart}"] = {"references": references}
+            path.unlink()
+            continue
+        state, chart, series, title = parts
+        answers[f"reported {state}|{chart}"] = {
+            "series": [formula for formula in series.split(";") if formula],
+            "title": title,
+        }
+    return answers
+
+
+def _chart_references(path: Path) -> dict[str, list[str]]:
+    """Every chart in a workbook, as ``Sheet/Name`` or a chart sheet's
+    name, and the references in its part in the order the part holds them.
+
+    Read with nothing but the archive and a few patterns, following each
+    sheet's drawing to the chart parts it names, so the answers owe nothing
+    to the library they are there to check.
+    """
+
+    def text(package: zipfile.ZipFile, part: str) -> str:
+        return package.read(part).decode("utf-8")
+
+    def targets(package: zipfile.ZipFile, part: str) -> dict[str, str]:
+        folder, _, name = part.rpartition("/")
+        rels = f"{folder}/_rels/{name}.rels"
+        if rels not in package.namelist():
+            return {}
+        found: dict[str, str] = {}
+        for entry in re.findall(r"<Relationship\b[^>]*>", text(package, rels)):
+            identifier = re.search(r'\bId="([^"]*)"', entry)
+            target = re.search(r'\bTarget="([^"]*)"', entry)
+            if identifier and target:
+                found[identifier.group(1)] = posixpath.normpath(posixpath.join(folder, target.group(1)))
+        return found
+
+    charts: dict[str, list[str]] = {}
+    with zipfile.ZipFile(path) as package:
+        books = targets(package, "xl/workbook.xml")
+        for entry in re.findall(r"<sheet\b[^>]*>", text(package, "xl/workbook.xml")):
+            name = html.unescape(re.search(r'\bname="([^"]*)"', entry).group(1))  # type: ignore[union-attr]
+            sheet_part = books[re.search(r'\br:id="([^"]*)"', entry).group(1)]  # type: ignore[union-attr]
+            for drawing in targets(package, sheet_part).values():
+                if "/drawings/" not in drawing or not drawing.endswith(".xml"):
+                    continue
+                drawn = targets(package, drawing)
+                for frame in re.findall(r"<xdr:graphicFrame\b.*?</xdr:graphicFrame>", text(package, drawing), re.S):
+                    chart = re.search(r'<c:chart\b[^>]*\br:id="([^"]*)"', frame)
+                    frame_name = re.search(r'<xdr:cNvPr\b[^>]*\bname="([^"]*)"', frame)
+                    if chart is None or frame_name is None:
+                        continue
+                    references = re.findall(r"<(?:\w+:)?f>(.*?)</(?:\w+:)?f>", text(package, drawn[chart.group(1)]))
+                    key = name if "/chartsheets/" in sheet_part else f"{name}/{html.unescape(frame_name.group(1))}"
+                    charts[key] = [html.unescape(reference) for reference in references]
+    return charts
 
 
 def style_answers(reply: str) -> Answers:
@@ -1319,6 +1525,7 @@ def main() -> int:
         ("richtext.xlsx", _BUILD_RICHTEXT, richtext_answers),
         ("escapes.xlsx", _BUILD_ESCAPES, escape_answers),
         ("styles.xlsx", _BUILD_STYLES, style_answers),
+        ("charts.xlsx", _BUILD_CHARTS, chart_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]

@@ -37,6 +37,7 @@ from pyofficeeditor.excel._cellstyles import (
     builtin_style,
     is_builtin_name,
 )
+from pyofficeeditor.excel._charts import RT_CHARTSHEET, ChartSheet
 from pyofficeeditor.excel._comments import CT_PERSONS, EMPTY_PERSONS, RT_PERSONS, new_id, read_persons
 from pyofficeeditor.excel._formats import CellFormat
 from pyofficeeditor.excel._formulas import rename_sheet_in_formula
@@ -48,6 +49,7 @@ from pyofficeeditor.excel._names import (
     write_defined_name,
 )
 from pyofficeeditor.excel._pictures import ImageInfo
+from pyofficeeditor.excel._rowcol import chart_parts
 from pyofficeeditor.excel._schema import WORKBOOK_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._shapes import vml_blocks
 from pyofficeeditor.excel._sharedstrings import (
@@ -152,6 +154,10 @@ class Workbook:
         self._workbook_part = package.main_document_part()
         self._document = package.xml(self._workbook_part)
         self._sheets: dict[str, Worksheet] = {}
+        self._chart_sheets: dict[str, ChartSheet] = {}
+        #: Every tab, in order: the worksheets and the chart sheets, since a
+        #: sheet's position counts both, in a defined name's scope and in
+        #: which tab is active.
         self._order: list[str] = []
         self._shared_strings: SharedStrings | None = None
         self._shared_strings_part: str | None = None
@@ -207,14 +213,18 @@ class Workbook:
             relationship_id = entry.get("r:id") or entry.get("id")
             if name is None or relationship_id is None:
                 continue
-            target = relationships.by_id(relationship_id).target_part
+            relationship = relationships.by_id(relationship_id)
+            target = relationship.target_part
             if not self._package.has_part(target):
                 raise PackageError(
                     f"sheet {name!r} points at {target!r} through {relationship_id}, "
                     f"but the package has no such part."
                 )
             self._order.append(name)
-            self._sheets[name] = Worksheet(self, name, target, self._package.xml(target))
+            if relationship.type == RT_CHARTSHEET:
+                self._chart_sheets[name] = ChartSheet(self, name, target, self._package.xml(target))
+            else:
+                self._sheets[name] = Worksheet(self, name, target, self._package.xml(target))
 
 
     def sheet_entry(self, name: str) -> Element:
@@ -250,31 +260,51 @@ class Workbook:
 
     @property
     def sheet_names(self) -> list[str]:
-        """Sheet names in the order Excel shows their tabs."""
+        """Every tab's name in the order Excel shows them, chart sheets
+        among them."""
         return list(self._order)
 
     @property
     def sheets(self) -> list[Worksheet]:
-        """The sheets, in tab order."""
-        return [self._sheets[name] for name in self._order]
+        """The worksheets, in tab order. A chart sheet holds no cells and is
+        in :attr:`chart_sheets` instead."""
+        return [self._sheets[name] for name in self._order if name in self._sheets]
+
+    @property
+    def chart_sheets(self) -> list[ChartSheet]:
+        """The chart sheets, in tab order."""
+        return [self._chart_sheets[name] for name in self._order if name in self._chart_sheets]
 
     def sheet(self, name: str) -> Worksheet:
-        """One sheet, by name."""
+        """One worksheet, by name."""
         try:
             return self._sheets[name]
         except KeyError:
+            if name in self._chart_sheets:
+                raise KeyError(f"{name!r} is a chart sheet, which holds no cells; see chart_sheet().") from None
             raise KeyError(
                 f"no sheet named {name!r}. The workbook has: {', '.join(self._order)}"
             ) from None
 
+    def chart_sheet(self, name: str) -> ChartSheet:
+        """One chart sheet, by name."""
+        try:
+            return self._chart_sheets[name]
+        except KeyError:
+            raise KeyError(
+                f"no chart sheet named {name!r}. The workbook has: {', '.join(self._order)}"
+            ) from None
+
     def __getitem__(self, key: str | int) -> Worksheet:
-        """``book["Data"]`` by name, or ``book[0]`` by tab position."""
+        """``book["Data"]`` by name, or ``book[0]`` by position among the
+        worksheets."""
         if isinstance(key, int):
+            worksheets = self.sheets
             try:
-                return self._sheets[self._order[key]]
+                return worksheets[key]
             except IndexError:
                 raise IndexError(
-                    f"sheet {key} is out of range; the workbook has {len(self._order)}"
+                    f"sheet {key} is out of range; the workbook has {len(worksheets)} worksheets"
                 ) from None
         return self.sheet(key)
 
@@ -285,11 +315,12 @@ class Workbook:
         return iter(self.sheets)
 
     def __len__(self) -> int:
-        return len(self._order)
+        return len(self._sheets)
 
     @property
-    def active(self) -> Worksheet:
-        """The sheet Excel will show when the workbook opens."""
+    def active(self) -> Worksheet | ChartSheet:
+        """The sheet Excel will show when the workbook opens, which may be
+        a chart sheet."""
         view = self._document.root.child("bookViews")
         index = 0
         if view is not None:
@@ -303,13 +334,14 @@ class Workbook:
                         index = 0
         if not 0 <= index < len(self._order):
             index = 0
-        return self._sheets[self._order[index]]
+        name = self._order[index]
+        return self._chart_sheets[name] if name in self._chart_sheets else self._sheets[name]
 
     @active.setter
-    def active(self, sheet: Worksheet | str) -> None:
+    def active(self, sheet: Worksheet | ChartSheet | str) -> None:
         """Choose the sheet Excel shows when the workbook opens."""
         name = sheet if isinstance(sheet, str) else sheet.name
-        if name not in self._sheets:
+        if name not in self._order:
             raise KeyError(f"no sheet named {name!r}. The workbook has: {', '.join(self._order)}")
         self._set_active_tab(self._order.index(name))
         self.mark_changed()
@@ -356,7 +388,9 @@ class Workbook:
         return sheet
 
     def remove_sheet(self, name: str) -> None:
-        """Delete a worksheet, its part, its relationship and its entry.
+        """Delete a worksheet or a chart sheet: its entry, its relationship,
+        its part, and every part only it used, such as its drawing and the
+        charts and pictures on it, which Excel does not write out either.
 
         A workbook must keep at least one sheet, so removing the last is
         refused. Formulas elsewhere that referenced the sheet are left as
@@ -364,7 +398,8 @@ class Workbook:
         file, and rewriting them here would be guessing at what the author
         wanted instead.
         """
-        sheet = self.sheet(name)
+        chart_sheet = self._chart_sheets.get(name)
+        part = chart_sheet.part_name if chart_sheet is not None else self.sheet(name).part_name
         if len(self._order) == 1:
             raise ValueError(
                 f"{name!r} is the only sheet; a workbook must have at least one, so Excel "
@@ -380,14 +415,30 @@ class Workbook:
                     self._package.relationships(self._workbook_part).remove(relationship_id)
                 break
 
-        self._package.remove_part(sheet.part_name)
+        self._remove_with_dependents(part)
         previous_order = list(self._order)
         position = self._order.index(name)
         del self._order[position]
-        del self._sheets[name]
+        self._sheets.pop(name, None)
+        self._chart_sheets.pop(name, None)
         self._remap_defined_name_scopes(previous_order)
         self._clamp_active_tab()
         self.mark_changed()
+
+    def _remove_with_dependents(self, part: str) -> None:
+        """Remove a part, then each part it pointed at that nothing else
+        points at, and so on down: a sheet's drawing, the charts in it and
+        each chart's own style and colour parts. A picture another sheet
+        also shows is kept."""
+        dependents = [
+            relationship.target_part
+            for relationship in self._package.relationships(part)
+            if not relationship.is_external
+        ]
+        self._package.remove_part(part)
+        for dependent in dependents:
+            if self._package.has_part(dependent) and not self.is_referenced(dependent):
+                self._remove_with_dependents(dependent)
 
     def rename_sheet(self, old: str, new: str) -> Worksheet:
         """Rename a worksheet, repointing every reference to it.
@@ -415,6 +466,7 @@ class Workbook:
         for other in self._sheets.values():
             _rename_in_formulas(other, old, new)
         self._rename_in_defined_names(old, new)
+        self._rename_in_charts(old, new)
 
         position = self._order.index(old)
         self._order[position] = new
@@ -424,13 +476,32 @@ class Workbook:
         self.mark_changed()
         return sheet
 
+    def rename_chart_sheet(self, old: str, new: str) -> ChartSheet:
+        """Rename a chart sheet. Nothing refers to one by name but its entry:
+        a formula cannot read from a chart sheet."""
+        sheet = self.chart_sheet(old)
+        if old == new:
+            return sheet
+        check_sheet_name(new, taken={n for n in self._order if n != old})
+        container = self._document.root.require("sheets")
+        for entry in container.children_named("sheet"):
+            if _sheet_name(entry) == old:
+                entry.set("name", encode_attribute(new))
+                break
+        self._order[self._order.index(old)] = new
+        del self._chart_sheets[old]
+        self._chart_sheets[new] = sheet
+        sheet.record_rename(new)
+        self.mark_changed()
+        return sheet
+
     def move_sheet(self, name: str, index: int) -> None:
-        """Move a sheet's tab to a new position.
+        """Move a sheet's tab to a new position, a chart sheet's as well.
 
         The active tab is recorded as an index, so it is adjusted to keep
         pointing at whichever sheet was active before the move.
         """
-        if name not in self._sheets:
+        if name not in self._order:
             raise KeyError(f"no sheet named {name!r}. The workbook has: {', '.join(self._order)}")
         target = max(0, min(index, len(self._order) - 1))
         current = self._order.index(name)
@@ -477,6 +548,17 @@ class Workbook:
         while candidate in used:
             candidate += 1
         return candidate
+
+    def _rename_in_charts(self, old: str, new: str) -> None:
+        """Every reference a chart has names its sheet, so a renamed sheet is
+        renamed there too, quoted as the new name needs, measured."""
+        for part in chart_parts(self._package):
+            for element in self._package.xml(part).root.descendants("f"):
+                text = element.text
+                if text and "!" in text:
+                    updated = rename_sheet_in_formula(text, escape(old), escape(new))
+                    if updated != text:
+                        element.set_text(updated)
 
     def _rename_in_defined_names(self, old: str, new: str) -> None:
         container = self._document.root.child("definedNames")

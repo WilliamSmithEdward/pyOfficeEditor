@@ -2160,6 +2160,99 @@ def test_excel_shows_the_cell_styles_this_library_applies(
         assert dict(zip(fields, values, strict=True)) == answers[key], key
 
 
+_CHARTS_PROBE = r'''
+Private Function Series(ByVal ch As Chart) As String
+    Dim s As Series
+    Dim out As String
+    Dim f As String
+    For Each s In ch.SeriesCollection
+        On Error Resume Next
+        f = s.Formula
+        If Err.Number <> 0 Then f = "refused"
+        Err.Clear
+        On Error GoTo 0
+        out = out & f & ";"
+    Next s
+    Series = out
+End Function
+
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim co As ChartObject
+    Dim ch As Chart
+    Dim out As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For Each ws In wb.Worksheets
+        For Each co In ws.ChartObjects
+            out = out & ws.Name & "/" & co.Name & "=" & Series(co.Chart) & vbLf
+        Next co
+    Next ws
+    For Each ch In wb.Charts
+        out = out & ch.Name & "=" & Series(ch) & vbLf
+    Next ch
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = out
+End Function
+'''
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        "insert rows 3:4", "insert row 1", "delete row 4", "delete rows 2:6", "delete row 1",
+        "insert column B", "delete column C", "delete column A", "rename Data",
+    ],
+)
+def test_excel_reads_the_charts_this_library_moved(
+    excel: object, live_charts_xlsx: Path, tmp_path: Path, edit: str
+) -> None:
+    """A chart may read from any sheet, so every chart part in the workbook
+    is moved when rows or columns are, and renamed when a sheet is. Excel
+    has to open each result and report every series as it is read here; a
+    series left reading ``#REF!`` it refuses to report, as it does for its
+    own files."""
+    target = tmp_path / "charts.xlsx"
+    shutil.copy(live_charts_xlsx, target)
+    with Workbook.open(target) as book:
+        data = book["Data"]
+        {
+            "insert rows 3:4": lambda: data.insert_rows(3, 2),
+            "insert row 1": lambda: data.insert_rows(1, 1),
+            "delete row 4": lambda: data.delete_rows(4, 1),
+            "delete rows 2:6": lambda: data.delete_rows(2, 5),
+            "delete row 1": lambda: data.delete_rows(1, 1),
+            "insert column B": lambda: data.insert_columns(2, 1),
+            "delete column C": lambda: data.delete_columns(3, 1),
+            "delete column A": lambda: data.delete_columns(1, 1),
+            "rename Data": lambda: book.rename_sheet("Data", "Q1 Data"),
+        }[edit]()
+        book.save()
+
+    read: dict[str, str] = {}
+    with Workbook.open(target) as book:
+        for sheet in book.sheets:
+            for chart in sheet.charts:
+                read[f"{sheet.name}/{chart.name}"] = "".join(
+                    ("refused" if "#REF!" in series.formula else series.formula) + ";" for series in chart.series
+                )
+        for chart_sheet in book.chart_sheets:
+            chart = chart_sheet.chart
+            assert chart is not None
+            read[chart_sheet.name] = "".join(
+                ("refused" if "#REF!" in series.formula else series.formula) + ";" for series in chart.series
+            )
+
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _CHARTS_PROBE, proc="Probe", args=(str(target),), timeout=180, module_name="Probe_charts"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+    seen = dict(line.split("=", 1) for line in str(result.value).splitlines() if line)
+    assert seen == read
+
+
 _REMOVED_PROBE = r"""
 Public Function Probe(ByVal Target As String) As String
     Dim wb As Workbook

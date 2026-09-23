@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._charts import Chart, charts_in_drawing
 from pyofficeeditor.excel._comments import (
     CT_COMMENTS,
     CT_THREADED_COMMENTS,
@@ -1922,6 +1923,16 @@ class Worksheet:
     # ------------------------------------------------------------------
     # Shapes
     # ------------------------------------------------------------------
+
+    @property
+    def charts(self) -> list[Chart]:
+        """Every chart on the sheet, in the order the drawing holds them,
+        each with what it plots. A chart may plot another sheet's cells."""
+        package = self._workbook.package
+        found: list[Chart] = []
+        for name in related_parts(self, RT_DRAWING):
+            found.extend(charts_in_drawing(package, name))
+        return found
 
     @property
     def shapes(self) -> list[Shape]:

@@ -30,6 +30,10 @@ And in parts the worksheet only points at:
   names a comment's own cell
 - each comment's ``ref`` in the comments part
 
+And in every chart in the workbook, since a chart on any sheet, or on a
+chart sheet, may read from this one: each ``<c:f>`` a series or a title
+reads from, moved as a cell's formula is, measured.
+
 Nothing is refused. There used to be a list of elements that made the
 operation raise rather than risk moving everything else and leaving them
 behind, which was the honest answer while they were unmodelled. It is empty
@@ -95,6 +99,7 @@ from pyofficeeditor.exceptions import PackageError
 if TYPE_CHECKING:
     from pyofficeeditor.excel._tables import Table
     from pyofficeeditor.excel.worksheet import Worksheet
+    from pyofficeeditor.opc import OpcPackage
 
 def insert_rows(sheet: Worksheet, at: int, count: int) -> None:
     """Insert blank rows, pushing everything at or below ``at`` down."""
@@ -141,6 +146,7 @@ def delete_rows(sheet: Worksheet, at: int, count: int) -> None:
     _move_custom_views(sheet, shift=None, deletion=deletion)
     _move_extensions(sheet, shift=None, deletion=deletion)
     _move_related_parts(sheet, shift=None, deletion=deletion)
+    _move_charts(sheet, shift=None, deletion=deletion)
     _delete_tables(sheet, deletion)
     _delete_breaks(sheet, deletion)
     _delete_defined_names(sheet, deletion)
@@ -162,6 +168,7 @@ def delete_columns(sheet: Worksheet, at: int, count: int) -> None:
     _move_custom_views(sheet, shift=None, deletion=deletion)
     _move_extensions(sheet, shift=None, deletion=deletion)
     _move_related_parts(sheet, shift=None, deletion=deletion)
+    _move_charts(sheet, shift=None, deletion=deletion)
     _delete_tables(sheet, deletion)
     _delete_breaks(sheet, deletion)
     _delete_defined_names(sheet, deletion)
@@ -536,6 +543,45 @@ def _delete_breaks(sheet: Worksheet, deletion: Deletion) -> None:
                 entry.set("id", str(value - count))
 
 
+#: The content types of the parts a chart lives in: DrawingML charts, and
+#: the newer kinds, such as a waterfall, which Excel keeps in chartex parts.
+CT_CHART = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+CT_CHART_EX = "application/vnd.ms-office.chartex+xml"
+
+
+def chart_parts(package: OpcPackage) -> list[str]:
+    """Every chart part in the workbook, wherever it is shown: a chart on
+    any sheet, or on a chart sheet, may read from any sheet."""
+    types = package.content_types
+    return [name for name in package.part_names() if types.of(name) in (CT_CHART, CT_CHART_EX)]
+
+
+def _move_charts(sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | None) -> None:
+    """Move the references in every chart that reads from this sheet.
+
+    Measured, a chart's references behave as a cell's: a series grows with
+    rows inserted inside it, moves with rows inserted above it, shrinks as
+    rows inside it go, and one wholly deleted is written ``Data!#REF!``, as
+    is a title linked to a deleted cell. Excel's object model goes on
+    reporting the old address for a deleted one; the file does not. Each
+    reference names its sheet, so a chart has no sheet of its own here.
+    """
+    package = sheet.workbook.package
+    for part in chart_parts(package):
+        for element in package.xml(part).root.descendants("f"):
+            text = element.text
+            if not text or "!" not in text:
+                continue
+            if shift is not None:
+                moved = shift_formula(text, shift, formula_sheet="", target_sheet=sheet.name)
+            elif deletion is not None:
+                moved = delete_in_formula(text, deletion, formula_sheet="", target_sheet=sheet.name)
+            else:
+                moved = text
+            if moved != text:
+                element.set_text(moved)
+
+
 def _delete_defined_names(sheet: Worksheet, deletion: Deletion) -> None:
     workbook = sheet.workbook
     container = workbook.package.xml(workbook.workbook_part).root.child("definedNames")
@@ -668,6 +714,7 @@ def _shift_everything_else(sheet: Worksheet, shift: Shift) -> None:
     _move_custom_views(sheet, shift=shift, deletion=None)
     _move_extensions(sheet, shift=shift, deletion=None)
     _move_related_parts(sheet, shift=shift, deletion=None)
+    _move_charts(sheet, shift=shift, deletion=None)
     _shift_tables(sheet, shift)
     _shift_breaks(sheet, shift)
     _shift_defined_names(sheet, shift)

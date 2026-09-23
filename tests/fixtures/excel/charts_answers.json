@@ -1,0 +1,423 @@
+{
+  "base|Bars": {
+    "references": [
+      "Data!$B$1",
+      "Data!$A$2:$A$6",
+      "Data!$B$2:$B$6"
+    ]
+  },
+  "base|Data/Columns": {
+    "references": [
+      "Data!$B$1",
+      "Data!$A$2:$A$6",
+      "Data!$B$2:$B$6",
+      "Data!$C$1",
+      "Data!$A$2:$A$6",
+      "Data!$C$2:$C$6"
+    ]
+  },
+  "base|Data/Line": {
+    "references": [
+      "Data!$D$1",
+      "Data!$A$2:$A$6",
+      "Data!$D$2:$D$6"
+    ]
+  },
+  "base|Report/Pie": {
+    "references": [
+      "Data!$B$1",
+      "Data!$B$1",
+      "Data!$A$2:$A$6",
+      "Data!$B$2:$B$6"
+    ]
+  },
+  "base|Report/Scatter": {
+    "references": [
+      "Data!$C$1",
+      "Data!$B$2:$B$6",
+      "Data!$C$2:$C$6"
+    ]
+  },
+  "delete column A|Bars": {
+    "references": [
+      "Data!$A$1",
+      "Data!#REF!",
+      "Data!$A$2:$A$6"
+    ]
+  },
+  "delete column A|Data/Columns": {
+    "references": [
+      "Data!$A$1",
+      "Data!#REF!",
+      "Data!$A$2:$A$6",
+      "Data!$B$1",
+      "Data!#REF!",
+      "Data!$B$2:$B$6"
+    ]
+  },
+  "delete column A|Data/Line": {
+    "references": [
+      "Data!$C$1",
+      "Data!#REF!",
+      "Data!$C$2:$C$6"
+    ]
+  },
+  "delete column A|Report/Pie": {
+    "references": [
+      "Data!$A$1",
+      "Data!$A$1",
+      "Data!#REF!",
+      "Data!$A$2:$A$6"
+    ]
+  },
+  "delete column A|Report/Scatter": {
+    "references": [
+      "Data!$B$1",
+      "Data!$A$2:$A$6",
+      "Data!$B$2:$B$6"
+    ]
+  },
+  "delete column C|Bars": {
+    "references": [
+      "Data!$B$1",
+      "Data!$A$2:$A$6",
+      "Data!$B$2:$B$6"
+    ]
+  },
+  "delete column C|Data/Columns": {
+    "references": [
+      "Data!$B$1",
+      "Data!$A$2:$A$6",
+      "Data!$B$2:$B$6",
+      "Data!#REF!",
+      "Data!$A$2:$A$6",
+      "Data!#REF!"
+    ]
+  },
+  "delete column C|Data/Line": {
+    "references": [
+      "Data!$C$1",
+      "Data!$A$2:$A$6",
+      "Data!$C$2:$C$6"
+    ]
+  },
+  "delete column C|Report/Pie": {
+    "references": [
+      "Data!$B$1",
+      "Data!$B$1",
+      "Data!$A$2:$A$6",
+      "Data!$B$2:$B$6"
+    ]
+  },
+  "delete column C|Report/Scatter": {
+    "references": [
+      "Data!#REF!",
+      "Data!$B$2:$B$6",
+      "Data!#REF!"
+    ]
+  },
+  "delete row 1|Bars": {
+    "references": [
+      "Data!#REF!",
+      "Data!$A$1:$A$5",
+      "Data!$B$1:$B$5"
+    ]
+  },
+  "delete row 1|Data/Columns": {
+    "references": [
+      "Data!#REF!",
+      "Data!$A$1:$A$5",
+      "Data!$B$1:$B$5",
+      "Data!#REF!",
+      "Data!$A$1:$A$5",
+      "Data!$C$1:$C$5"
+    ]
+  },
+  "delete row 1|Data/Line": {
+    "references": [
+      "Data!#REF!",
+      "Data!$A$1:$A$5",
+      "Data!$D$1:$D$5"
+    ]
+  },
+  "delete row 1|Report/Pie": {
+    "references": [
+      "Data!#REF!",
+      "Data!#REF!",
+      "Data!$A$1:$A$5",
+      "Data!$B$1:$B$5"
+    ]
+  },
+  "delete row 1|Report/Scatter": {
+    "references": [
+      "Data!#REF!",
+      "Data!$B$1:$B$5",
+      "Data!$C$1:$C$5"
+    ]
+  },
+  "delete row 4|Bars": {
+    "references": [
+      "Data!$B$1",
+      "Data!$A$2:$A$5",
+      "Data!$B$2:$B$5"
+    ]
+  },
+  "delete row 4|Data/Columns": {
+    "references": [
+      "Data!$B$1",
+      "Data!$A$2:$A$5",
+      "Data!$B$2:$B$5",
+      "Data!$C$1",
+      "Data!$A$2:$A$5",
+      "Data!$C$2:$C$5"
+    ]
+  },
+  "delete row 4|Data/Line": {
+    "references": [
+      "Data!$D$1",
+      "Data!$A$2:$A$5",
+      "Data!$D$2:$D$5"
+    ]
+  },
+  "delete row 4|Report/Pie": {
+    "references": [
+      "Data!$B$1",
+      "Data!$B$1",
+      "Data!$A$2:$A$5",
+      "Data!$B$2:$B$5"
+    ]
+  },
+  "delete row 4|Report/Scatter": {
+    "references": [
+      "Data!$C$1",
+      "Data!$B$2:$B$5",
+      "Data!$C$2:$C$5"
+    ]
+  },
+  "delete rows 2:6|Bars": {
+    "references": [
+      "Data!$B$1",
+      "Data!#REF!",
+      "Data!#REF!"
+    ]
+  },
+  "delete rows 2:6|Data/Columns": {
+    "references": [
+      "Data!$B$1",
+      "Data!#REF!",
+      "Data!#REF!",
+      "Data!$C$1",
+      "Data!#REF!",
+      "Data!#REF!"
+    ]
+  },
+  "delete rows 2:6|Data/Line": {
+    "references": [
+      "Data!$D$1",
+      "Data!#REF!",
+      "Data!#REF!"
+    ]
+  },
+  "delete rows 2:6|Report/Pie": {
+    "references": [
+      "Data!$B$1",
+      "Data!$B$1",
+      "Data!#REF!",
+      "Data!#REF!"
+    ]
+  },
+  "delete rows 2:6|Report/Scatter": {
+    "references": [
+      "Data!$C$1",
+      "Data!#REF!",
+      "Data!#REF!"
+    ]
+  },
+  "insert column B|Bars": {
+    "references": [
+      "Data!$C$1",
+      "Data!$A$2:$A$6",
+      "Data!$C$2:$C$6"
+    ]
+  },
+  "insert column B|Data/Columns": {
+    "references": [
+      "Data!$C$1",
+      "Data!$A$2:$A$6",
+      "Data!$C$2:$C$6",
+      "Data!$D$1",
+      "Data!$A$2:$A$6",
+      "Data!$D$2:$D$6"
+    ]
+  },
+  "insert column B|Data/Line": {
+    "references": [
+      "Data!$E$1",
+      "Data!$A$2:$A$6",
+      "Data!$E$2:$E$6"
+    ]
+  },
+  "insert column B|Report/Pie": {
+    "references": [
+      "Data!$C$1",
+      "Data!$C$1",
+      "Data!$A$2:$A$6",
+      "Data!$C$2:$C$6"
+    ]
+  },
+  "insert column B|Report/Scatter": {
+    "references": [
+      "Data!$D$1",
+      "Data!$C$2:$C$6",
+      "Data!$D$2:$D$6"
+    ]
+  },
+  "insert row 1|Bars": {
+    "references": [
+      "Data!$B$2",
+      "Data!$A$3:$A$7",
+      "Data!$B$3:$B$7"
+    ]
+  },
+  "insert row 1|Data/Columns": {
+    "references": [
+      "Data!$B$2",
+      "Data!$A$3:$A$7",
+      "Data!$B$3:$B$7",
+      "Data!$C$2",
+      "Data!$A$3:$A$7",
+      "Data!$C$3:$C$7"
+    ]
+  },
+  "insert row 1|Data/Line": {
+    "references": [
+      "Data!$D$2",
+      "Data!$A$3:$A$7",
+      "Data!$D$3:$D$7"
+    ]
+  },
+  "insert row 1|Report/Pie": {
+    "references": [
+      "Data!$B$2",
+      "Data!$B$2",
+      "Data!$A$3:$A$7",
+      "Data!$B$3:$B$7"
+    ]
+  },
+  "insert row 1|Report/Scatter": {
+    "references": [
+      "Data!$C$2",
+      "Data!$B$3:$B$7",
+      "Data!$C$3:$C$7"
+    ]
+  },
+  "insert rows 3:4|Bars": {
+    "references": [
+      "Data!$B$1",
+      "Data!$A$2:$A$8",
+      "Data!$B$2:$B$8"
+    ]
+  },
+  "insert rows 3:4|Data/Columns": {
+    "references": [
+      "Data!$B$1",
+      "Data!$A$2:$A$8",
+      "Data!$B$2:$B$8",
+      "Data!$C$1",
+      "Data!$A$2:$A$8",
+      "Data!$C$2:$C$8"
+    ]
+  },
+  "insert rows 3:4|Data/Line": {
+    "references": [
+      "Data!$D$1",
+      "Data!$A$2:$A$8",
+      "Data!$D$2:$D$8"
+    ]
+  },
+  "insert rows 3:4|Report/Pie": {
+    "references": [
+      "Data!$B$1",
+      "Data!$B$1",
+      "Data!$A$2:$A$8",
+      "Data!$B$2:$B$8"
+    ]
+  },
+  "insert rows 3:4|Report/Scatter": {
+    "references": [
+      "Data!$C$1",
+      "Data!$B$2:$B$8",
+      "Data!$C$2:$C$8"
+    ]
+  },
+  "rename Data|Bars": {
+    "references": [
+      "'Q1 Data'!$B$1",
+      "'Q1 Data'!$A$2:$A$6",
+      "'Q1 Data'!$B$2:$B$6"
+    ]
+  },
+  "rename Data|Q1 Data/Columns": {
+    "references": [
+      "'Q1 Data'!$B$1",
+      "'Q1 Data'!$A$2:$A$6",
+      "'Q1 Data'!$B$2:$B$6",
+      "'Q1 Data'!$C$1",
+      "'Q1 Data'!$A$2:$A$6",
+      "'Q1 Data'!$C$2:$C$6"
+    ]
+  },
+  "rename Data|Q1 Data/Line": {
+    "references": [
+      "'Q1 Data'!$D$1",
+      "'Q1 Data'!$A$2:$A$6",
+      "'Q1 Data'!$D$2:$D$6"
+    ]
+  },
+  "rename Data|Report/Pie": {
+    "references": [
+      "'Q1 Data'!$B$1",
+      "'Q1 Data'!$B$1",
+      "'Q1 Data'!$A$2:$A$6",
+      "'Q1 Data'!$B$2:$B$6"
+    ]
+  },
+  "rename Data|Report/Scatter": {
+    "references": [
+      "'Q1 Data'!$C$1",
+      "'Q1 Data'!$B$2:$B$6",
+      "'Q1 Data'!$C$2:$C$6"
+    ]
+  },
+  "reported base|Bars": {
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)"
+    ],
+    "title": ""
+  },
+  "reported base|Data/Columns": {
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)",
+      "=SERIES(Data!$C$1,Data!$A$2:$A$6,Data!$C$2:$C$6,2)"
+    ],
+    "title": "Plain title"
+  },
+  "reported base|Data/Line": {
+    "series": [
+      "=SERIES(Data!$D$1,Data!$A$2:$A$6,Data!$D$2:$D$6,1)"
+    ],
+    "title": ""
+  },
+  "reported base|Report/Pie": {
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)"
+    ],
+    "title": "=Data!$B$1"
+  },
+  "reported base|Report/Scatter": {
+    "series": [
+      "=SERIES(Data!$C$1,Data!$B$2:$B$6,Data!$C$2:$C$6,1)"
+    ],
+    "title": ""
+  }
+}

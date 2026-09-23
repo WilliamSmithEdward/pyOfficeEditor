@@ -78,6 +78,11 @@ LIVE_PICTURES_ANSWERS = EXCEL_FIXTURES / "pictures_answers.json"
 #: ``Characters``, and the font Excel reported at each change.
 LIVE_RICHTEXT_XLSX = EXCEL_FIXTURES / "richtext.xlsx"
 LIVE_RICHTEXT_ANSWERS = EXCEL_FIXTURES / "richtext_answers.json"
+#: Authored by Excel: charts on a data sheet, on another sheet and on a chart
+#: sheet, with each chart's references before any edit and after each of
+#: nine, read back from the file Excel saved after it.
+LIVE_CHARTS_XLSX = EXCEL_FIXTURES / "charts.xlsx"
+LIVE_CHARTS_ANSWERS = EXCEL_FIXTURES / "charts_answers.json"
 #: Authored by Excel: every built-in cell style applied to a cell of its own,
 #: a style of the workbook's own, and styles put over existing formatting,
 #: with what Excel showed for each cell and what each style includes.
@@ -349,6 +354,22 @@ def live_richtext_answers() -> Path:
     if not LIVE_RICHTEXT_ANSWERS.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to measure the text with real Excel")
     return LIVE_RICHTEXT_ANSWERS
+
+
+@pytest.fixture(scope="session")
+def live_charts_xlsx() -> Path:
+    """Charts, authored by Excel."""
+    if not LIVE_CHARTS_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author charts.xlsx with real Excel")
+    return LIVE_CHARTS_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_charts_answers() -> Path:
+    """Each chart's references as Excel read them, before and after each edit."""
+    if not LIVE_CHARTS_ANSWERS.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to measure the charts with real Excel")
+    return LIVE_CHARTS_ANSWERS
 
 
 @pytest.fixture(scope="session")

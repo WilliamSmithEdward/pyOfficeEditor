@@ -22,7 +22,8 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > text is what Excel shows for it, number format and all. Notes and
 > threaded comments, replies included, read and write the way Excel
 > writes them, and so do pictures, text in more than one font, and named
-> cell styles, all of Excel's own among them.
+> cell styles, all of Excel's own among them. Charts are read, series by
+> series; their references move with the cells they read.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Nothing about a sheet makes that refuse any more: validation,
@@ -157,6 +158,7 @@ data descriptors.
 |               control                                  |
 |   _comments   notes and threads, and the box each gets |
 |   _pictures   images, sized as Excel sizes them        |
+|   _charts     what each chart plots, and chart sheets  |
 |   _richtext   runs of text in several fonts, read as   |
 |               Excel shows them, not as marked up       |
 |   _pagesetup  margins in inches, and the three header  |

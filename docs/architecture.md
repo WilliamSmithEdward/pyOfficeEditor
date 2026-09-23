@@ -76,6 +76,7 @@ Each layer knows the layer below it and not the layer above.
 |   _shapes       shapes, and the grid a form control needs |
 |   _comments     notes and threads, and the box each gets  |
 |   _pictures     images, sized as Excel sizes them         |
+|   _charts       what each chart plots, and chart sheets   |
 |   _richtext     runs of text in several fonts, read as    |
 |                 Excel shows them, not as marked up        |
 |   _conditional  cfRules, and the compatibility formula    |
@@ -241,6 +242,8 @@ The Excel surface is exported from `pyofficeeditor.excel`:
 | `ThreadedComment`, `Reply` | `excel/_comments.py` | a conversation on a cell, and each answer in it |
 | `TextRun` | `excel/_richtext.py` | part of a cell's text, and the font it shows in |
 | `CellStyle` | `excel/_cellstyles.py` | a named cell style: its format, and what of a cell it sets |
+| `Chart`, `ChartSeries` | `excel/_charts.py` | what a chart plots, and each series' references |
+| `ChartSheet` | `excel/_charts.py` | a tab that is one chart and holds no cells |
 | `format_value` | `excel/_numfmt.py` | the text Excel shows for a value under a format code |
 
 `opc.py` also exports the path helpers (`normalize_part_name`,
@@ -342,10 +345,13 @@ tests/
                                 Excel showed and the entries it wrote
   test_excel_cellstyles.py      named styles, against the cells Excel
                                 styled itself
+  test_excel_charts.py          charts and chart sheets, and every
+                                reference after nine edits, against the
+                                files Excel saved after the same edits
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               eighteen Excel-authored packages: three
-                                sourced, fifteen scripted, and two
+  fixtures/excel/               nineteen Excel-authored packages: three
+                                sourced, sixteen scripted, and two
                                 measured corpora; see its README
 ```
 
@@ -354,7 +360,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against eighteen committed
+- The suite needs no Office installation. It runs against nineteen committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as
@@ -537,6 +543,17 @@ reproduces. Both are held to corpora measured from Excel,
 states neither. A row that hangs on something not modelled, a colour filter
 or a formula whose cached result an edit has made stale, is left as it was
 rather than guessed at, and `FilterOutcome` says which rows those were.
+
+**A chart reads the workbook through formulas.** Everything a chart plots,
+a series' name, categories and values, and a title linked to a cell, is a
+sheet-qualified reference in a `<c:f>` of the chart's own part. A chart on
+any sheet, or on a chart sheet, may read from any other, so inserting or
+deleting rows on one sheet has to visit every chart part in the workbook,
+and renaming a sheet likewise. Measured, the references move exactly as a
+cell's formula does, down to `Data!#REF!` for one deleted outright. Excel's
+object model is no witness for that last case: it reports the old address
+until the file is reopened, and then refuses to report the series, so the
+fixture records the references in the files Excel saved.
 
 **A named style is defined only once something uses it.** A workbook's
 `cellStyles` names each style it has and points at the style's format in
