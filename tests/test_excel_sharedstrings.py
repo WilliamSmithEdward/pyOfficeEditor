@@ -18,12 +18,14 @@ def table(xml: bytes) -> SharedStrings:
 
 
 class TestNeedsSpacePreserved:
-    @pytest.mark.parametrize("text", ["  padded  ", " leading", "trailing ", "a\nb", "a\r\nb", " ", "\t x"])
+    @pytest.mark.parametrize("text", ["  padded  ", " leading", "trailing ", "a\n", "\r\nb", " ", "\t x"])
     def test_whitespace_that_must_be_declared(self, text: str) -> None:
         assert needs_space_preserved(text) is True
 
-    @pytest.mark.parametrize("text", ["plain", "", "two words", "a b c", "punctuation!"])
+    @pytest.mark.parametrize("text", ["plain", "", "two words", "a b c", "punctuation!", "a\nb", "a\r\nb"])
     def test_text_that_does_not_need_it(self, text: str) -> None:
+        """A line break between words is kept without it, and Excel writes
+        ``<t>head\\r\\ntwo</t>`` for one, measured."""
         assert needs_space_preserved(text) is False
 
 

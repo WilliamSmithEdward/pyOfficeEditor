@@ -42,6 +42,7 @@ from pyofficeeditor.excel._formats import (
     Protection,
 )
 from pyofficeeditor.excel._schema import STYLESHEET_CHILD_ORDER, insert_in_schema_order
+from pyofficeeditor.excel._xstring import decode, encode_attribute
 
 #: Where Excel starts numbering custom formats.  0 to 163 are reserved for
 #: the builtins, whether or not a given build defines them all.
@@ -234,7 +235,7 @@ class Styles:
             if raw_id is None or code is None:
                 continue
             try:
-                found[int(raw_id)] = code
+                found[int(raw_id)] = decode(code)
             except ValueError:
                 continue
         return found
@@ -566,7 +567,7 @@ class Styles:
             else:
                 self._root.insert_before(first, container)
         container.append(
-            Element.create("numFmt", {"numFmtId": str(new_id), "formatCode": code})
+            Element.create("numFmt", {"numFmtId": str(new_id), "formatCode": encode_attribute(code)})
         )
         container.set("count", str(sum(1 for _ in container.children_named("numFmt"))))
         return new_id

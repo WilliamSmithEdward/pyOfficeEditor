@@ -25,6 +25,7 @@ changed string gets a new entry instead.
 from __future__ import annotations
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._xstring import decode, encode_text
 
 NS_SPREADSHEETML = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 
@@ -39,10 +40,11 @@ RT_SHARED_STRINGS = (
 def needs_space_preserved(text: str) -> bool:
     """Whether a ``<t>`` holding this text must declare ``xml:space``.
 
-    Leading or trailing whitespace, or a line break, all survive only when
-    the attribute is present.
+    Leading or trailing white space survives only when the attribute is
+    present. A line break between words needs nothing, and Excel writes
+    none for one, measured.
     """
-    return text != text.strip() or "\n" in text or "\r" in text
+    return text != text.strip(" \t\r\n")
 
 
 class SharedStrings:
@@ -60,7 +62,7 @@ class SharedStrings:
         self._entries: list[Element] = list(self._root.children_named("si"))
         self._index_of: dict[str, int] = {}
         for index, entry in enumerate(self._entries):
-            text = _entry_text(entry)
+            text = entry_text(entry)
             # First occurrence wins: if a workbook carries the same text
             # twice, reusing the earlier index is correct and matches Excel.
             self._index_of.setdefault(text, index)
@@ -89,7 +91,7 @@ class SharedStrings:
                 f"shared string {index} is outside 0..{len(self._entries) - 1}; "
                 f"the workbook's table has {len(self._entries)} entries."
             )
-        return _entry_text(self._entries[index])
+        return entry_text(self._entries[index])
 
     def is_rich_text(self, index: int) -> bool:
         """Whether the entry carries formatted runs rather than plain text."""
@@ -107,7 +109,7 @@ class SharedStrings:
         run = Element.create("t")
         if needs_space_preserved(text):
             run.set("xml:space", "preserve")
-        run.set_text(text)
+        run.set_text(encode_text(text))
         entry.append(run)
         self._root.append(entry)
 
@@ -137,18 +139,20 @@ class SharedStrings:
         return f"SharedStrings({len(self._entries)} entries)"
 
 
-def _entry_text(entry: Element) -> str:
-    """The display text of one ``<si>``.
+def entry_text(entry: Element) -> str:
+    """The display text of one ``<si>``, or of an inline ``<is>``, which
+    has the same shape.
 
     Plain text lives in a single ``<t>``. Rich text is a sequence of ``<r>``
     runs, each with its own ``<t>``, and the displayed string is those runs
     joined. A phonetic hint (``<rPh>``, used for Japanese furigana) is not
-    part of the string and is skipped.
+    part of the string and is skipped. Each ``<t>`` spells characters XML
+    cannot hold as ``_xHHHH_``, and is read as the characters it spells.
     """
     direct = entry.child("t")
     if direct is not None:
-        return direct.text
-    return "".join(run.text for section in entry.children_named("r") for run in section.children_named("t"))
+        return decode(direct.text)
+    return "".join(decode(run.text) for section in entry.children_named("r") for run in section.children_named("t"))
 
 
 __all__ = [
@@ -156,5 +160,6 @@ __all__ = [
     "NS_SPREADSHEETML",
     "RT_SHARED_STRINGS",
     "SharedStrings",
+    "entry_text",
     "needs_space_preserved",
 ]

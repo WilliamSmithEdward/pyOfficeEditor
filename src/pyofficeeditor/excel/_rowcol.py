@@ -87,6 +87,7 @@ from pyofficeeditor.excel._formulas import (
     shift_range,
 )
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef
+from pyofficeeditor.excel._xstring import decode, escape
 from pyofficeeditor.exceptions import PackageError
 
 if TYPE_CHECKING:
@@ -403,13 +404,17 @@ def _delete_conditional_formats(sheet: Worksheet, deletion: Deletion) -> None:
 def _delete_in_rule(
     rule: ConditionalRule, deletion: Deletion, *, sheet: Worksheet
 ) -> ConditionalRule:
-    """Break or shrink the references inside a rule's own condition."""
+    """Break or shrink the references inside a rule's own condition.
+
+    A rule holds its formulas as they read, and the formula code works on
+    them as a part stores them, so each is escaped for it and read back.
+    """
     if rule.kind not in CONDITION_FORMULA_TYPES or not rule.formulas:
         return rule
     return replace(
         rule,
         formulas=tuple(
-            delete_in_formula(text, deletion, formula_sheet=sheet.name, target_sheet=sheet.name)
+            decode(delete_in_formula(escape(text), deletion, formula_sheet=sheet.name, target_sheet=sheet.name))
             for text in rule.formulas
         ),
     )
@@ -693,13 +698,14 @@ def _shift_conditional_formats(sheet: Worksheet, shift: Shift) -> None:
 
 
 def _shift_rule(rule: ConditionalRule, shift: Shift, *, sheet: Worksheet) -> ConditionalRule:
-    """Move the references inside a rule's own condition."""
+    """Move the references inside a rule's own condition, on the formula as
+    a part stores it; see :func:`_delete_in_rule`."""
     if rule.kind not in CONDITION_FORMULA_TYPES or not rule.formulas:
         return rule
     return replace(
         rule,
         formulas=tuple(
-            shift_formula(text, shift, formula_sheet=sheet.name, target_sheet=sheet.name)
+            decode(shift_formula(escape(text), shift, formula_sheet=sheet.name, target_sheet=sheet.name))
             for text in rule.formulas
         ),
     )

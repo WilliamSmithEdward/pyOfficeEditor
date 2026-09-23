@@ -77,6 +77,8 @@ Each layer knows the layer below it and not the layer above.
 |   _formulas     reference shifting for shared formulas, |
 |                 and repointing a renamed sheet          |
 |   _sharedstrings  the per-workbook string table         |
+|   _xstring      text as SpreadsheetML spells it, with   |
+|                 _xHHHH_ for what XML cannot carry       |
 |   _reference    A1 notation, bijective base-26          |
 |   _schema       the child order CT_Worksheet and         |
 |                 CT_Workbook require                     |
@@ -303,6 +305,8 @@ tests/
   test_excel_shapes.py          shapes, against what Excel said of them
   test_excel_controls.py        what a form control is wired to
   test_excel_shapes_write.py    adding, removing and rewiring shapes
+  test_excel_xstring.py         _xHHHH_ escapes, character by character,
+                                against what Excel wrote and read
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               twelve Excel-authored packages: three
@@ -475,6 +479,17 @@ no such trap: they are points, and 24 stores as 24.
 **A dimension needs its companion flag.** A `width` without `customWidth="1"`
 and an `ht` without `customHeight="1"` are ignored, so the value looks like it
 never took.
+
+**Text is not stored as XML stores it.** XML cannot carry most control
+characters, and an attribute turns a line break into a space. SpreadsheetML
+spells such a character `_xHHHH_` instead, and escapes the underscore of any
+literal text that would read as one, so `_x0041_` in a cell is stored
+`_x005F_x0041_`. Excel writes uppercase hex in element text, where a line
+break stays a line break, and lowercase hex in attributes, where it does not,
+and reads either. Every place a workbook keeps text goes through
+`_xstring`, because one that does not either writes a file Excel refuses or
+reads back seven characters for one. A table's headers are the exception:
+Excel replaces such a character there with U+FFFD rather than escaping it.
 
 **Inserting a row is not a local edit.** A cell's address is written into the
 file in a dozen places, and missing one gives a workbook that opens cleanly

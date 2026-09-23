@@ -45,6 +45,7 @@ from pyofficeeditor.excel._formats import (
     Underline,
     as_underline,
 )
+from pyofficeeditor.excel._xstring import decode, encode_attribute
 
 #: The order ``CT_Dxf`` requires its children to appear in.
 DXF_CHILD_ORDER: tuple[str, ...] = (
@@ -269,7 +270,7 @@ class Dxf:
             # Only formatCode decides the format. The id beside it is not a
             # reference into the workbook's numFmts table; see the module
             # docstring. It is carried so the entry writes back unchanged.
-            number_format=None if number_format is None else number_format.get("formatCode"),
+            number_format=None if number_format is None else _decoded(number_format.get("formatCode")),
             number_format_id=None if number_format is None else _read_id(number_format),
             fill=DxfFill.read(element.child("fill")),
             alignment=None if alignment is None else Alignment.read(alignment),
@@ -294,7 +295,7 @@ class Dxf:
             element.append(
                 Element.create(
                     "numFmt",
-                    {"numFmtId": str(identifier), "formatCode": self.number_format},
+                    {"numFmtId": str(identifier), "formatCode": encode_attribute(self.number_format)},
                 )
             )
         if self.fill is not None and not self.fill.is_empty:
@@ -327,6 +328,10 @@ def write_partial_border(border: Border) -> Element:
         if not side.is_empty:
             element.append(side.write(name))
     return element
+
+
+def _decoded(raw: str | None) -> str | None:
+    return None if raw is None else decode(raw)
 
 
 def _read_id(element: Element) -> int | None:

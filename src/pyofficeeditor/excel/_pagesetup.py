@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from pyofficeeditor._xml import Element
+from pyofficeeditor.excel._xstring import decode, encode_text
 
 #: ``ST_Orientation``. ``default`` means Excel decides, and is unwritten.
 Orientation = Literal["default", "portrait", "landscape"]
@@ -355,7 +356,7 @@ class HeaderFooter:
     def read(cls, element: Element) -> HeaderFooter:
         def section(name: str) -> HeaderFooterText:
             child = element.child(name)
-            return HeaderFooterText.parse("" if child is None else (child.text or ""))
+            return HeaderFooterText.parse("" if child is None else decode(child.text))
 
         scale = element.get("scaleWithDoc")
         align = element.get("alignWithMargins")
@@ -394,7 +395,7 @@ class HeaderFooter:
             if text.is_empty:
                 continue
             node = Element.create(name)
-            node.set_text(text.render())
+            node.set_text(encode_text(text.render()))
             element.append(node)
         return element
 

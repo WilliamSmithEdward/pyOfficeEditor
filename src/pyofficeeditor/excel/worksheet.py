@@ -110,6 +110,7 @@ from pyofficeeditor.excel._tables import (
 )
 from pyofficeeditor.excel._validation import DataValidation
 from pyofficeeditor.excel._values import CellValue, read_value, write_value
+from pyofficeeditor.excel._xstring import decode, encode_text
 from pyofficeeditor.exceptions import PackageError
 
 #: What ``<sheet state=...>`` can say. A ``veryHidden`` sheet is not in
@@ -286,7 +287,8 @@ class Worksheet:
         A cell in a shared-formula group carries no text of its own, so its
         formula is derived from the group's master by shifting the relative
         references. That derivation is why this exists rather than callers
-        reading ``<f>`` themselves.
+        reading ``<f>`` themselves. The text is read as Excel spells it,
+        ``_x005F_`` and all, and given back as the characters it spells.
         """
         element = self._find_cell(reference)
         if element is None:
@@ -296,7 +298,7 @@ class Worksheet:
             return None
         text = formula.text
         if text:
-            return text
+            return decode(text)
         if (formula.get("t") or "") != "shared":
             return None
         index = formula.get("si")
@@ -306,7 +308,7 @@ class Worksheet:
         if master is None:
             return None
         master_cell, master_text = master
-        return shared_formula_for(master_text, master_cell, reference)
+        return decode(shared_formula_for(master_text, master_cell, reference))
 
     def set_formula(self, reference: CellRef, formula: str | None) -> None:
         """Put a formula in a cell, or remove the one it has.
@@ -324,7 +326,7 @@ class Worksheet:
         self._drop_children(element, "v")
         element.unset("t")
         node = Element.create("f")
-        node.set_text(formula[1:] if formula.startswith("=") else formula)
+        node.set_text(encode_text(formula[1:] if formula.startswith("=") else formula))
         element.insert(0, node)
         self._invalidate()
 

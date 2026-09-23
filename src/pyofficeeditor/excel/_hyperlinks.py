@@ -24,6 +24,7 @@ from dataclasses import dataclass
 
 from pyofficeeditor._xml import Element
 from pyofficeeditor.excel._reference import RangeRef
+from pyofficeeditor.excel._xstring import decode, encode_attribute
 
 #: The relationship type an external hyperlink uses.
 RT_HYPERLINK = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
@@ -67,9 +68,9 @@ class Hyperlink:
         return cls(
             ref=ref,
             target=target,
-            location=element.get("location"),
-            display=element.get("display"),
-            tooltip=element.get("tooltip"),
+            location=_decoded(element.get("location")),
+            display=_decoded(element.get("display")),
+            tooltip=_decoded(element.get("tooltip")),
             relationship_id=element.get("r:id"),
             uid=element.get("xr:uid"),
         )
@@ -79,14 +80,18 @@ class Hyperlink:
         if self.relationship_id is not None:
             element.set("r:id", self.relationship_id)
         if self.location is not None:
-            element.set("location", self.location)
+            element.set("location", encode_attribute(self.location))
         if self.tooltip is not None:
-            element.set("tooltip", self.tooltip)
+            element.set("tooltip", encode_attribute(self.tooltip))
         if self.display is not None:
-            element.set("display", self.display)
+            element.set("display", encode_attribute(self.display))
         if self.uid is not None:
             element.set("xr:uid", self.uid)
         return element
+
+
+def _decoded(raw: str | None) -> str | None:
+    return None if raw is None else decode(raw)
 
 
 __all__ = ["RT_HYPERLINK", "Hyperlink"]

@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from pyofficeeditor.excel._reference import AxisRef, CellRef
+from pyofficeeditor.excel._xstring import decode
 
 #: A cell reference. The lookbehind rejects a match that continues an
 #: identifier, so the ``G10`` in ``LOG10`` is not one, and the lookahead
@@ -126,7 +127,9 @@ def tokenize(formula: str) -> list[Token]:
             if end < len(formula) and formula[end] == "!":
                 flush()
                 name = quoted[1:-1].replace("''", "'") if quoted.endswith("'") else quoted[1:]
-                tokens.append(Token(TokenKind.SHEET, quoted + "!", value=name))
+                # A formula spells a sheet's name as its text is stored, so
+                # "_x0041_" in a name is "_x005F_x0041_" here.
+                tokens.append(Token(TokenKind.SHEET, quoted + "!", value=decode(name)))
                 position = end + 1
             else:
                 flush()
@@ -137,7 +140,7 @@ def tokenize(formula: str) -> list[Token]:
         bare = _BARE_SHEET.match(formula, position)
         if bare and not _continues_identifier(formula, position):
             flush()
-            tokens.append(Token(TokenKind.SHEET, bare.group(0) + "!", value=bare.group(0)))
+            tokens.append(Token(TokenKind.SHEET, bare.group(0) + "!", value=decode(bare.group(0))))
             position = bare.end() + 1
             continue
 

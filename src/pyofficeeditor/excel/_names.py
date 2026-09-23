@@ -34,6 +34,7 @@ from dataclasses import dataclass
 
 from pyofficeeditor._xml import Element
 from pyofficeeditor.excel._reference import CellRef
+from pyofficeeditor.excel._xstring import decode, encode_attribute, encode_text
 
 #: The longest name Excel accepts, for a defined name or a table.
 MAX_NAME_LENGTH = 255
@@ -134,9 +135,10 @@ class DefinedName:
 
 def read_defined_name(element: Element, sheet_order: list[str]) -> DefinedName | None:
     """Read one entry, resolving ``localSheetId`` to a sheet name."""
-    name = element.get("name")
-    if name is None:
+    raw_name = element.get("name")
+    if raw_name is None:
         return None
+    name = decode(raw_name)
     scope: str | None = None
     raw = element.get("localSheetId")
     if raw is not None:
@@ -146,18 +148,19 @@ def read_defined_name(element: Element, sheet_order: list[str]) -> DefinedName |
             index = -1
         if 0 <= index < len(sheet_order):
             scope = sheet_order[index]
+    comment = element.get("comment")
     return DefinedName(
         name=name,
-        refers_to=element.text,
+        refers_to=decode(element.text),
         scope=scope,
-        comment=element.get("comment"),
+        comment=None if comment is None else decode(comment),
         hidden=element.get("hidden") in ("1", "true"),
     )
 
 
 def write_defined_name(entry: DefinedName, sheet_order: list[str]) -> Element:
     """Build one entry, turning the scope's sheet name back into an index."""
-    element = Element.create("definedName", {"name": entry.name})
+    element = Element.create("definedName", {"name": encode_attribute(entry.name)})
     if entry.scope is not None:
         try:
             element.set("localSheetId", str(sheet_order.index(entry.scope)))
@@ -167,10 +170,10 @@ def write_defined_name(entry: DefinedName, sheet_order: list[str]) -> Element:
                 f"workbook does not have."
             ) from None
     if entry.comment is not None:
-        element.set("comment", entry.comment)
+        element.set("comment", encode_attribute(entry.comment))
     if entry.hidden:
         element.set("hidden", "1")
-    element.set_text(entry.refers_to)
+    element.set_text(encode_text(entry.refers_to))
     return element
 
 

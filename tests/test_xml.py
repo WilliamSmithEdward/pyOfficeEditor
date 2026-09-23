@@ -199,6 +199,27 @@ class TestAttributes:
         assert document.to_bytes() == b"<r a='it&apos;s'/>"
         assert XmlDocument.parse(document.to_bytes()).root.get("a") == "it's"
 
+    def test_white_space_written_as_it_is_reads_as_a_space(self) -> None:
+        """As an XML processor reads it, and as Excel read a validation's
+        message written that way, measured: ``a`` and ``b`` across a raw line
+        feed or a tab read as ``a b``, and a CRLF as one space."""
+        document = XmlDocument.parse(b'<r lf="a\nb" tab="a\tb" crlf="a\r\nb" cr="a\rb"/>')
+        assert [document.root.get(name) for name in ("lf", "tab", "crlf", "cr")] == ["a b"] * 4
+
+    def test_a_character_reference_keeps_what_it_names(self) -> None:
+        document = XmlDocument.parse(b'<r a="a&#10;b&#9;c&#13;d"/>')
+        assert document.root.get("a") == "a\nb\tc\rd"
+
+    def test_white_space_set_is_written_so_it_reads_back(self) -> None:
+        element = Element.create("r")
+        element.set("a", "one\ntwo\tthree\r")
+        assert element.to_xml() == '<r a="one&#10;two&#9;three&#13;"/>'
+        assert XmlDocument.parse(element.to_xml().encode()).root.get("a") == "one\ntwo\tthree\r"
+
+    def test_the_source_is_kept_whatever_it_reads_as(self) -> None:
+        source = b'<r a="a\nb"/>'
+        assert XmlDocument.parse(source).to_bytes() == source
+
 
 class TestNameMatching:
     def test_a_bare_query_ignores_the_producers_prefix(self) -> None:
@@ -295,6 +316,15 @@ class TestText:
     def test_a_comment_is_not_text(self) -> None:
         document = XmlDocument.parse(b"<t><!-- note -->real</t>")
         assert document.root.text == "real"
+
+    def test_line_ends_read_as_an_xml_processor_reads_them(self) -> None:
+        """A CRLF or a lone CR is one line feed, which is how Excel reads
+        the CRLF it writes inside a rich text run. A reference to a CR is
+        a CR still, and the bytes are left as they were."""
+        source = b"<t>two\r\nlines\rand&#13;kept</t>"
+        document = XmlDocument.parse(source)
+        assert document.root.text == "two\nlines\nand\rkept"
+        assert document.to_bytes() == source
 
 
 class TestBuilding:

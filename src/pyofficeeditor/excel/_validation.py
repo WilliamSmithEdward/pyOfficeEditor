@@ -38,6 +38,7 @@ from pyofficeeditor._xml import Element
 from pyofficeeditor.excel._addresses import parse_sqref
 from pyofficeeditor.excel._reference import RangeRef
 from pyofficeeditor.excel._values import datetime_to_serial
+from pyofficeeditor.excel._xstring import decode, encode_attribute, encode_text
 
 #: ``ST_DataValidationType``.
 ValidationType = Literal[
@@ -222,10 +223,10 @@ class DataValidation:
             allow_blank=element.get("allowBlank") in ("1", "true"),
             hide_dropdown=element.get("showDropDown") in ("1", "true"),
             error_style=_as_style(element.get("errorStyle")),
-            error_title=element.get("errorTitle"),
-            error_message=element.get("error"),
-            prompt_title=element.get("promptTitle"),
-            prompt_message=element.get("prompt"),
+            error_title=_decoded(element.get("errorTitle")),
+            error_message=_decoded(element.get("error")),
+            prompt_title=_decoded(element.get("promptTitle")),
+            prompt_message=_decoded(element.get("prompt")),
             show_error=element.get("showErrorMessage") in ("1", "true"),
             show_prompt=element.get("showInputMessage") in ("1", "true"),
             ranges=parse_sqref(element.get("sqref") or ""),
@@ -258,7 +259,9 @@ class DataValidation:
             ("prompt", self.prompt_message),
         ):
             if value is not None:
-                element.set(name, value)
+                # Excel escapes a line break here, which an attribute would
+                # otherwise read back as a space, measured.
+                element.set(name, encode_attribute(value))
         element.set("sqref", self.sqref)
         if self.uid is not None:
             element.set("xr:uid", self.uid)
@@ -266,7 +269,7 @@ class DataValidation:
             if formula is None:
                 continue
             node = Element.create(name)
-            node.set_text(formula)
+            node.set_text(encode_text(formula))
             element.append(node)
         return element
 
@@ -319,7 +322,11 @@ def _number(value: float) -> str:
 
 def _child_text(element: Element, name: str) -> str | None:
     child = element.child(name)
-    return None if child is None else (child.text or "")
+    return None if child is None else decode(child.text)
+
+
+def _decoded(raw: str | None) -> str | None:
+    return None if raw is None else decode(raw)
 
 
 def _as_kind(raw: str | None) -> ValidationType:

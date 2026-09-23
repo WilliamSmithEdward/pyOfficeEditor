@@ -139,9 +139,36 @@ def escape_text(value: str) -> str:
 
 
 def escape_attribute(value: str, quote: str = '"') -> str:
-    """Escape a string for an attribute value delimited by ``quote``."""
+    """Escape a string for an attribute value delimited by ``quote``.
+
+    A tab, a line feed or a carriage return is written as a character
+    reference, the one spelling of it an XML reader keeps in an attribute.
+    """
     out = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if "\t" in out or "\n" in out or "\r" in out:
+        out = out.translate(_ATTRIBUTE_WHITESPACE_REFERENCES)
     return out.replace(quote, "&quot;" if quote == '"' else "&apos;")
+
+
+#: The character references ``escape_attribute`` writes white space as.
+_ATTRIBUTE_WHITESPACE_REFERENCES = str.maketrans({"\t": "&#9;", "\n": "&#10;", "\r": "&#13;"})
+
+
+def normalize_attribute(raw: str) -> str:
+    """An attribute's value as an XML processor reads it.
+
+    Line ends are normalized first, so a CRLF is one line feed, and then
+    every tab and line feed written as it is reads as a space. One written
+    as a character reference is kept: Excel reads ``a&#10;b`` as two lines
+    and ``a`` and ``b`` across a raw line break as ``a b``, measured.
+    """
+    if "\t" in raw or "\n" in raw or "\r" in raw:
+        raw = raw.replace("\r\n", " ").translate(_ATTRIBUTE_WHITESPACE_READ)
+    return decode_entities(raw)
+
+
+#: What white space written as it is reads as in an attribute.
+_ATTRIBUTE_WHITESPACE_READ = str.maketrans({"\t": " ", "\n": " ", "\r": " "})
 
 
 def local_name(name: str) -> str:
@@ -192,8 +219,17 @@ class Raw(Node):
 
     @property
     def text(self) -> str:
-        """The decoded text, for a text node.  Other kinds decode to ''."""
-        return decode_entities(self.raw) if self.kind == "text" else ""
+        """The decoded text, for a text node.  Other kinds decode to ''.
+
+        Line ends read as an XML processor reads them: a CRLF, or a CR on
+        its own, is one line feed, before any reference is decoded, so a
+        ``&#13;`` still reads as a CR. Excel writes a line break inside a
+        rich text run, a note or a shape as CRLF, and reports it as one
+        character. The source itself is untouched, so a save is too.
+        """
+        if self.kind != "text":
+            return ""
+        return decode_entities(self.raw.replace("\r\n", "\n").replace("\r", "\n"))
 
     def to_xml(self) -> str:
         return self.raw
@@ -215,7 +251,7 @@ class Attribute:
 
     @property
     def value(self) -> str:
-        return decode_entities(self.raw_value)
+        return normalize_attribute(self.raw_value)
 
     def to_xml(self) -> str:
         return f"{self.name}={self.quote}{self.raw_value}{self.quote}"
@@ -704,4 +740,5 @@ __all__ = [
     "escape_attribute",
     "escape_text",
     "local_name",
+    "normalize_attribute",
 ]

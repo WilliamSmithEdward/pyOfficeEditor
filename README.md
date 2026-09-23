@@ -133,25 +133,29 @@ data descriptors.
 |               immutable values                         |
 |   _tables     ListObjects: their own parts and wiring  |
 |   _dimensions widths, heights, hiding, frozen panes    |
-|   _names      defined names, and the rules tables share |
-|   _shapes     shapes, and the grid that places a control |
-|   _pagesetup  margins in inches, and the three header   |
-|               boxes coded into one string               |
+|   _names      defined names, and the naming rules      |
+|               tables share with them                   |
+|   _shapes     shapes, and the grid that places a       |
+|               control                                  |
+|   _pagesetup  margins in inches, and the three header  |
+|               boxes coded into one string              |
 |   _validation what a cell accepts, and the inverted    |
 |               attribute behind its dropdown            |
 |   _conditional  cfRules, and the compatibility formula |
 |                 that makes them fire                   |
 |   _dxf        differential formats: what a rule paints |
-|   _addresses  the five notations an address is spelled  |
-|               in, two of them zero-based                |
-|   _rowcol     inserting and deleting rows and columns,  |
+|   _addresses  the five notations an address is spelled |
+|               in, two of them zero-based               |
+|   _rowcol     inserting and deleting rows and columns, |
 |               and moving everything that records a     |
 |               cell address                             |
-|   _tokens     a formula, broken into editable pieces    |
+|   _tokens     a formula, broken into editable pieces   |
 |   _formulas   shifting and breaking references, for    |
 |               shared formulas, a renamed sheet, and    |
 |               the #REF! a deletion leaves behind       |
 |   _sharedstrings   the per-workbook string table       |
+|   _xstring    text as SpreadsheetML spells it: _xHHHH_ |
+|               for what XML cannot carry                |
 |   _schema     where a child element has to go          |
 +--------------------------------------------------------+
 | word / powerpoint / access   to follow, in that order  |

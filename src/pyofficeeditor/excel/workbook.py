@@ -44,6 +44,7 @@ from pyofficeeditor.excel._sharedstrings import (
 )
 from pyofficeeditor.excel._styles import Styles
 from pyofficeeditor.excel._tables import Table, check_table_name
+from pyofficeeditor.excel._xstring import decode, encode_attribute, escape
 from pyofficeeditor.excel.worksheet import Worksheet
 from pyofficeeditor.exceptions import PackageError, UnsupportedFormatError
 from pyofficeeditor.opc import OpcPackage
@@ -187,7 +188,7 @@ class Workbook:
             )
         relationships = self._package.relationships(self._workbook_part)
         for entry in container.children_named("sheet"):
-            name = entry.get("name")
+            name = _sheet_name(entry)
             relationship_id = entry.get("r:id") or entry.get("id")
             if name is None or relationship_id is None:
                 continue
@@ -211,7 +212,7 @@ class Workbook:
         container = self._document.root.child("sheets")
         if container is not None:
             for entry in container.children_named("sheet"):
-                if entry.get("name") == name:
+                if _sheet_name(entry) == name:
                     return entry
         raise PackageError(f"the workbook has no sheet named {name!r}.")
 
@@ -225,7 +226,7 @@ class Workbook:
         if container is None:
             return False
         for entry in container.children_named("sheet"):
-            name = entry.get("name")
+            name = _sheet_name(entry)
             if name is None or name == besides:
                 continue
             if entry.get("state") not in ("hidden", "veryHidden"):
@@ -322,7 +323,7 @@ class Workbook:
 
         entry = Element.create(
             "sheet",
-            {"name": name, "sheetId": str(self._free_sheet_id()), "r:id": relationship.id},
+            {"name": encode_attribute(name), "sheetId": str(self._free_sheet_id()), "r:id": relationship.id},
         )
         container = self._document.root.require("sheets")
         existing = list(container.children_named("sheet"))
@@ -357,7 +358,7 @@ class Workbook:
 
         container = self._document.root.require("sheets")
         for entry in list(container.children_named("sheet")):
-            if entry.get("name") == name:
+            if _sheet_name(entry) == name:
                 relationship_id = entry.get("r:id") or entry.get("id")
                 container.remove(entry)
                 if relationship_id is not None:
@@ -392,8 +393,8 @@ class Workbook:
 
         container = self._document.root.require("sheets")
         for entry in container.children_named("sheet"):
-            if entry.get("name") == old:
-                entry.set("name", new)
+            if _sheet_name(entry) == old:
+                entry.set("name", encode_attribute(new))
                 break
 
         for other in self._sheets.values():
@@ -469,7 +470,7 @@ class Workbook:
         for entry in container.children_named("definedName"):
             text = entry.text
             if text:
-                entry.set_text(rename_sheet_in_formula(text, old, new))
+                entry.set_text(rename_sheet_in_formula(text, escape(old), escape(new)))
 
     def _workbook_view(self) -> Element | None:
         views = self._document.root.child("bookViews")
@@ -935,9 +936,17 @@ def _rename_in_formulas(sheet: Worksheet, old: str, new: str) -> None:
             text = formula.text
             if not text:
                 continue
-            updated = rename_sheet_in_formula(text, old, new)
+            # The formula holds the names as its text is stored, escaped.
+            updated = rename_sheet_in_formula(text, escape(old), escape(new))
             if updated != text:
                 formula.set_text(updated)
+
+
+def _sheet_name(entry: Element) -> str | None:
+    """The name a ``<sheet>`` gives its worksheet, as Excel shows it:
+    measured, a sheet named ``a_x0041_b`` is written ``a_x005f_x0041_b``."""
+    raw = entry.get("name")
+    return None if raw is None else decode(raw)
 
 
 def _check_suffix(path: Path) -> None:

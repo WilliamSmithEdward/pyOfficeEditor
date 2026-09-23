@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from pyofficeeditor._xml import Element, XmlDocument
 from pyofficeeditor.excel._names import MAX_NAME_LENGTH, check_name
 from pyofficeeditor.excel._reference import CellRef, RangeRef
+from pyofficeeditor.excel._xstring import decode, encode_attribute, replace_unrepresentable
 
 NS_SPREADSHEETML = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 
@@ -147,12 +148,15 @@ class TableColumn:
 
     @property
     def name(self) -> str:
-        return self._element.get("name") or ""
+        """The column's name, which its header cell holds too. Measured,
+        a header with a line break is named ``head_x000a_two`` here."""
+        return decode(self._element.get("name") or "")
 
     @property
     def totals_label(self) -> str | None:
         """The literal text in this column's totals cell, if it has one."""
-        return self._element.get("totalsRowLabel")
+        label = self._element.get("totalsRowLabel")
+        return None if label is None else decode(label)
 
     @property
     def totals_function(self) -> str | None:
@@ -168,7 +172,7 @@ class TableColumn:
         shared formula.
         """
         child = self._element.child("calculatedColumnFormula")
-        return None if child is None else (child.text or None)
+        return None if child is None else (decode(child.text) or None)
 
     def __repr__(self) -> str:
         return f"<TableColumn {self.name!r} id={self.id}>"
@@ -203,7 +207,7 @@ class Table:
 
     @property
     def name(self) -> str:
-        return self._root.get("name") or ""
+        return decode(self._root.get("name") or "")
 
     @property
     def display_name(self) -> str:
@@ -212,7 +216,7 @@ class Table:
         Excel keeps it equal to :attr:`name` and it is what formulas use, so
         renaming sets both.
         """
-        return self._root.get("displayName") or self.name
+        return decode(self._root.get("displayName") or "") or self.name
 
     # -- extent ---------------------------------------------------------
 
@@ -353,8 +357,8 @@ def build_table_part(
         {
             "xmlns": NS_SPREADSHEETML,
             "id": str(identifier),
-            "name": name,
-            "displayName": name,
+            "name": encode_attribute(name),
+            "displayName": encode_attribute(name),
             "ref": ref.a1,
         },
     )
@@ -371,7 +375,7 @@ def build_table_part(
 
     columns = Element.create("tableColumns", {"count": str(len(column_names))})
     for index, column_name in enumerate(column_names, start=1):
-        columns.append(Element.create("tableColumn", {"id": str(index), "name": column_name}))
+        columns.append(Element.create("tableColumn", {"id": str(index), "name": encode_attribute(column_name)}))
     root.append(columns)
     root.append(style.write())
     return XmlDocument(root)
@@ -383,8 +387,10 @@ def unique_column_names(wanted: list[str]) -> list[str]:
     A table's column names have to be non-empty and distinct, and Excel
     invents ``Column1`` and appends a digit rather than refusing the table,
     so doing the same here keeps a caller from producing a file Excel then
-    silently rewrites.
+    silently rewrites. A character XML cannot hold becomes U+FFFD, as
+    Excel makes it.
     """
+    wanted = [replace_unrepresentable(raw) for raw in wanted]
     out: list[str] = []
     seen: set[str] = set()
     for index, raw in enumerate(wanted, start=1):

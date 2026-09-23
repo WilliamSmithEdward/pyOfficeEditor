@@ -57,10 +57,43 @@ anything trailing the file is swept into the oldest release's notes. -->
 
 ### Fixed
 
+- **Text holding a control character made Excel refuse the workbook.**
+  XML cannot carry most characters below U+0020, and they were written
+  as they were: a cell set to `"a\x01b"` gave a file Excel would not
+  open. SpreadsheetML spells such a character `_xHHHH_`, and text is now
+  written the way Excel writes it, measured for every one of them, in
+  cells, formulas, headers and footers, validations, hyperlinks, tables,
+  sheet names, defined names, conditional formats and number formats. A literal `_x0041_` is written with its
+  underscore escaped, as Excel writes it, so it reads back as itself.
+
+- **Text Excel had escaped read back escaped.** A carriage return Excel
+  stores as `_x000D_`, which a cell holding text from Windows line ends
+  has before every line break, read as those seven characters, and so
+  did every other escape, `_x005F_` in front of a literal one included.
+  Each is read as the character it spells now, in either case of hex
+  digit, as Excel reads them.
+
+- **A line break in a validation's message, a hyperlink's tip or a
+  table's column name became a space.** An attribute cannot keep a line
+  break written as it is, and Excel reads one as a space, measured. It
+  is written as Excel writes it now, `_x000a_`, and a raw one in a file
+  another program wrote reads as the space Excel shows.
+
+- **A table's header holding a control character stayed as it was.**
+  Excel puts U+FFFD in its place, in the column's name and in its cell,
+  when it makes a table, measured for each such character. `add_table`
+  does the same.
+
 - **`Worksheet.rename` did not rename the sheet.** It changed the name
   the object reported and nothing in the file, so the two disagreed and
   every formula still named the old sheet. It does what
   `Workbook.rename_sheet` does now.
+
+- **A line break in text of more than one font read with a stray
+  carriage return.** Excel stores the break as CRLF inside a run, and an
+  XML reader reads that as one line feed; this library kept both, so a
+  cell Excel shows as `two` over `lines` read as `"two\r\nlines"`. Line
+  ends in text are read as XML reads them now.
 
 ### Verified
 
@@ -88,6 +121,15 @@ object model answered for each. The committed `shapes.xlsm` carries a
 Button and nothing else, so it could prove none of this.
 
 ### Internal
+
+- Text with a line break between words is written without
+  `xml:space="preserve"`, as Excel writes it; only white space at either
+  end needs it. A line break is written as CRLF everywhere text is, as
+  Excel writes it.
+
+- An attribute value set with a tab, a line feed or a carriage return is
+  written as a character reference, the one spelling an XML reader keeps,
+  and one read as it was written reads as the space XML makes it.
 
 - The kind of control being added is checked before any of its four
   parts is written. The VML is what knows an unknown kind is wrong, and

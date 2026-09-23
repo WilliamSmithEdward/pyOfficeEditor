@@ -707,8 +707,8 @@ def _text_of(body: Element) -> str:
                 run = _find(node, "t")
                 if run is not None:
                     # Excel writes a break inside a run as CRLF and reports
-                    # it back as one character, so it is normalised here.
-                    piece += (run.text or "").replace("\r\n", "\n")
+                    # it back as one character, which is how it reads here.
+                    piece += run.text or ""
             elif name == "br":
                 piece += "\n"
         lines.append(piece)

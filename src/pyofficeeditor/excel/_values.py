@@ -29,13 +29,14 @@ import datetime as dt
 from dataclasses import dataclass
 
 from pyofficeeditor._xml import Element
-from pyofficeeditor.excel._sharedstrings import SharedStrings, needs_space_preserved
+from pyofficeeditor.excel._sharedstrings import SharedStrings, entry_text, needs_space_preserved
 from pyofficeeditor.excel._styles import (
     ISO_DATE_FORMAT,
     ISO_DATETIME_FORMAT,
     ISO_TIME_FORMAT,
     Styles,
 )
+from pyofficeeditor.excel._xstring import decode, encode_text
 
 #: Excel's own error strings.  A cell of type ``e`` holds one of these.
 ERROR_CODES = frozenset(
@@ -191,7 +192,7 @@ def read_value(
 
     if cell_type == "inlineStr":
         inline = cell.child("is")
-        return "" if inline is None else _inline_text(inline)
+        return "" if inline is None else entry_text(inline)
 
     value = cell.child("v")
     if value is None:
@@ -207,7 +208,7 @@ def read_value(
         return shared_strings[int(raw)]
 
     if cell_type == "str":
-        return raw
+        return decode(raw)
 
     if cell_type == "b":
         return raw not in ("0", "", "false", "FALSE")
@@ -297,7 +298,7 @@ def write_value(
             text = Element.create("t")
             if needs_space_preserved(value):
                 text.set("xml:space", "preserve")
-            text.set_text(value)
+            text.set_text(encode_text(value))
             inline.append(text)
             cell.append(inline)
             return
@@ -354,16 +355,6 @@ def _style_index(cell: Element) -> int | None:
         return int(raw)
     except ValueError:
         return None
-
-
-def _inline_text(inline: Element) -> str:
-    """The text of an ``<is>``, which has the same shape as a shared entry."""
-    direct = inline.child("t")
-    if direct is not None:
-        return direct.text
-    return "".join(
-        run.text for section in inline.children_named("r") for run in section.children_named("t")
-    )
 
 
 __all__ = [

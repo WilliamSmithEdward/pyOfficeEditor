@@ -35,6 +35,7 @@ from pyofficeeditor._xml import Element, XmlDocument
 from pyofficeeditor.excel._addresses import parse_sqref
 from pyofficeeditor.excel._formats import Color
 from pyofficeeditor.excel._reference import CellRef, RangeRef
+from pyofficeeditor.excel._xstring import decode, encode_attribute, encode_text
 
 #: ``ST_CfType``.
 RuleType = Literal[
@@ -377,7 +378,7 @@ class ConditionalRule:
             dxf_id=_as_int(element.get("dxfId")),
             stop_if_true=element.get("stopIfTrue") in ("1", "true"),
             operator=_as_operator(element.get("operator")),
-            text=element.get("text"),
+            text=_decoded(element.get("text")),
             time_period=_as_time_period(element.get("timePeriod")),
             rank=_as_int(element.get("rank")),
             percent=element.get("percent") in ("1", "true"),
@@ -385,7 +386,7 @@ class ConditionalRule:
             above_average=None if above is None else above in ("1", "true"),
             equal_average=element.get("equalAverage") in ("1", "true"),
             std_dev=_as_int(element.get("stdDev")),
-            formulas=tuple(node.text or "" for node in element.children_named("formula")),
+            formulas=tuple(decode(node.text) for node in element.children_named("formula")),
             color_scale=None if scale is None else ColorScale.read(scale),
             data_bar=None if bar is None else DataBar.read(bar),
             icon_set=None if icons is None else IconSet.read(icons),
@@ -412,7 +413,7 @@ class ConditionalRule:
         if self.operator is not None:
             element.set("operator", self.operator)
         if self.text is not None:
-            element.set("text", self.text)
+            element.set("text", encode_attribute(self.text))
         if self.time_period is not None:
             element.set("timePeriod", self.time_period)
         if self.rank is not None:
@@ -423,7 +424,7 @@ class ConditionalRule:
             element.set("equalAverage", "1")
         for formula in self.formulas:
             node = Element.create("formula")
-            node.set_text(formula)
+            node.set_text(encode_text(formula))
             element.append(node)
         for child in (self.color_scale, self.data_bar, self.icon_set):
             if child is not None:
@@ -621,6 +622,10 @@ def _operand(value: object) -> str:
     if text.startswith('"') and text.endswith('"'):
         return text
     return '"' + text.replace('"', '""') + '"'
+
+
+def _decoded(raw: str | None) -> str | None:
+    return None if raw is None else decode(raw)
 
 
 def _as_int(raw: str | None) -> int | None:
