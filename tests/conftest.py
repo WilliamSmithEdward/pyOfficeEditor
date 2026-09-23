@@ -78,6 +78,11 @@ LIVE_PICTURES_ANSWERS = EXCEL_FIXTURES / "pictures_answers.json"
 #: ``Characters``, and the font Excel reported at each change.
 LIVE_RICHTEXT_XLSX = EXCEL_FIXTURES / "richtext.xlsx"
 LIVE_RICHTEXT_ANSWERS = EXCEL_FIXTURES / "richtext_answers.json"
+#: Authored by Excel: one chart of each kind its Insert Chart makes, from the
+#: same block, and a column chart with a title typed in, with each chart's
+#: series formulas.
+LIVE_CHART_KINDS_XLSX = EXCEL_FIXTURES / "chartkinds.xlsx"
+LIVE_CHART_KINDS_ANSWERS = EXCEL_FIXTURES / "chartkinds_answers.json"
 #: Authored by Excel: two pivot tables reading one range through caches of
 #: their own, one on the data sheet where edits reach it, with where each
 #: was and what its cache read after each of nineteen edits, or that Excel
@@ -360,6 +365,22 @@ def live_richtext_answers() -> Path:
     if not LIVE_RICHTEXT_ANSWERS.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to measure the text with real Excel")
     return LIVE_RICHTEXT_ANSWERS
+
+
+@pytest.fixture(scope="session")
+def live_chart_kinds_xlsx() -> Path:
+    """A chart of each kind, added by Excel."""
+    if not LIVE_CHART_KINDS_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author chartkinds.xlsx with real Excel")
+    return LIVE_CHART_KINDS_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_chart_kinds_answers() -> Path:
+    """Each of those charts' series formulas, as Excel reported them."""
+    if not LIVE_CHART_KINDS_ANSWERS.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to measure the charts with real Excel")
+    return LIVE_CHART_KINDS_ANSWERS
 
 
 @pytest.fixture(scope="session")

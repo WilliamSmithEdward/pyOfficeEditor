@@ -77,6 +77,8 @@ Each layer knows the layer below it and not the layer above.
 |   _comments     notes and threads, and the box each gets  |
 |   _pictures     images, sized as Excel sizes them         |
 |   _charts       what each chart plots, and chart sheets   |
+|   _chartbuild   charts written as Excel's Insert Chart    |
+|                 writes them                               |
 |   _pivots       where each pivot table is, and what its   |
 |                 cache reads                               |
 |   _richtext     runs of text in several fonts, read as    |
@@ -353,11 +355,13 @@ tests/
                                 files Excel saved after the same edits
   test_excel_pivots.py          pivot tables through nineteen edits, and
                                 the ones Excel refuses
+  test_excel_chartbuild.py      charts added, against the parts Excel
+                                wrote for the same charts
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               twenty Excel-authored packages: three
-                                sourced, seventeen scripted, and two
-                                measured corpora; see its README
+  fixtures/excel/               twenty-one Excel-authored packages:
+                                three sourced, eighteen scripted, and
+                                two measured corpora; see its README
 ```
 
 - **Always** run pytest with `-p no:randomly` to keep ordering reproducible.
@@ -365,7 +369,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against twenty committed
+- The suite needs no Office installation. It runs against twenty-one committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as

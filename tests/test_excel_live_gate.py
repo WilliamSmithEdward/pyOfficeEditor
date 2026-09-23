@@ -2326,6 +2326,87 @@ def test_excel_reads_the_pivot_tables_this_library_moved(
     assert seen == read
 
 
+_CHART_KINDS_PROBE = r'''
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim co As ChartObject
+    Dim s As Series
+    Dim out As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For Each ws In wb.Worksheets
+        For Each co In ws.ChartObjects
+            out = out & ws.Name & "/" & co.Name & "|" & CStr(co.Chart.ChartType) & "|"
+            For Each s In co.Chart.SeriesCollection
+                out = out & s.Formula & ";"
+            Next s
+            out = out & "|"
+            If co.Chart.HasTitle Then out = out & co.Chart.ChartTitle.Text
+            out = out & vbLf
+        Next co
+    Next ws
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = out
+End Function
+'''
+
+
+def test_excel_reads_the_charts_this_library_adds(
+    excel: object, live_empty_xlsx: Path, live_chart_kinds_answers: Path, tmp_path: Path
+) -> None:
+    """A chart is three things that have to agree: its part, its frame in
+    the sheet's drawing, and the relationship between them. Excel has to
+    open every kind added here and report it as it reported the same chart
+    added by itself: its type, its series and its title."""
+    import json
+
+    from pyofficeeditor.excel import CellRef
+
+    answers = json.loads(live_chart_kinds_answers.read_text(encoding="utf-8"))
+    made = [
+        ("column", None, 51), ("bar", None, 57), ("line", None, 4), ("lineMarkers", None, 65), ("pie", None, 5),
+        ("doughnut", None, -4120), ("scatter", None, -4169), ("area", None, 1),
+        ("column", "Sales by month", 51),
+    ]
+    target = tmp_path / "charts.xlsx"
+    shutil.copy(live_empty_xlsx, target)
+    with Workbook.open(target) as book:
+        sheet = book.rename_sheet(book.sheet_names[0], "Data")
+        for column, text in enumerate(["Month", "Sales", "Costs"], start=1):
+            sheet.set_value(CellRef(1, column), text)
+        for row in range(2, 7):
+            sheet.set_value(CellRef(row, 1), f"M{row - 1}")
+            sheet.set_value(CellRef(row, 2), row * 10)
+            sheet.set_value(CellRef(row, 3), row * 4)
+        for index, (kind, title, _) in enumerate(made):
+            sheet.add_chart(kind, "A1:C6", left=250, top=20 + 230 * index, title=title)  # type: ignore[arg-type]
+        book.add_sheet("Report").add_chart("pie", "Data!A1:B6", left=10, top=10)
+        book.save()
+
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _CHART_KINDS_PROBE, proc="Probe", args=(str(target),), timeout=180, module_name="Probe_chart_kinds"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+    seen = {
+        key: (int(kind), [formula for formula in series.split(";") if formula], title)
+        for key, kind, series, title in (line.split("|") for line in str(result.value).splitlines() if line)
+    }
+    # Excel's automatic title is "Chart Title", but a pie's is its first
+    # series' name, as it shows the same markup for its own.
+    expected = {
+        f"Data/Chart {number}": (
+            code,
+            answers[f"Chart {number}"]["series"],
+            title or ("Sales" if kind == "pie" else "Chart Title"),
+        )
+        for number, (kind, title, code) in enumerate(made, start=1)
+    }
+    expected["Report/Chart 1"] = (5, ["=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)"], "Sales")
+    assert seen == expected
+
+
 _REMOVED_PROBE = r"""
 Public Function Probe(ByVal Target As String) As String
     Dim wb As Workbook

@@ -31,7 +31,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from pyofficeeditor._xml import Element, XmlDocument
-from pyofficeeditor.excel._charts import Chart, charts_in_drawing
+from pyofficeeditor.excel._chartbuild import CHART_KINDS, CT_CHART, ChartKind, SeriesData, chart_frame, chart_part
+from pyofficeeditor.excel._charts import RT_CHART, Chart, charts_in_drawing
 from pyofficeeditor.excel._comments import (
     CT_COMMENTS,
     CT_THREADED_COMMENTS,
@@ -2253,6 +2254,142 @@ class Worksheet:
         package.write(drawing_part, drawing.to_bytes(), content_type=CT_DRAWING)
         self._invalidate()
         return self.shape(name)
+
+    def add_chart(
+        self,
+        kind: ChartKind,
+        data: str | RangeRef,
+        *,
+        left: float,
+        top: float,
+        width: float = 360.0,
+        height: float = 216.0,
+        title: str | None = None,
+        name: str | None = None,
+        series_in: Literal["columns", "rows"] | None = None,
+    ) -> Chart:
+        """Put a chart of a block of cells on the sheet, as Excel's Insert
+        Chart puts one.
+
+        ``data`` is a block whose first row names the series and whose
+        first column holds the categories, on this sheet or, written
+        ``Data!A1:C6``, on another. Its series run down its columns when it
+        is taller than it is wide, and along its rows otherwise, a square
+        block included, as Excel lays a block out, measured; ``series_in``
+        says which instead. A scatter chart takes the first column as its x
+        values.
+
+        The chart looks as Excel's own of the kind does, measured markup and
+        all, with Excel's automatic title unless ``title`` gives one. Its
+        name is ``Chart 1``, ``Chart 2`` and so on unless ``name`` gives one.
+        """
+        if kind not in CHART_KINDS:
+            raise ValueError(f"{kind!r} is not a kind of chart this can add; it adds {', '.join(CHART_KINDS)}.")
+        if width <= 0 or height <= 0:
+            raise ValueError(f"a chart needs a size above nothing; this one would be {width:g} by {height:g}.")
+        source, block = self._chart_source(data)
+        if block.height < 2 or block.width < 2:
+            raise ValueError(
+                f"{block.a1} needs a row of series names and a column of categories beside at least one "
+                f"value; it is {block.height} by {block.width}."
+            )
+        down = (block.height > block.width) if series_in is None else series_in == "columns"
+        series = source.chart_series(block, down=down)
+        chart_name = name if name is not None else self._next_chart_name()
+        self._check_new_shape_name(chart_name)
+
+        package = self._workbook.package
+        part = self._workbook.free_part_name("xl/charts/chart{n}.xml")
+        package.write(part, chart_part(kind, series, title=title).encode("utf-8"), content_type=CT_CHART)
+        drawing_part, drawing = self._drawing_part()
+        relationship = package.relationships(drawing_part).add_part(RT_CHART, part)
+        markup = chart_frame(
+            shape_id=self._next_shape_id(),
+            name=chart_name,
+            relationship=relationship.id,
+            left=left,
+            top=top,
+            width=width,
+            height=height,
+            grid=SheetGrid.of(self._root),
+        )
+        drawing.root.append(XmlDocument.parse(markup.encode("utf-8")).root)
+        package.write(drawing_part, drawing.to_bytes(), content_type=CT_DRAWING)
+        self._invalidate()
+        return next(chart for chart in self.charts if chart.part_name == part)
+
+    def chart_series(self, block: RangeRef, *, down: bool) -> list[SeriesData]:
+        """The series a block of this sheet's cells makes, as Excel reads a
+        block given to a chart, each with the values its references read
+        now: the names from the first row and the categories from the first
+        column when the series run down, the other way about when they run
+        along."""
+        sheet = quote_sheet_name(self._name)
+
+        def span(cells: list[CellRef]) -> str:
+            first, last = cells[0], cells[-1]
+            corner = f"${first.letter}${first.row}"
+            return f"{sheet}!{corner}" if first == last else f"{sheet}!{corner}:${last.letter}${last.row}"
+
+        top, left = block.top, block.left
+        if down:
+            headers = [CellRef(top, column) for column in range(left + 1, block.right + 1)]
+            categories = [CellRef(row, left) for row in range(top + 1, block.bottom + 1)]
+            columns = [[CellRef(row, column) for row in range(top + 1, block.bottom + 1)] for column in range(left + 1, block.right + 1)]
+        else:
+            headers = [CellRef(row, left) for row in range(top + 1, block.bottom + 1)]
+            categories = [CellRef(top, column) for column in range(left + 1, block.right + 1)]
+            columns = [[CellRef(row, column) for column in range(left + 1, block.right + 1)] for row in range(top + 1, block.bottom + 1)]
+
+        category_values = [self.get_value(cell) for cell in categories]
+        numeric = all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            for value in category_values
+            if value is not None
+        ) and any(value is not None for value in category_values)
+        category_cache: list[str | float | None] = (
+            [value if isinstance(value, (int, float)) and not isinstance(value, bool) else None for value in category_values]
+            if numeric
+            else [self.get_text(cell) or None for cell in categories]
+        )
+        found: list[SeriesData] = []
+        for header, cells in zip(headers, columns, strict=True):
+            values = [self.get_value(cell) for cell in cells]
+            found.append(
+                SeriesData(
+                    values=span(cells),
+                    value_cache=[
+                        float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+                        for value in values
+                    ],
+                    value_format=self.number_format(cells[0]) or "General",
+                    name=span([header]),
+                    name_cache=self.get_text(header),
+                    categories=span(categories),
+                    category_cache=category_cache,
+                    category_format=self.number_format(categories[0]) or "General",
+                    numeric_categories=numeric,
+                )
+            )
+        return found
+
+    def _chart_source(self, data: str | RangeRef) -> tuple[Worksheet, RangeRef]:
+        """The sheet and block a chart's data names."""
+        if isinstance(data, RangeRef):
+            return self, data.normalized
+        sheet_name, _, address = data.rpartition("!")
+        if sheet_name.startswith("'") and sheet_name.endswith("'"):
+            sheet_name = sheet_name[1:-1].replace("''", "'")
+        source = self._workbook.sheet(sheet_name) if sheet_name else self
+        return source, RangeRef.parse(address.replace("$", "")).normalized
+
+    def _next_chart_name(self) -> str:
+        """``Chart N``, with the smallest N no shape on the sheet has."""
+        taken = {shape.name for shape in self.shapes}
+        number = 1
+        while f"Chart {number}" in taken:
+            number += 1
+        return f"Chart {number}"
 
     def picture_data(self, name: str) -> bytes:
         """The image a picture shows, as the bytes its media part holds."""

@@ -1300,6 +1300,56 @@ Public Function Build(ByVal Target As String) As String
 End Function
 '''
 
+#: One chart of each kind Excel's Insert Chart makes, added the way it adds
+#: one, with ``Shapes.AddChart2`` and its default style, all from
+#: Data!A1:C6, and a column chart with a title typed in. They are the
+#: markup a chart written here is held to. The reply is each chart's name,
+#: its kind and its series formulas.
+_BUILD_CHART_KINDS = r'''
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim sh As Shape
+    Dim kinds As Variant
+    Dim labels As Variant
+    Dim i As Long
+    Dim r As Long
+    Dim s As Series
+    Dim out As String
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Data"
+    ws.Range("A1:C1").Value = Array("Month", "Sales", "Costs")
+    For r = 2 To 6
+        ws.Cells(r, 1).Value = "M" & CStr(r - 1)
+        ws.Cells(r, 2).Value = r * 10
+        ws.Cells(r, 3).Value = r * 4
+    Next r
+    kinds = Array(xlColumnClustered, xlBarClustered, xlLine, xlLineMarkers, xlPie, xlDoughnut, xlXYScatter, _
+                  xlArea, xlColumnClustered)
+    labels = Array("column", "bar", "line", "lineMarkers", "pie", "doughnut", "scatter", "area", "column titled")
+    For i = 0 To UBound(kinds)
+        Set sh = ws.Shapes.AddChart2(-1, kinds(i), 250, 20 + 230 * i, 360, 216)
+        sh.Chart.SetSourceData Source:=ws.Range("A1:C6")
+        If labels(i) = "column titled" Then
+            sh.Chart.HasTitle = True
+            sh.Chart.ChartTitle.Text = "Sales by month"
+        End If
+        out = out & sh.Name & "|" & labels(i) & "|"
+        For Each s In sh.Chart.SeriesCollection
+            out = out & s.Formula & ";"
+        Next s
+        out = out & vbLf
+    Next i
+
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+'''
+
 #: What each field of a described cell is.
 _STYLE_FIELDS = (
     "style", "number_format", "font_name", "font_size", "bold", "italic", "font_color",
@@ -1405,6 +1455,18 @@ def richtext_answers(reply: str) -> Answers:
                 "superscript": superscript == "True",
             })
         answers[address] = {"runs": runs}
+    return answers
+
+
+def chart_kind_answers(reply: str) -> Answers:
+    """One line per chart: its name, the kind it was made as, and its
+    series formulas."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        name, kind, series = line.split("|")
+        answers[name] = {"kind": kind, "series": [formula for formula in series.split(";") if formula]}
     return answers
 
 
@@ -1669,6 +1731,7 @@ def main() -> int:
         ("styles.xlsx", _BUILD_STYLES, style_answers),
         ("charts.xlsx", _BUILD_CHARTS, chart_answers),
         ("pivots.xlsx", _BUILD_PIVOTS, pivot_answers),
+        ("chartkinds.xlsx", _BUILD_CHART_KINDS, chart_kind_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]

@@ -32,7 +32,7 @@ fixtures to refresh.
 
 `scripts/build_excel_fixtures.py` drives real Excel through
 [pyvbaharness](https://github.com/WilliamSmithEdward/pyVBAharness) to author
-sixteen more. These are committed like the rest: the script exists so a
+seventeen more. These are committed like the rest: the script exists so a
 fixture's *content* can be changed deliberately and reproduced, not so the
 suite rebuilds them. Run it on a Windows machine with Excel; tests that need
 a fixture skip when it is absent.
@@ -54,6 +54,7 @@ a fixture skip when it is absent.
 | `escapes.xlsx` | Text XML cannot carry as it is, control characters, a lone carriage return, a CRLF and a literal `_x0041_`, everywhere a workbook keeps text: cells, formulas and their results, a formula naming a sheet called `a_x0041_b`, a note, a validation's messages, a hyperlink's tip, a table's headers, a page header and a defined name's comment. `escapes_answers.json` records each character Excel read back. The page header brings a printer settings part, for Microsoft Print to PDF. |
 | `styles.xlsx` | Every built-in cell style Excel lists, each applied by Excel to a cell of its own beside its name, a style of the workbook's own, and Good and Currency put over formatting a cell already had. `styles_answers.json` records what Excel showed for each cell, its style, number format, font, fill, alignment and edges, and which aspects each style includes. |
 | `charts.xlsx` | A column chart with a typed title and a line chart over two areas on the data sheet, a pie whose title is linked to a cell and a scatter chart on a second sheet, and a bar chart on a chart sheet. `charts_answers.json` records each chart's series formulas as Excel reported them, and every reference in each chart part as Excel wrote it, in the file as built and in the file Excel saved after each of nine edits: rows and columns inserted and deleted, and the data sheet renamed. |
+| `chartkinds.xlsx` | One chart of each kind Excel's Insert Chart makes, added with `Shapes.AddChart2` and its default style from `Data!A1:C6`: column, bar, line, line with markers, pie, doughnut, scatter and area, and a column chart with a title typed in. `chartkinds_answers.json` records each chart's series formulas. The parts are what a chart added here is compared with. |
 | `pivots.xlsx` | Two pivot tables reading `Data!A1:C11` through caches of their own, one on a sheet of its own and one on the data sheet where edits reach it. `pivots_answers.json` records, for the file as built and after each of nineteen edits Excel made, where each pivot table was, what its cache read and how many caches the workbook kept, read from the file Excel saved, or that Excel refused the edit. |
 
 `shapes.xlsm` is committed but has no recipe here: it predates the script.

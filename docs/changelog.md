@@ -154,6 +154,17 @@ anything trailing the file is swept into the oldest release's notes. -->
   is the one Excel's formula bar shows, `=SERIES(Data!$B$1,...,1)`, the
   same character for character for every chart in `charts.xlsx`.
 
+- **Charts, added**: `Worksheet.add_chart` for a column, bar, line, line
+  with markers, pie, doughnut, scatter or area chart of a block of cells,
+  on the same sheet or another. Written as Excel's Insert Chart writes
+  one, measured kind by kind: for each, the chart part is Excel's own byte
+  for byte, cached values and all, bar the ids Excel draws at random, and
+  Excel reports every chart added here as it reports its own. A block's
+  series run down its columns when it is taller than it is wide and along
+  its rows otherwise, square blocks included, as Excel lays them out,
+  measured; series past the sixth take the default palette's variations
+  in the order Excel gave them to twenty.
+
 - **Pivot tables, read**: `Worksheet.pivot_tables` gives each one's name,
   the block of the sheet it fills, and the range, table or name its cache
   was read from, as `PivotTable`.
@@ -375,11 +386,12 @@ from the files Excel saved: its object model reports a deleted reference
 by its old address, and once the file is reopened refuses to report the
 series at all. `pivots.xlsx` is a ninth, two pivot tables reading one
 range, with `pivots_answers.json` recording where each was and what its
-cache read after each of nineteen edits, or that Excel refused the edit.
-`filter_semantics.json` and `number_formats.json` are new measured
-corpora, rebuilt by `scripts/measure_filters.py` and
-`scripts/measure_number_formats.py` on a machine with Excel; every case in
-them is a test.
+cache read after each of nineteen edits, or that Excel refused the edit,
+and `chartkinds.xlsx` a tenth, one chart of each kind Excel's Insert Chart
+makes, the markup a chart added here is held to. `filter_semantics.json`
+and `number_formats.json` are new measured corpora, rebuilt by
+`scripts/measure_filters.py` and `scripts/measure_number_formats.py` on a
+machine with Excel; every case in them is a test.
 
 ### Internal
 
@@ -453,6 +465,11 @@ here is in Excel's own note font.
 A run of text whose font names a typeface and the theme's font scheme as
 well shows in the theme's typeface, measured, and reads here as the
 typeface it names. Excel never writes one.
+
+A chart added here has no chart-style or colour part, the two Excel keeps
+for its Chart Styles gallery; everything it looks like is in its own part,
+as for a chart made through `ChartObjects.Add`. Dates along its axis are
+written as text categories, where Excel would give the chart a date axis.
 
 The author of a threaded comment written here is a person no account
 stands behind, as Excel writes someone who is not signed in. Excel names

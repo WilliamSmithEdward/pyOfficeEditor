@@ -1,0 +1,65 @@
+{
+  "Chart 1": {
+    "kind": "column",
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)",
+      "=SERIES(Data!$C$1,Data!$A$2:$A$6,Data!$C$2:$C$6,2)"
+    ]
+  },
+  "Chart 2": {
+    "kind": "bar",
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)",
+      "=SERIES(Data!$C$1,Data!$A$2:$A$6,Data!$C$2:$C$6,2)"
+    ]
+  },
+  "Chart 3": {
+    "kind": "line",
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)",
+      "=SERIES(Data!$C$1,Data!$A$2:$A$6,Data!$C$2:$C$6,2)"
+    ]
+  },
+  "Chart 4": {
+    "kind": "lineMarkers",
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)",
+      "=SERIES(Data!$C$1,Data!$A$2:$A$6,Data!$C$2:$C$6,2)"
+    ]
+  },
+  "Chart 5": {
+    "kind": "pie",
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)",
+      "=SERIES(Data!$C$1,Data!$A$2:$A$6,Data!$C$2:$C$6,2)"
+    ]
+  },
+  "Chart 6": {
+    "kind": "doughnut",
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)",
+      "=SERIES(Data!$C$1,Data!$A$2:$A$6,Data!$C$2:$C$6,2)"
+    ]
+  },
+  "Chart 7": {
+    "kind": "scatter",
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)",
+      "=SERIES(Data!$C$1,Data!$A$2:$A$6,Data!$C$2:$C$6,2)"
+    ]
+  },
+  "Chart 8": {
+    "kind": "area",
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)",
+      "=SERIES(Data!$C$1,Data!$A$2:$A$6,Data!$C$2:$C$6,2)"
+    ]
+  },
+  "Chart 9": {
+    "kind": "column titled",
+    "series": [
+      "=SERIES(Data!$B$1,Data!$A$2:$A$6,Data!$B$2:$B$6,1)",
+      "=SERIES(Data!$C$1,Data!$A$2:$A$6,Data!$C$2:$C$6,2)"
+    ]
+  }
+}
