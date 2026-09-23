@@ -496,6 +496,9 @@ class Shape:
     #: kind. The drawing says nothing about this: it comes from the part
     #: the sheet's own ``<control>`` points at.
     control: FormControl | None = None
+    #: The media part a picture shows, such as ``xl/media/image1.png``,
+    #: and empty for every other kind.
+    image: str = ""
 
     @property
     def mso_type(self) -> int:
@@ -518,15 +521,16 @@ class Shape:
         return f"<Shape {self.name!r} {self.kind} {where}{macro}>"
 
 
-def read_drawing(root: Element, grid: SheetGrid) -> list[Shape]:
+def read_drawing(root: Element, grid: SheetGrid, images: dict[str, str] | None = None) -> list[Shape]:
     """Every shape in a drawing part, in the order it holds them.
 
     Anchors wrapped in ``mc:AlternateContent`` are picked up too, which is
-    where Excel puts a form control.
+    where Excel puts a form control. ``images`` maps the drawing's image
+    relationships to the parts they name, so a picture says what it shows.
     """
     found: list[Shape] = []
     for anchor in _anchors(root):
-        shape = _from_anchor(anchor, grid)
+        shape = _from_anchor(anchor, grid, images or {})
         if shape is not None:
             found.append(shape)
     return found
@@ -552,7 +556,7 @@ def _anchors(root: Element) -> list[Element]:
     return found
 
 
-def _from_anchor(anchor: Element, grid: SheetGrid) -> Shape | None:
+def _from_anchor(anchor: Element, grid: SheetGrid, images: dict[str, str]) -> Shape | None:
     body = _shape_element(anchor)
     if body is None:
         return None
@@ -560,7 +564,7 @@ def _from_anchor(anchor: Element, grid: SheetGrid) -> Shape | None:
     if box is None:
         box = _anchor_box(anchor, grid)
     left, top, width, height = box
-    return _shape_of(body, grid, left=left, top=top, width=width, height=height)
+    return _shape_of(body, grid, images, left=left, top=top, width=width, height=height)
 
 
 def _transform_box(body: Element) -> tuple[float, float, float, float] | None:
@@ -596,7 +600,14 @@ def _shape_element(parent: Element) -> Element | None:
 
 
 def _shape_of(
-    body: Element, grid: SheetGrid, *, left: float, top: float, width: float, height: float
+    body: Element,
+    grid: SheetGrid,
+    images: dict[str, str],
+    *,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
 ) -> Shape:
     kind = _ELEMENT_KINDS[_local(body.name)]
     properties = _find(body, "nvSpPr") or _find(body, "nvCxnSpPr") or _find(body, "nvGrpSpPr")
@@ -612,9 +623,16 @@ def _shape_of(
         for child in body.children:
             if isinstance(child, Element) and _local(child.name) in _ELEMENT_KINDS:
                 members.append(
-                    _shape_of(child, grid, left=left, top=top, width=width, height=height)
+                    _shape_of(child, grid, images, left=left, top=top, width=width, height=height)
                 )
         children = tuple(members)
+
+    image = ""
+    if kind == "picture":
+        fill = _find(body, "blipFill")
+        blip = None if fill is None else _find(fill, "blip")
+        if blip is not None:
+            image = images.get(blip.get("r:embed") or "", "")
 
     return Shape(
         name="" if naming is None else (naming.get("name") or ""),
@@ -628,6 +646,7 @@ def _shape_of(
         macro=body.get("macro") or "",
         shape_id=int(_as_float(None if naming is None else naming.get("id"), 0)),
         children=children,
+        image=image,
     )
 
 

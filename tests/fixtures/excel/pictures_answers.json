@@ -1,0 +1,38 @@
+{
+  "Dense": {
+    "description": "",
+    "height": 40.00205,
+    "left": 300.0,
+    "locks_aspect": true,
+    "top": 50.0,
+    "type": 13,
+    "width": 60.00307
+  },
+  "Dot": {
+    "description": "a single pixel",
+    "height": 0.75,
+    "left": 100.0,
+    "locks_aspect": true,
+    "top": 300.0,
+    "type": 13,
+    "width": 0.75
+  },
+  "Natural": {
+    "description": "",
+    "height": 59.99252,
+    "left": 100.0,
+    "locks_aspect": true,
+    "top": 50.0,
+    "type": 13,
+    "width": 89.98874
+  },
+  "Stretched": {
+    "description": "",
+    "height": 30.0,
+    "left": 300.0,
+    "locks_aspect": false,
+    "top": 200.0,
+    "type": 13,
+    "width": 60.0
+  }
+}

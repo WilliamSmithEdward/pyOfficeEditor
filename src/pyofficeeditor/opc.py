@@ -463,9 +463,13 @@ class OpcPackage:
         if cached is not None:
             return cached
         rels_part = rels_part_for(part)
-        if rels_part in self._archive:
+        # One made in memory earlier and not saved yet is still the part's:
+        # writing the part drops this wrapper, and making a fresh document
+        # here would lose every relationship already added to it.
+        document = self._documents.get(rels_part)
+        if document is None and rels_part in self._archive:
             document = self.xml(rels_part)
-        else:
+        elif document is None:
             document = XmlDocument(Element.create("Relationships", {"xmlns": NS_RELATIONSHIPS}))
             self._documents[rels_part] = document
         relationships = Relationships(document, part)

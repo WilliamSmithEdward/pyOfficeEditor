@@ -27,6 +27,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from pyofficeeditor._xml import Element, XmlDocument
@@ -99,6 +100,7 @@ from pyofficeeditor.excel._pagesetup import (
     PageSetup,
     PrintOptions,
 )
+from pyofficeeditor.excel._pictures import RT_IMAGE, image_info, picture_anchor
 from pyofficeeditor.excel._protection import SheetProtection
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef, column_letter
 from pyofficeeditor.excel._rowcol import (
@@ -1826,10 +1828,16 @@ class Worksheet:
         the sheet's own ``<control>`` records say otherwise.
         """
         grid = SheetGrid.of(self._root)
+        package = self._workbook.package
         found: list[Shape] = []
         for name in related_parts(self, RT_DRAWING):
-            document = self._workbook.package.xml(name)
-            found.extend(read_drawing(document.root, grid))
+            document = package.xml(name)
+            images = {
+                relationship.id: relationship.target_part
+                for relationship in package.relationships(name).by_type(RT_IMAGE)
+                if not relationship.is_external
+            }
+            found.extend(read_drawing(document.root, grid, images))
 
         controls = self._form_controls()
         if not controls:
@@ -2051,12 +2059,102 @@ class Worksheet:
             if anchor is None:
                 continue
             document.root.remove(anchor)
+            if shape.image:
+                self._forget_image(part, document.root, shape.image)
             package.write(part, document.to_bytes(), content_type=CT_DRAWING)
             break
 
         if shape.control is not None:
             self._remove_control_record(shape)
         self._invalidate()
+
+    def add_picture(
+        self,
+        name: str,
+        image: bytes | str | Path,
+        *,
+        left: float,
+        top: float,
+        width: float | None = None,
+        height: float | None = None,
+        description: str = "",
+    ) -> Shape:
+        """Put a picture on the sheet, as Excel's ``Shapes.AddPicture`` does.
+
+        ``image`` is a PNG, a JPEG or a GIF, as bytes or as a path. With no
+        size the picture takes the one Excel gives it: its pixels at 96 to
+        the inch, or a PNG's own count to the inch where it gives one. With
+        one of ``width`` and ``height`` the other keeps the image's
+        proportions; with both it is stretched to them, and Excel then no
+        longer locks its aspect. ``description`` is its alternative text.
+
+        The image is stored once in the workbook however many pictures show
+        it, in a media part named as Excel names one.
+        """
+        self._check_new_shape_name(name)
+        data = Path(image).read_bytes() if isinstance(image, (str, Path)) else bytes(image)
+        info = image_info(data)
+        natural_width, natural_height = info.size
+        keeps_aspect = width is None or height is None
+        if width is None and height is None:
+            width, height = natural_width, natural_height
+        elif width is None:
+            assert height is not None
+            width = height * natural_width / natural_height if natural_height else 0.0
+        elif height is None:
+            height = width * natural_height / natural_width if natural_width else 0.0
+        if width <= 0 or height <= 0:
+            raise ValueError(f"a picture needs a size above nothing; this one would be {width:g} by {height:g}.")
+
+        package = self._workbook.package
+        media = self._workbook.media_part(data, info)
+        drawing_part, drawing = self._drawing_part()
+        relationships = package.relationships(drawing_part)
+        relationship = next(
+            (one for one in relationships.by_type(RT_IMAGE) if not one.is_external and one.target_part == media),
+            None,
+        ) or relationships.add_part(RT_IMAGE, media)
+        markup = picture_anchor(
+            shape_id=self._next_shape_id(),
+            name=name,
+            description=description,
+            relationship=relationship.id,
+            extension=info.extension,
+            left=left,
+            top=top,
+            width=width,
+            height=height,
+            grid=SheetGrid.of(self._root),
+            keeps_aspect=keeps_aspect,
+        )
+        drawing.root.append(XmlDocument.parse(markup.encode("utf-8")).root)
+        package.write(drawing_part, drawing.to_bytes(), content_type=CT_DRAWING)
+        self._invalidate()
+        return self.shape(name)
+
+    def picture_data(self, name: str) -> bytes:
+        """The image a picture shows, as the bytes its media part holds."""
+        shape = self.shape(name)
+        if shape.kind != "picture" or not shape.image:
+            raise ValueError(f"{name!r} is not a picture with an image in this workbook.")
+        return self._workbook.package.read(shape.image)
+
+    def _forget_image(self, drawing_part: str, root: Element, media: str) -> None:
+        """Drop a removed picture's image relationship, when no other
+        picture in the drawing uses it, and the media part, when nothing in
+        the package points at it any more."""
+        package = self._workbook.package
+        relationships = package.relationships(drawing_part)
+        still_used = {
+            blip.get("r:embed") for blip in root.descendants("blip") if blip.get("r:embed") is not None
+        }
+        for relationship in relationships.by_type(RT_IMAGE):
+            if relationship.is_external or relationship.target_part != media:
+                continue
+            if relationship.id not in still_used:
+                relationships.remove(relationship.id)
+        if not self._workbook.is_referenced(media):
+            package.remove_part(media)
 
     def _unwrap_control(self, control: Element) -> None:
         """Take one ``<control>`` off the sheet, wrapper and all.

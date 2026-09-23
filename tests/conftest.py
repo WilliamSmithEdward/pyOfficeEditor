@@ -67,6 +67,11 @@ LIVE_FILTERS_ANSWERS = EXCEL_FIXTURES / "filters_answers.json"
 #: form control, and what Excel's object model said of each.
 LIVE_COMMENTS_XLSX = EXCEL_FIXTURES / "comments.xlsx"
 LIVE_COMMENTS_ANSWERS = EXCEL_FIXTURES / "comments_answers.json"
+#: Authored by Excel: pictures put in at their own size, at 144 dots to the
+#: inch, stretched, and a GIF, the same image twice among them, and what
+#: Excel's object model said of each.
+LIVE_PICTURES_XLSX = EXCEL_FIXTURES / "pictures.xlsx"
+LIVE_PICTURES_ANSWERS = EXCEL_FIXTURES / "pictures_answers.json"
 #: Measured by Excel: the text it shows for values under some five hundred
 #: format codes in both date systems, and what each builtin format id means.
 NUMBER_FORMATS_JSON = EXCEL_FIXTURES / "number_formats.json"
@@ -264,6 +269,22 @@ def live_comments_answers() -> Path:
     if not LIVE_COMMENTS_ANSWERS.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to measure the notes with real Excel")
     return LIVE_COMMENTS_ANSWERS
+
+
+@pytest.fixture(scope="session")
+def live_pictures_xlsx() -> Path:
+    """Pictures authored by Excel."""
+    if not LIVE_PICTURES_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author pictures.xlsx with real Excel")
+    return LIVE_PICTURES_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_pictures_answers() -> Path:
+    """What Excel's object model said of those pictures."""
+    if not LIVE_PICTURES_ANSWERS.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to measure the pictures with real Excel")
+    return LIVE_PICTURES_ANSWERS
 
 
 @pytest.fixture(scope="session")

@@ -323,6 +323,17 @@ class TestRelationshipWriting:
         assert link.target == "https://example.invalid/"
         assert link.is_external
 
+    def test_a_new_parts_relationships_survive_writing_it_again(self, package: OpcPackage) -> None:
+        """Writing a part dropped its relationships' wrapper, and the next
+        lookup made an empty ``.rels`` over the one not yet saved: every
+        picture added to a new drawing lost its image but the last."""
+        package.write("xl/drawings/drawing9.xml", b"<wsDr/>", content_type="application/xml")
+        package.relationships("xl/drawings/drawing9.xml").add_part(RT_WORKSHEET, "xl/media/image1.png")
+        package.write("xl/drawings/drawing9.xml", b"<wsDr/>", content_type="application/xml")
+        package.relationships("xl/drawings/drawing9.xml").add_part(RT_WORKSHEET, "xl/media/image2.png")
+        targets = [r.target_part for r in package.relationships("xl/drawings/drawing9.xml")]
+        assert targets == ["xl/media/image1.png", "xl/media/image2.png"]
+
     def test_an_external_target_refuses_to_resolve_to_a_part(self, package: OpcPackage) -> None:
         link = package.relationships("xl/worksheets/sheet1.xml").add(
             RT_HYPERLINK, "https://example.invalid/", external=True

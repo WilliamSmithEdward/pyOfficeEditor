@@ -26,7 +26,9 @@ from __future__ import annotations
 
 import json
 import os
+import struct
 import sys
+import zlib
 from collections.abc import Callable
 from pathlib import Path
 
@@ -738,8 +740,100 @@ Public Function Build(ByVal Target As String) As String
 End Function
 """
 
+def _png(width: int, height: int, dpi: int | None) -> bytes:
+    """A plain red PNG, with a ``pHYs`` chunk when ``dpi`` is given."""
+
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        crc = zlib.crc32(kind + body) & 0xFFFFFFFF
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", crc)
+
+    rows = b"".join(b"\x00" + b"\xff\x00\x00" * width for _ in range(height))
+    body = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    if dpi is not None:
+        per_metre = round(dpi / 0.0254)
+        body += chunk(b"pHYs", struct.pack(">IIB", per_metre, per_metre, 1))
+    body += chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+    return b"\x89PNG\r\n\x1a\n" + body
+
+
+#: The one-pixel GIF every web page used to carry.
+_GIF = (
+    b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00"
+    b",\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
+)
+
+#: Pictures as ``Shapes.AddPicture`` puts them in: at their own size, one
+#: at 144 dots to the inch, one stretched, a GIF, and one with alternative
+#: text, the same image twice among them. VBA writes the images itself from
+#: hex, so the recipe needs nothing on disk.
+_BUILD_PICTURES = r"""
+Private Function Written(ByVal Name As String, ByVal Hex As String) As String
+    Dim f As Integer
+    Dim i As Long
+    Dim data() As Byte
+    ReDim data(Len(Hex) \ 2 - 1)
+    For i = 0 To UBound(data)
+        data(i) = CByte("&H" & Mid(Hex, i * 2 + 1, 2))
+    Next i
+    Written = Environ("TEMP") & "\" & Name
+    f = FreeFile
+    Open Written For Binary Access Write As #f
+    Put #f, , data
+    Close #f
+End Function
+
+Private Function Report(ByVal s As Shape) As String
+    Report = s.Name & "|" & CStr(s.Type) & "|" & CStr(s.Left) & "|" & CStr(s.Top) & "|" & _
+             CStr(s.Width) & "|" & CStr(s.Height) & "|" & s.AlternativeText & "|" & CStr(s.LockAspectRatio)
+End Function
+
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim s As Shape
+    Dim plain As String
+    Dim dense As String
+    Dim dot As String
+    Dim out As String
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Pictures"
+    plain = Written("pyofficeeditor_plain.png", "{PLAIN}")
+    dense = Written("pyofficeeditor_dense.png", "{DENSE}")
+    dot = Written("pyofficeeditor_dot.gif", "{DOT}")
+
+    Set s = ws.Shapes.AddPicture(plain, msoFalse, msoTrue, 100, 50, -1, -1)
+    s.Name = "Natural"
+    Set s = ws.Shapes.AddPicture(dense, msoFalse, msoTrue, 300, 50, -1, -1)
+    s.Name = "Dense"
+    Set s = ws.Shapes.AddPicture(plain, msoFalse, msoTrue, 300, 200, 60, 30)
+    s.Name = "Stretched"
+    Set s = ws.Shapes.AddPicture(dot, msoFalse, msoTrue, 100, 300, -1, -1)
+    s.Name = "Dot"
+    s.AlternativeText = "a single pixel"
+
+    For Each s In ws.Shapes
+        out = out & Report(s) & vbLf
+    Next s
+    Kill plain
+    Kill dense
+    Kill dot
+
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+""".replace("{PLAIN}", _png(120, 80, 96).hex().upper()).replace(
+    "{DENSE}", _png(120, 80, 144).hex().upper()
+).replace("{DOT}", _GIF.hex().upper())
+
 #: Which fields of the reported line mean what.
 _CONTROL_FIELDS = ("type", "macro", "linked_cell", "list_range", "value")
+
+#: The same for a picture, after its name.
+_PICTURE_FIELDS = ("type", "left", "top", "width", "height", "description", "locks_aspect")
 
 #: The same for a note, after its sheet-qualified address.
 _COMMENT_FIELDS = ("text", "author", "visible", "left", "top", "width", "height")
@@ -806,6 +900,28 @@ def control_answers(reply: str) -> Answers:
             else:
                 entry[key] = raw
         answers[name] = entry
+    return answers
+
+
+def picture_answers(reply: str) -> Answers:
+    """One line per picture: its name, then the fields of ``_PICTURE_FIELDS``."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        fields = (parts[1:] + [""] * len(_PICTURE_FIELDS))[: len(_PICTURE_FIELDS)]
+        entry: dict[str, object] = {}
+        for key, raw in zip(_PICTURE_FIELDS, fields, strict=True):
+            if key == "type":
+                entry[key] = int(raw)
+            elif key in ("left", "top", "width", "height"):
+                entry[key] = float(raw)
+            elif key == "locks_aspect":
+                entry[key] = raw == "-1"
+            else:
+                entry[key] = raw
+        answers[parts[0]] = entry
     return answers
 
 
@@ -890,6 +1006,7 @@ def main() -> int:
         ("controls.xlsm", _BUILD_CONTROLS, control_answers),
         ("filters.xlsx", _BUILD_FILTERS, filter_answers),
         ("comments.xlsx", _BUILD_COMMENTS, comment_answers),
+        ("pictures.xlsx", _BUILD_PICTURES, picture_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]

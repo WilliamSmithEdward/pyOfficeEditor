@@ -75,6 +75,7 @@ Each layer knows the layer below it and not the layer above.
 |                 equality a filter compares text by        |
 |   _shapes       shapes, and the grid a form control needs |
 |   _comments     notes and threads, and the box each gets  |
+|   _pictures     images, sized as Excel sizes them         |
 |   _conditional  cfRules, and the compatibility formula    |
 |                 that makes them fire                      |
 |   _dxf          differential formats: what a rule paints  |
@@ -326,12 +327,13 @@ tests/
   test_excel_controls.py        what a form control is wired to
   test_excel_shapes_write.py    adding, removing and rewiring shapes
   test_excel_comments.py        notes and threads, against what Excel said
+  test_excel_pictures.py        pictures, against what Excel said of them
   test_excel_xstring.py         _xHHHH_ escapes, character by character,
                                 against what Excel wrote and read
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               fourteen Excel-authored packages: three
-                                sourced, eleven scripted, and two
+  fixtures/excel/               fifteen Excel-authored packages: three
+                                sourced, twelve scripted, and two
                                 measured corpora; see its README
 ```
 
@@ -340,7 +342,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against fourteen committed
+- The suite needs no Office installation. It runs against fifteen committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as

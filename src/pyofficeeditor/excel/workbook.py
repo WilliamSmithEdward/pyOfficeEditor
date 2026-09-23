@@ -37,6 +37,7 @@ from pyofficeeditor.excel._names import (
     read_defined_name,
     write_defined_name,
 )
+from pyofficeeditor.excel._pictures import ImageInfo
 from pyofficeeditor.excel._schema import WORKBOOK_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._shapes import vml_blocks
 from pyofficeeditor.excel._sharedstrings import (
@@ -737,6 +738,38 @@ class Workbook:
         self._package.write(part, EMPTY_PERSONS.encode("utf-8"), content_type=CT_PERSONS)
         relationships.add_part(RT_PERSONS, part)
         return self._package.xml(part).root
+
+    def media_part(self, data: bytes, info: ImageInfo) -> str:
+        """The media part holding an image, stored if the workbook has no
+        part with these bytes already: Excel stores an image once however
+        many pictures show it, and numbers its media parts in one sequence
+        whatever their extension."""
+        for name in self._package.part_names():
+            if name.startswith("xl/media/") and self._package.read(name) == data:
+                return name
+        taken = {
+            name.rsplit("/", 1)[-1].split(".", 1)[0]
+            for name in self._package.part_names()
+            if name.startswith("xl/media/")
+        }
+        number = 1
+        while f"image{number}" in taken:
+            number += 1
+        part = f"xl/media/image{number}.{info.extension}"
+        self._package.content_types.set_default(info.extension, info.content_type)
+        self._package.write(part, data)
+        return part
+
+    def is_referenced(self, part: str) -> bool:
+        """Whether any part in the package has a relationship naming this
+        one, which is what keeps a media part worth keeping."""
+        for source in self._package.part_names():
+            if "/_rels/" in source or source.endswith(".rels") or source == "[Content_Types].xml":
+                continue
+            for relationship in self._package.relationships(source):
+                if not relationship.is_external and relationship.target_part == part:
+                    return True
+        return False
 
     def free_vml_block(self) -> int:
         """The lowest block of 1024 shape ids no VML part in the workbook

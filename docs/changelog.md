@@ -104,6 +104,15 @@ anything trailing the file is swept into the oldest release's notes. -->
   measured, so a reply here takes the id after the thread's last, as
   Excel's own do; a random one put the second reply first.
 
+- **Pictures**: `Worksheet.add_picture` for a PNG, a JPEG or a GIF, from
+  bytes or a path, `picture_data` for the bytes a picture shows, and
+  `Shape.image` naming its media part. Written as Excel's
+  `Shapes.AddPicture` writes one, and sized as it sizes one, measured:
+  the image's pixels at 96 to the inch, a PNG's own density where it
+  gives one, and a JPEG's ignored even where it gives one. An image shown
+  twice is stored once, as Excel stores it, and removing the last picture
+  of an image removes the image.
+
 - **What a form control is wired to.** `Shape.control` carries the linked
   cell, the list range, the current value and which kind of control it
   is, read from the part the sheet points at. `Shape` and `ShapeKind`
@@ -173,6 +182,13 @@ anything trailing the file is swept into the oldest release's notes. -->
   writes the name into the header cell. A blank header is named the same
   way: `add_table` over `["", "Amount", ""]` gives `Column1` and
   `Column2`, where it gave `Column1` and `Column3`.
+
+- **A new part's relationships were lost when the part was written
+  again.** Writing a part dropped its relationships from the cache, and
+  the next lookup made an empty `.rels` over the one not yet saved.
+  Nothing written until now added a relationship to a part it had just
+  made and then wrote again; the second picture on a new drawing would
+  have been the first thing to.
 
 - **A form control made Excel refuse a sheet with a table.** The schema
   order this library inserts elements by had no place for
@@ -261,7 +277,8 @@ Button and nothing else, so it could prove none of this.
 `filters.xlsx` is another, one criterion kind per sheet, with
 `filters_answers.json` recording how many rows Excel hid on each, and
 `comments.xlsx` a third, with notes of every shape and
-`comments_answers.json` recording what Excel's object model said of each.
+`comments_answers.json` recording what Excel's object model said of each,
+and `pictures.xlsx` a fourth, with `pictures_answers.json`.
 `filter_semantics.json` and `number_formats.json` are new measured
 corpora, rebuilt by `scripts/measure_filters.py` and
 `scripts/measure_number_formats.py` on a machine with Excel; every case in

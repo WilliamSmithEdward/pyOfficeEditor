@@ -1755,6 +1755,80 @@ def test_excel_reads_the_threads_this_library_writes(
     }
 
 
+_PICTURES_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim s As Shape
+    Dim out As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For Each s In wb.Worksheets("Data").Shapes
+        out = out & s.Name & "=" & CStr(s.Type) & ";" & CStr(s.Width) & ";" & CStr(s.Height) & ";" & _
+              s.AlternativeText & ";" & CStr(s.LockAspectRatio) & "|"
+    Next s
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = Left(out, Len(out) - 1)
+End Function
+"""
+
+
+def test_excel_shows_the_pictures_this_library_adds(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """A picture is three things: its image in a media part, a relationship
+    from the drawing to it, and the anchor naming that relationship. A new
+    drawing's relationships were lost once the drawing was written again,
+    which left every picture but the last pointing at nothing."""
+    import struct
+    import zlib
+
+    def png(width: int, height: int, dpi: int | None = None) -> bytes:
+        def chunk(kind: bytes, body: bytes) -> bytes:
+            crc = zlib.crc32(kind + body) & 0xFFFFFFFF
+            return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", crc)
+
+        rows = b"".join(b"\x00" + b"\x00\x80\xff" * width for _ in range(height))
+        body = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        if dpi is not None:
+            per_metre = round(dpi / 0.0254)
+            body += chunk(b"pHYs", struct.pack(">IIB", per_metre, per_metre, 1))
+        return b"\x89PNG\r\n\x1a\n" + body + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+    target = tmp_path / "pictures.xlsx"
+    shutil.copy(live_sample_xlsx, target)
+    with Workbook.open(target) as book:
+        sheet = book["Data"]
+        sheet.add_picture("Natural", png(120, 80), left=300, top=20, description="a blue block")
+        sheet.add_picture("Dense", png(120, 80, 144), left=450, top=20)
+        sheet.add_picture("Stretched", png(120, 80), left=300, top=120, width=60, height=30)
+        sheet.add_picture("Gone", png(10, 10), left=450, top=120)
+        sheet.remove_shape("Gone")
+        book.save()
+
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _PICTURES_PROBE, proc="Probe", args=(str(target),), timeout=180, module_name="Probe_pictures"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+    seen = {
+        name: fields.split(";")
+        for name, fields in (part.split("=", 1) for part in str(result.value).split("|"))
+    }
+    wanted = {
+        "Natural": ("90", 60.0, "a blue block", "-1"),
+        "Dense": ("60.00307", 40.00205, "", "-1"),
+        "Stretched": ("60", 30.0, "", "0"),
+    }
+    assert set(seen) == set(wanted), "the removed picture is gone and the rest are there"
+    for name, (width, height, description, locked) in wanted.items():
+        kind, found_width, found_height, found_description, found_locked = seen[name]
+        assert (kind, found_width, found_description, found_locked) == ("13", width, description, locked), name
+        # A height comes from the anchor's rows, which follow the display
+        # scaling by half a point a row; see the shapes gate.
+        assert abs(float(found_height) - height) <= 2.5, name
+
+
 _REMOVED_PROBE = r"""
 Public Function Probe(ByVal Target As String) As String
     Dim wb As Workbook
