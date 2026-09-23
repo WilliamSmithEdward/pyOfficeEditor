@@ -404,7 +404,7 @@ class Workbook:
         self._order[position] = new
         del self._sheets[old]
         self._sheets[new] = sheet
-        sheet.rename(new)
+        sheet.record_rename(new)
         self.mark_changed()
         return sheet
 

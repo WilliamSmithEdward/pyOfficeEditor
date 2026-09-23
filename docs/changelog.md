@@ -55,6 +55,13 @@ anything trailing the file is swept into the oldest release's notes. -->
   The bracketed number indexes the workbook holding the procedure and is
   not always 0. An existing one is kept rather than replaced.
 
+### Fixed
+
+- **`Worksheet.rename` did not rename the sheet.** It changed the name
+  the object reported and nothing in the file, so the two disagreed and
+  every formula still named the old sheet. It does what
+  `Workbook.rename_sheet` does now.
+
 ### Verified
 
 Four rules cost a refused workbook each to find, since Excel declines to

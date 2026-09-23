@@ -202,13 +202,19 @@ class Worksheet:
         return self._workbook
 
     def rename(self, name: str) -> None:
-        """Record a new name on this object.
+        """Rename the sheet, as :meth:`Workbook.rename_sheet` does: the name
+        is checked, the workbook's entry changes, and every formula and
+        defined name that referred to the old name follows it."""
+        if name != self._name:
+            self._workbook.rename_sheet(self._name, name)
+
+    def record_rename(self, name: str) -> None:
+        """Take the name the workbook has just given this sheet.
 
         A sheet's name lives in the workbook part, not in its own, so this
-        only updates what the object reports. Call
-        :meth:`Workbook.rename_sheet`, which validates the name, moves the
-        entry, and repoints every formula and defined name that referred to
-        the old one.
+        only updates what the object reports. :meth:`Workbook.rename_sheet`
+        calls it once the entry has moved; to rename a sheet, call
+        :meth:`rename`.
         """
         self._name = name
 

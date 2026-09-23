@@ -280,6 +280,22 @@ class TestRenamingASheet:
         assert "Data" not in book
         assert book["Q1 Data"]["A2"].value == "North"
 
+    def test_the_sheet_renames_itself_the_same_way(self, book: Workbook) -> None:
+        """It only relabelled the object once, leaving the file's name as
+        it was and the two disagreeing."""
+        summary = book.add_sheet("Summary")
+        summary["B1"].formula = "=SUM(Data!D2:D5)"
+        sheet = book["Data"]
+        sheet.rename("Q1 Data")
+        assert (sheet.name, book.sheet_names) == ("Q1 Data", ["Q1 Data", "Notes", "Summary"])
+        assert book["Q1 Data"] is sheet
+        assert book["Summary"]["B1"].formula == "SUM('Q1 Data'!D2:D5)"
+
+    def test_a_sheet_refuses_a_name_the_workbook_would(self, book: Workbook) -> None:
+        with pytest.raises(ValueError):
+            book["Data"].rename("Notes")
+        assert book["Data"].name == "Data"
+
     def test_formulas_that_referenced_it_are_repointed(self, book: Workbook) -> None:
         summary = book.add_sheet("Summary")
         summary["B1"].formula = "=SUM(Data!D2:D5)"
