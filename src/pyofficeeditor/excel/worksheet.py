@@ -25,17 +25,19 @@ address that reads nicely; everything it does, the worksheet exposes too.
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING, Literal
 
 from pyofficeeditor._xml import Element, XmlDocument
 from pyofficeeditor.excel._conditional import ConditionalFormatting, ConditionalRule
 from pyofficeeditor.excel._dimensions import (
-    COLUMN_ATTRIBUTES,
     Freeze,
     column_entry,
+    format_width,
     isolate_column,
+    says_nothing,
+    standard_width,
 )
 from pyofficeeditor.excel._dxf import Dxf
 from pyofficeeditor.excel._filters import (
@@ -70,7 +72,7 @@ from pyofficeeditor.excel._pagesetup import (
     PrintOptions,
 )
 from pyofficeeditor.excel._protection import SheetProtection
-from pyofficeeditor.excel._reference import CellRef, RangeRef, column_letter
+from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef, column_letter
 from pyofficeeditor.excel._rowcol import (
     RT_DRAWING,
     RT_VML,
@@ -90,6 +92,7 @@ from pyofficeeditor.excel._shapes import (
     CT_CONTROL_PROPERTIES,
     CT_DRAWING,
     CT_VML,
+    DEFAULT_ROW_POINTS,
     EMPTY_DRAWING,
     EMPTY_VML,
     FIRST_CONTROL_ID,
@@ -138,6 +141,10 @@ from pyofficeeditor.exceptions import PackageError
 #: What ``<sheet state=...>`` can say. A ``veryHidden`` sheet is not in
 #: Excel's unhide list, so only code can bring it back.
 SheetVisibility = Literal["visible", "hidden", "veryHidden"]
+
+#: How deep an outline goes: eight levels on Excel's outline bar, the
+#: first of them ungrouped.
+MAX_OUTLINE_LEVEL = 7
 
 if TYPE_CHECKING:
     from pyofficeeditor.excel.workbook import Workbook
@@ -533,15 +540,18 @@ class Worksheet:
             return None
 
     def set_column_width(self, column: int, width: float | None) -> None:
-        """Set a column's width, or ``None`` to restore the default.
+        """Set a column's width, or ``None`` to restore the standard width.
 
-        ``customWidth`` goes with it: a ``width`` without that flag is
-        ignored by Excel, so the change would look like it never happened.
+        ``customWidth`` goes with a width, as Excel writes it for one set by
+        hand. Restoring the standard width drops the column's entry when it
+        says nothing else, and otherwise writes the standard width into it:
+        an entry with no width at all is a column of width 0.
         """
         container = self._ensure_cols()
-        entry = isolate_column(container, column)
+        standard = self._standard_width()
+        entry = isolate_column(container, column, width=standard)
         if width is None:
-            entry.unset("width")
+            entry.set("width", format_width(standard))
             entry.unset("customWidth")
             entry.unset("bestFit")
         else:
@@ -561,7 +571,7 @@ class Worksheet:
 
     def set_column_hidden(self, column: int, hidden: bool) -> None:
         container = self._ensure_cols()
-        entry = isolate_column(container, column)
+        entry = isolate_column(container, column, width=self._standard_width())
         if hidden:
             entry.set("hidden", "1")
         else:
@@ -588,8 +598,8 @@ class Worksheet:
     def set_row_height(self, row: int, height: float | None) -> None:
         """Set a row's height in points, or ``None`` to restore the default.
 
-        ``customHeight`` goes with it, for the same reason ``customWidth``
-        does: without the flag Excel ignores the value.
+        ``customHeight`` goes with it: without the flag Excel ignores the
+        value, measured, where a width it honours either way.
         """
         element = self._ensure_row(row)
         if height is None:
@@ -638,11 +648,23 @@ class Worksheet:
     def _tidy_cols(self, container: Element) -> None:
         """Drop entries that no longer say anything, and the block itself
         when nothing is left.  Excel omits an empty ``<cols/>``."""
+        standard = self._standard_width()
         for entry in list(container.children_named("col")):
-            if not any(entry.get(name) is not None for name in COLUMN_ATTRIBUTES):
+            if says_nothing(entry, standard):
                 container.remove(entry)
         if next(container.children_named("col"), None) is None:
             self._root.remove(container)
+
+    def _standard_width(self) -> float:
+        """The width a column at this sheet's standard width stores, which
+        an entry made for one has to carry."""
+        styles = self._workbook.styles
+        font = None if styles is None else styles.cell_format(None).font
+        return standard_width(
+            self._root.child("sheetFormatPr"),
+            None if font is None else font.name,
+            None if font is None else font.size,
+        )
 
     # ------------------------------------------------------------------
     # Frozen panes
@@ -1558,7 +1580,10 @@ class Worksheet:
         what is used instead. Measured against Excel, a shape put at 300
         points came back at 300 on one sheet and 298.5 on another whose
         columns had been resized. Rows are exact, because a row height is
-        already in points.
+        already in points, as long as Excel's default row height is the
+        one the file records: a row with none of its own follows the
+        display scaling, 15 points at 100% where a file written at 150%
+        says 14.5, and a shape below it moves by the difference.
 
         A sheet with no drawing part gets one, with its content type and
         its relationship. Every other part of the package is left alone.
@@ -2163,22 +2188,38 @@ class Worksheet:
     def group_rows(self, first: int, last: int, *, collapsed: bool = False) -> None:
         """Group rows into an outline, one level deeper than they were.
 
-        ``collapsed`` hides them, which is what the outline's minus button
-        does; the summary row itself stays visible.
+        ``collapsed`` hides them and marks the summary row as folded, which
+        is what the outline's minus button does; the summary row, below the
+        group or above it as :attr:`summary_below` says, stays visible. The
+        sheet records how deep its outline goes, as Excel writes it.
         """
-        if first < 1 or last < first:
+        if first < 1 or last < first or last > MAX_ROW:
             raise ValueError(f"rows {first} to {last} are not a range to group.")
-        for number in range(first, last + 1):
-            row = self._ensure_row(number)
+        numbers = range(first, last + 1)
+        self._check_outline_depth(self._level_of(self._rows[n]) for n in numbers if n in self._rows)
+        self._ensure_rows(numbers)
+        for number in numbers:
+            row = self._rows[number]
             row.set("outlineLevel", str(self._level_of(row) + 1))
             if collapsed:
                 row.set("hidden", "1")
+        summary = last + 1 if self.summary_below else first - 1
+        if collapsed and 1 <= summary <= MAX_ROW:
+            self._ensure_rows([summary])
+            self._rows[summary].set("collapsed", "1")
+        self._record_outline_depth()
         self._invalidate()
 
     def ungroup_rows(self, first: int, last: int) -> None:
-        """Take one level of grouping off, and show them again."""
+        """Take one level of grouping off, and show the rows it leaves
+        ungrouped.
+
+        Excel's own Ungroup leaves a folded group's rows hidden, with
+        nothing left to unfold them by; they are shown here instead, and
+        the summary row loses its folded mark once it has nothing to fold.
+        """
         for number in range(first, last + 1):
-            row = self.rows_by_number().get(number)
+            row = self._rows.get(number)
             if row is None:
                 continue
             level = self._level_of(row) - 1
@@ -2187,6 +2228,11 @@ class Worksheet:
             else:
                 row.unset("outlineLevel")
                 row.unset("hidden")
+        summary = last + 1 if self.summary_below else first - 1
+        element = self._rows.get(summary)
+        if element is not None and element.get("collapsed") in ("1", "true") and not self._detail_rows(summary):
+            element.unset("collapsed")
+        self._record_outline_depth()
         self._invalidate()
 
     def row_outline_level(self, number: int) -> int:
@@ -2195,25 +2241,45 @@ class Worksheet:
         return 0 if row is None else self._level_of(row)
 
     def group_columns(self, first: int, last: int, *, collapsed: bool = False) -> None:
-        """Group columns into an outline, one level deeper."""
-        if first < 1 or last < first:
+        """Group columns into an outline, one level deeper; ``collapsed``
+        as for :meth:`group_rows`, the summary column placed by
+        :attr:`summary_right`."""
+        if first < 1 or last < first or last > MAX_COLUMN:
             raise ValueError(f"columns {first} to {last} are not a range to group.")
-        for number in range(first, last + 1):
-            entry = isolate_column(self._ensure_cols(), number)
+        numbers = range(first, last + 1)
+        self._check_outline_depth(self.column_outline_level(number) for number in numbers)
+        container = self._ensure_cols()
+        standard = self._standard_width()
+        for number in numbers:
+            entry = isolate_column(container, number, width=standard)
             entry.set("outlineLevel", str(self._level_of(entry) + 1))
             if collapsed:
                 entry.set("hidden", "1")
+        summary = last + 1 if self.summary_right else first - 1
+        if collapsed and 1 <= summary <= MAX_COLUMN:
+            isolate_column(container, summary, width=standard).set("collapsed", "1")
+        self._record_outline_depth()
         self._invalidate()
 
     def ungroup_columns(self, first: int, last: int) -> None:
+        """Take one level of grouping off; see :meth:`ungroup_rows`."""
+        container = self._ensure_cols()
+        standard = self._standard_width()
         for number in range(first, last + 1):
-            entry = isolate_column(self._ensure_cols(), number)
+            entry = isolate_column(container, number, width=standard)
             level = self._level_of(entry) - 1
             if level > 0:
                 entry.set("outlineLevel", str(level))
             else:
                 entry.unset("outlineLevel")
                 entry.unset("hidden")
+        summary = last + 1 if self.summary_right else first - 1
+        if 1 <= summary <= MAX_COLUMN:
+            entry = column_entry(container, summary)
+            if entry is not None and entry.get("collapsed") in ("1", "true") and not self._detail_columns(summary):
+                isolate_column(container, summary, width=standard).unset("collapsed")
+        self._tidy_cols(container)
+        self._record_outline_depth()
         self._invalidate()
 
     def column_outline_level(self, number: int) -> int:
@@ -2250,6 +2316,36 @@ class Worksheet:
     def _level_of(element: Element) -> int:
         return _as_number(element.get("outlineLevel")) or 0
 
+    @staticmethod
+    def _check_outline_depth(levels: Iterable[int]) -> None:
+        """Refuse to group past the seventh level, the deepest an outline
+        goes in Excel and in the schema."""
+        if any(level >= MAX_OUTLINE_LEVEL for level in levels):
+            raise ValueError(
+                f"an outline goes {MAX_OUTLINE_LEVEL} levels deep, and part of this range is already there."
+            )
+
+    def _record_outline_depth(self) -> None:
+        """``outlineLevelRow`` and ``outlineLevelCol`` on ``sheetFormatPr``:
+        how deep the outline goes, which Excel writes while there is one
+        and drops when there is none."""
+        rows = max((self._level_of(row) for row in self._rows.values()), default=0)
+        container = self._root.child("cols")
+        columns = 0 if container is None else max(
+            (self._level_of(entry) for entry in container.children_named("col")), default=0
+        )
+        head = self._root.child("sheetFormatPr")
+        if head is None:
+            if not rows and not columns:
+                return
+            head = Element.create("sheetFormatPr", {"defaultRowHeight": f"{DEFAULT_ROW_POINTS:g}"})
+            insert_in_schema_order(self._root, head, WORKSHEET_CHILD_ORDER)
+        for name, level in (("outlineLevelRow", rows), ("outlineLevelCol", columns)):
+            if level and head.get(name) != str(level):
+                head.set(name, str(level))
+            elif not level:
+                head.unset(name)
+
     def _detail_rows(self, number: int) -> list[int]:
         """The rows a summary row folds: the run beside it, on the side
         :attr:`summary_below` puts the detail, deeper in the outline."""
@@ -2260,6 +2356,17 @@ class Worksheet:
         while row in self._rows and self._level_of(self._rows[row]) > level:
             detail.append(row)
             row += step
+        return detail
+
+    def _detail_columns(self, number: int) -> list[int]:
+        """The columns a summary column folds, as :meth:`_detail_rows`."""
+        level = self.column_outline_level(number)
+        step = -1 if self.summary_right else 1
+        detail: list[int] = []
+        column = number + step
+        while 1 <= column <= MAX_COLUMN and self.column_outline_level(column) > level:
+            detail.append(column)
+            column += step
         return detail
 
     def _outline_flag(self, name: str) -> bool:

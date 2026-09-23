@@ -120,6 +120,21 @@ anything trailing the file is swept into the oldest release's notes. -->
   is then applied again, as Excel does, so the rows only that criterion
   hid come back.
 
+- **Grouping columns hid them.** A `<col>` entry without a `width` is a
+  column of width 0, measured: Excel shows it hidden and no unfolding
+  brings it back. `group_columns` wrote exactly that, and restoring a
+  column's standard width or ungrouping it could leave one behind. Every
+  entry made for a column at the standard width now carries it, as Excel
+  writes it: the sheet's `defaultColWidth`, or the width the Normal font
+  fixes, measured for eighteen fonts.
+
+- **A folded group did not say so.** Excel marks the row or column that
+  summarises a folded group `collapsed`, and records how deep the outline
+  goes on the sheet; `group_rows(collapsed=True)` and its column twin
+  hid the rows and wrote neither, so the outline's plus button did not
+  show. Both are written now, the depth kept up to date by ungrouping,
+  and an eighth level is refused, as Excel refuses it.
+
 - **A column inserted inside a table made Excel refuse the workbook.** The
   table grew while its list of columns did not. It now takes the new
   column as Excel does, named `ColumnN` with the smallest `N` free, and
@@ -246,7 +261,11 @@ how far across the sheet it sits. Excel reports a shape's position from
 its anchor, and turning points back into a column needs the standard
 font's maximum digit width, which the file does not carry. A shape put
 at 300 points came back at 300 on one sheet and 298.5 on another whose
-columns had been resized. Rows are exact.
+columns had been resized. Rows are exact while Excel's default row height
+is the one the file records. At another display scaling a row with no
+height of its own is taller or shorter, 15 points at 100% against the
+14.5 a file written at 150% records, and a shape below it moves by the
+difference.
 
 An option button group stores its linked cell once, on the button marked
 `firstButton`. Excel's object model resolves the group and answers that

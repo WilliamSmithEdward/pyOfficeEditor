@@ -29,9 +29,18 @@ therefore exposes the stored number and says so, rather than applying a
 conversion that would be right for one font and quietly wrong for the rest.
 Row heights carry no such trap: they are points, and ``24`` stores as ``24``.
 
-Both settings need a companion flag. A ``width`` without ``customWidth="1"``
-and an ``ht`` without ``customHeight="1"`` are ignored by Excel, so a value
-set without them looks like it simply did not take.
+A height needs its companion flag: an ``ht`` without ``customHeight="1"``
+is ignored, so a height set without it looks like it did not take. A width
+is honoured with or without ``customWidth="1"``, measured, and the flag is
+written anyway, as Excel writes it for a width set by hand.
+
+**A ``<col>`` without a width is a column of width 0.** Measured: an entry
+carrying only ``outlineLevel``, ``collapsed``, ``style`` or nothing at all
+shows as a hidden column, and stays hidden when its outline is expanded. So
+an entry made for a column at the standard width is given that width, as
+Excel gives it: the sheet's ``defaultColWidth`` when it has one, and
+otherwise a width fixed by the Normal font, measured per font in
+:data:`STANDARD_WIDTHS`.
 """
 
 from __future__ import annotations
@@ -40,6 +49,57 @@ from dataclasses import dataclass
 
 from pyofficeeditor._xml import Element
 from pyofficeeditor.excel._reference import MAX_COLUMN, CellRef
+
+#: The width Excel stores for a column at the standard width, by the
+#: Normal style's font, measured on Excel 16 at 100% display scaling. It is
+#: the standard eight digits plus padding, rounded up to a multiple of
+#: eight pixels and stored in digits, so fonts whose widest digit has the
+#: same pixel width store the same number. At other scalings the pixels,
+#: and so the number, differ: a file Excel wrote at 150% stored 8.7265625
+#: for Aptos Narrow 11.
+STANDARD_WIDTHS: dict[tuple[str, float], float] = {
+    ("Calibri", 11): 9.140625,
+    ("Aptos Narrow", 11): 9.140625,
+    ("Arial", 10): 9.140625,
+    ("Calibri", 10): 9.140625,
+    ("Tahoma", 10): 9.140625,
+    ("Aptos", 11): 9.0,
+    ("Arial", 11): 9.0,
+    ("Calibri", 12): 9.0,
+    ("Calibri Light", 11): 9.0,
+    ("Cambria", 11): 9.0,
+    ("Consolas", 11): 9.0,
+    ("Courier New", 10): 9.0,
+    ("Garamond", 12): 9.0,
+    ("Times New Roman", 12): 9.0,
+    ("Verdana", 10): 9.0,
+    ("Arial Narrow", 10): 9.33203125,
+    ("Segoe UI", 9): 9.33203125,
+    ("Georgia", 11): 8.88671875,
+}
+
+#: Calibri 11's and Aptos Narrow 11's, the Normal fonts of Excel before
+#: 2023 and since, for a font not measured.
+FALLBACK_STANDARD_WIDTH = 9.140625
+
+
+def standard_width(format_properties: Element | None, font_name: str | None, font_size: float | None) -> float:
+    """What a column at a sheet's standard width stores as its width.
+
+    ``format_properties`` is the sheet's ``<sheetFormatPr>``, whose
+    ``defaultColWidth``, when a standard width has been set, is the answer
+    for every font measured; the font is the Normal style's.
+    """
+    if format_properties is not None:
+        raw = format_properties.get("defaultColWidth")
+        if raw is not None:
+            try:
+                return float(raw)
+            except ValueError:
+                pass
+    if font_name is None or font_size is None:
+        return FALLBACK_STANDARD_WIDTH
+    return STANDARD_WIDTHS.get((font_name, font_size), FALLBACK_STANDARD_WIDTH)
 
 #: Every attribute a ``<col>`` entry can carry besides ``min`` and ``max``.
 #: Splitting a span copies all of them to each piece, so a column that was
@@ -127,19 +187,21 @@ def column_entry(container: Element, index: int) -> Element | None:
     return None
 
 
-def isolate_column(container: Element, index: int) -> Element:
+def isolate_column(container: Element, index: int, *, width: float) -> Element:
     """A ``<col>`` covering exactly one column, splitting a span if needed.
 
     A span covering 1 to 5 becomes up to three entries when column 3 is
     isolated, each carrying the original's attributes. Editing the span in
-    place instead would resize all five.
+    place instead would resize all five. A column with no entry gets one at
+    ``width``, the standard width, since an entry without one is a column
+    of width 0.
     """
     if not 1 <= index <= MAX_COLUMN:
         raise ValueError(f"column {index} is outside 1..{MAX_COLUMN}")
 
     existing = column_entry(container, index)
     if existing is None:
-        created = Element.create("col", {"min": str(index), "max": str(index)})
+        created = Element.create("col", {"min": str(index), "max": str(index), "width": format_width(width)})
         _insert_ordered(container, created)
         return created
 
@@ -168,6 +230,25 @@ def isolate_column(container: Element, index: int) -> Element:
     return middle
 
 
+def format_width(width: float) -> str:
+    """A width as Excel writes one: ``9`` rather than ``9.0``."""
+    return f"{width:.15g}"
+
+
+def says_nothing(entry: Element, standard: float) -> bool:
+    """Whether a ``<col>`` says no more than having no entry would: nothing
+    besides its span, or only the standard width."""
+    attributes = {name for name in COLUMN_ATTRIBUTES if entry.get(name) is not None}
+    if not attributes:
+        return True
+    if attributes != {"width"}:
+        return False
+    try:
+        return float(entry.get("width") or "") == standard
+    except ValueError:
+        return False
+
+
 def _copy_attributes(attributes: dict[str, str | None], target: Element) -> None:
     for name, value in attributes.items():
         if value is not None:
@@ -186,7 +267,12 @@ def _insert_ordered(container: Element, entry: Element) -> None:
 
 __all__ = [
     "COLUMN_ATTRIBUTES",
+    "FALLBACK_STANDARD_WIDTH",
+    "STANDARD_WIDTHS",
     "Freeze",
     "column_entry",
+    "format_width",
     "isolate_column",
+    "says_nothing",
+    "standard_width",
 ]

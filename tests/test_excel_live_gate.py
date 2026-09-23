@@ -547,7 +547,7 @@ End Function
 def test_excel_applies_the_dimensions_this_library_writes(
     excel: object, live_structures_xlsx: Path, tmp_path: Path
 ) -> None:
-    """A width without customWidth is ignored, and a freeze with the wrong
+    """A height without customHeight is ignored, and a freeze with the wrong
     activePane leaves the cursor somewhere invisible. Only Excel can say."""
     book = Workbook.open(live_structures_xlsx)
     sheet = book["Tabled"]
@@ -573,6 +573,75 @@ def test_excel_applies_the_dimensions_this_library_writes(
     assert seen["frozen"] == "True"
     assert seen["panes"] == "4", "frozen on both axes makes four panes"
     assert seen["visibleTop"] == "B2", "row 1 and column A are pinned above and left"
+
+
+_OUTLINE_PROBE = r"""
+Private Function Detail(ByVal r As Range) As String
+    On Error Resume Next
+    Detail = CStr(r.ShowDetail)
+    If Err.Number <> 0 Then Detail = "none"
+    Err.Clear
+End Function
+
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim parts As String
+    Dim i As Long
+    Dim hidden As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+    For i = 1 To 8
+        If ws.Rows(i).Hidden Then hidden = hidden & "r" & i & ","
+    Next i
+    For i = 1 To 8
+        If ws.Columns(i).Hidden Then hidden = hidden & "c" & i & ","
+    Next i
+    parts = "hidden=" & hidden
+    parts = parts & "|rowSummary=" & Detail(ws.Rows(6))
+    parts = parts & "|columnSummary=" & Detail(ws.Columns(4))
+    parts = parts & "|summaryWidth=" & CStr(ws.Columns(4).Width) & "|plainWidth=" & CStr(ws.Columns(1).Width)
+    ws.Outline.ShowLevels RowLevels:=8, ColumnLevels:=8
+    hidden = ""
+    For i = 1 To 8
+        If ws.Rows(i).Hidden Or ws.Columns(i).Hidden Then hidden = hidden & i & ","
+    Next i
+    parts = parts & "|expanded=" & hidden & "|groupedWidth=" & CStr(ws.Columns(2).Width)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = parts
+End Function
+"""
+
+
+def test_excel_folds_and_unfolds_the_groups_this_library_writes(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """A folded group is three things in the file: the rows or columns
+    hidden, the summary marked, and the sheet's outline depth. And every
+    column entry carries a width, since one without is a column of width 0
+    that no unfolding brings back."""
+    target = tmp_path / "outline.xlsx"
+    shutil.copy(live_sample_xlsx, target)
+    with Workbook.open(target) as book:
+        sheet = book["Data"]
+        sheet.group_rows(3, 5, collapsed=True)
+        sheet.group_columns(2, 3, collapsed=True)
+        book.save()
+
+    seen = probe(excel, _OUTLINE_PROBE, target, "outline")
+
+    assert seen["hidden"] == "r3,r4,r5,c2,c3,"
+    assert seen["rowSummary"] == "False", "Excel reads the row group as folded"
+    assert seen["columnSummary"] == "False", "and the column group"
+    assert seen["expanded"] == "", "unfolding shows everything"
+    # The standard width is measured at 100% display scaling; at another
+    # scaling the pixels round differently, by a few percent.
+    plain = float(seen["plainWidth"])
+    for key in ("summaryWidth", "groupedWidth"):
+        assert abs(float(seen[key]) - plain) <= plain * 0.1, f"{key} {seen[key]} against {plain}"
 
 
 # --------------------------------------------------------------------------
@@ -1438,6 +1507,7 @@ Public Function Probe(ByVal Target As String) As String
     Set ws = wb.Worksheets(1)
 
     parts = "count=" & CStr(ws.Shapes.Count)
+    parts = parts & "|standardHeight=" & CStr(ws.StandardHeight)
 
     Set s = ws.Shapes("Box")
     parts = parts & "|boxType=" & CStr(s.Type)
@@ -1528,9 +1598,15 @@ def test_excel_accepts_shapes_this_library_adds(
     # A drawing shape: msoAutoShape, at the box it was given, with its
     # text and the macro a click runs.
     assert seen["boxType"] == "1"
-    assert seen["boxTop"] == "20"
+    # A row with no height of its own is as tall as Excel's default row at
+    # the display scaling it runs at, which the file only hints at: 14.5
+    # points where sample.xlsx was written, 15 at 100%. The box is anchored
+    # from the second row to the fifth, so its top moves by the difference
+    # once and its height by it three times.
+    drift = float(seen["standardHeight"]) - 14.5
+    assert float(seen["boxTop"]) == 20 + drift
     assert seen["boxWidth"] == "120"
-    assert seen["boxHeight"] == "50"
+    assert float(seen["boxHeight"]) == 50 + 3 * drift
     assert seen["boxText"] == "Hello"
     # A drawing shape reports the bare name it stores. Only a control is
     # reported qualified by the workbook, because only a control stores

@@ -496,9 +496,16 @@ the file. The stored number is exposed as-is, because a conversion right for
 one font and quietly wrong for the rest is worse than none. Row heights carry
 no such trap: they are points, and 24 stores as 24.
 
-**A dimension needs its companion flag.** A `width` without `customWidth="1"`
-and an `ht` without `customHeight="1"` are ignored, so the value looks like it
-never took.
+**A row height needs its companion flag, and a column needs a width.** An
+`ht` without `customHeight="1"` is ignored, so the value looks like it never
+took. A `width` is honoured with or without `customWidth="1"`, but a `<col>`
+with no `width` at all is a column of width 0: an entry carrying only
+`outlineLevel`, `collapsed`, `style` or nothing shows as hidden, and stays
+hidden when its outline is expanded. So every entry this library makes for a
+column at the standard width carries that width, the one Excel writes: the
+sheet's `defaultColWidth` when it has one, and otherwise a width fixed by the
+Normal font, measured per font. Grouping columns hid them outright until this
+was measured.
 
 **A filter is stored twice, and Excel trusts the second copy.** The criteria
 live in `<autoFilter>`, and which rows they hide lives on each row's `hidden`

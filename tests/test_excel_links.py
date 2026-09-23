@@ -197,6 +197,93 @@ class TestOutlineGrouping:
         assert reopened.column_outline_level(2) == 1
 
 
+class TestOutlineMarkup:
+    """What Excel writes alongside a group, measured by grouping, folding
+    and ungrouping in Excel and reading the file back."""
+
+    @pytest.fixture()
+    def sheet(self, live_sample_xlsx: Path) -> Worksheet:
+        return Workbook.open(live_sample_xlsx)["Data"]
+
+    def test_the_sheet_records_how_deep_its_outline_goes(self, sheet: Worksheet) -> None:
+        sheet.group_rows(5, 8)
+        sheet.group_rows(6, 7)
+        sheet.group_columns(2, 3)
+        head = sheet.document.root.require("sheetFormatPr")
+        assert (head.get("outlineLevelRow"), head.get("outlineLevelCol")) == ("2", "1")
+        sheet.ungroup_rows(6, 7)
+        assert head.get("outlineLevelRow") == "1"
+        sheet.ungroup_rows(5, 8)
+        sheet.ungroup_columns(2, 3)
+        assert (head.get("outlineLevelRow"), head.get("outlineLevelCol")) == (None, None)
+
+    def test_a_folded_group_marks_its_summary_row(self, sheet: Worksheet) -> None:
+        sheet.group_rows(5, 8, collapsed=True)
+        rows = sheet.rows_by_number()
+        assert rows[9].get("collapsed") == "1"
+        assert all(rows[number].get("collapsed") is None for number in range(5, 9))
+
+    def test_with_summaries_above_the_mark_goes_above(self, sheet: Worksheet) -> None:
+        sheet.summary_below = False
+        sheet.group_rows(5, 8, collapsed=True)
+        rows = sheet.rows_by_number()
+        assert rows[4].get("collapsed") == "1"
+        assert rows[9].get("collapsed") is None
+
+    def test_a_folded_inner_group(self, sheet: Worksheet) -> None:
+        """As Excel wrote it: the inner rows hidden, and the inner summary,
+        itself inside the outer group, marked."""
+        sheet.group_rows(5, 9)
+        sheet.group_rows(6, 7, collapsed=True)
+        assert [sheet.row_hidden(number) for number in range(5, 10)] == [False, True, True, False, False]
+        summary = sheet.rows_by_number()[8]
+        assert (summary.get("collapsed"), summary.get("outlineLevel")) == ("1", "1")
+
+    def test_ungrouping_drops_the_summary_mark(self, sheet: Worksheet) -> None:
+        sheet.group_rows(5, 8, collapsed=True)
+        sheet.ungroup_rows(5, 8)
+        assert sheet.rows_by_number()[9].get("collapsed") is None
+
+    def test_a_folded_column_group_marks_its_summary_column(self, sheet: Worksheet) -> None:
+        sheet.group_columns(2, 3, collapsed=True)
+        entries = list(sheet.document.root.require("cols").children_named("col"))
+        assert [(entry.get("min"), entry.get("collapsed")) for entry in entries[:3]] == [
+            ("2", None), ("3", None), ("4", "1")
+        ]
+
+    def test_grouped_columns_keep_the_standard_width(self, sheet: Worksheet) -> None:
+        """Measured: a ``<col>`` with no width is a column of width 0, which
+        Excel shows hidden whatever the outline says."""
+        sheet.group_columns(2, 3, collapsed=True)
+        for entry in sheet.document.root.require("cols").children_named("col"):
+            assert entry.get("width"), entry.to_xml()
+        assert sheet.column_width(2) == 9.140625, "Aptos Narrow 11's, the fixture's font"
+
+    def test_ungrouping_columns_leaves_the_block_as_it_was(self, sheet: Worksheet) -> None:
+        before = sheet.document.root.require("cols").to_xml()
+        sheet.group_columns(2, 3, collapsed=True)
+        sheet.ungroup_columns(2, 3)
+        assert sheet.document.root.require("cols").to_xml() == before
+
+    def test_restoring_a_width_keeps_a_width(self, sheet: Worksheet) -> None:
+        """A column still hidden or grouped after its width is reset keeps
+        an entry, and the entry keeps the standard width."""
+        sheet.group_columns(2, 2)
+        sheet.set_column_width(2, 20)
+        sheet.set_column_width(2, None)
+        assert sheet.column_width(2) == 9.140625
+        assert sheet.column_outline_level(2) == 1
+
+    def test_seven_levels_deep_and_no_further(self, sheet: Worksheet) -> None:
+        """Measured: Excel's eighth Group fails."""
+        for _ in range(7):
+            sheet.group_rows(5, 8)
+        with pytest.raises(ValueError, match="7 levels"):
+            sheet.group_rows(4, 9)
+        assert sheet.row_outline_level(5) == 7
+        assert sheet.row_outline_level(4) == 0, "nothing changed"
+
+
 class TestReadingWhatExcelWrote:
     def test_hyperlinks(self, live_links_xlsx: Path) -> None:
         sheet = Workbook.open(live_links_xlsx)["L"]

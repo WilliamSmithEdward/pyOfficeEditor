@@ -15,7 +15,16 @@ import pytest
 
 from pyofficeeditor._xml import XmlDocument
 from pyofficeeditor.excel import CellRef, Workbook
-from pyofficeeditor.excel._dimensions import Freeze, column_entry, isolate_column
+from pyofficeeditor.excel._dimensions import (
+    Freeze,
+    column_entry,
+    isolate_column,
+    says_nothing,
+    standard_width,
+)
+
+#: Calibri 11's standard width, which a new entry carries.
+STANDARD = 9.140625
 
 
 @pytest.fixture()
@@ -30,7 +39,7 @@ def cols(text: bytes) -> XmlDocument:
 class TestSplittingAColumnSpan:
     def test_isolating_the_middle_makes_three_entries(self) -> None:
         document = cols(b'<cols><col min="1" max="5" width="10"/></cols>')
-        isolate_column(document.root, 3).set("width", "99")
+        isolate_column(document.root, 3, width=STANDARD).set("width", "99")
         assert document.to_bytes() == (
             b'<cols><col min="1" max="2" width="10"/>'
             b'<col min="3" max="3" width="99"/>'
@@ -39,14 +48,14 @@ class TestSplittingAColumnSpan:
 
     def test_isolating_the_head_makes_two(self) -> None:
         document = cols(b'<cols><col min="1" max="5" width="10"/></cols>')
-        isolate_column(document.root, 1).set("width", "99")
+        isolate_column(document.root, 1, width=STANDARD).set("width", "99")
         assert document.to_bytes() == (
             b'<cols><col min="1" max="1" width="99"/><col min="2" max="5" width="10"/></cols>'
         )
 
     def test_isolating_the_tail_makes_two(self) -> None:
         document = cols(b'<cols><col min="1" max="5" width="10"/></cols>')
-        isolate_column(document.root, 5).set("width", "99")
+        isolate_column(document.root, 5, width=STANDARD).set("width", "99")
         assert document.to_bytes() == (
             b'<cols><col min="1" max="4" width="10"/><col min="5" max="5" width="99"/></cols>'
         )
@@ -57,7 +66,7 @@ class TestSplittingAColumnSpan:
             b'<cols><col min="1" max="5" width="10" hidden="1" customWidth="1" '
             b'style="3" outlineLevel="2" bestFit="1" collapsed="1"/></cols>'
         )
-        isolate_column(document.root, 3)
+        isolate_column(document.root, 3, width=STANDARD)
         raw = document.to_bytes().decode()
         assert raw.count('hidden="1"') == 3
         assert raw.count('style="3"') == 3
@@ -66,21 +75,27 @@ class TestSplittingAColumnSpan:
 
     def test_an_already_single_entry_is_returned_as_is(self) -> None:
         document = cols(b'<cols><col min="3" max="3" width="10"/></cols>')
-        entry = isolate_column(document.root, 3)
+        entry = isolate_column(document.root, 3, width=STANDARD)
         assert entry.get("width") == "10"
         assert len(list(document.root.children_named("col"))) == 1
 
     def test_a_column_with_no_entry_gets_one(self) -> None:
         document = cols(b'<cols><col min="5" max="5" width="10"/></cols>')
-        isolate_column(document.root, 2).set("width", "7")
+        isolate_column(document.root, 2, width=STANDARD).set("width", "7")
         assert document.to_bytes() == (
             b'<cols><col min="2" max="2" width="7"/><col min="5" max="5" width="10"/></cols>'
         )
 
+    def test_a_new_entry_carries_the_standard_width(self) -> None:
+        """Measured: an entry with no width is a column of width 0."""
+        document = cols(b"<cols></cols>")
+        isolate_column(document.root, 2, width=STANDARD).set("outlineLevel", "1")
+        assert document.to_bytes() == b'<cols><col min="2" max="2" width="9.140625" outlineLevel="1"/></cols>'
+
     def test_entries_stay_in_ascending_order(self) -> None:
         document = cols(b"<cols></cols>")
         for column in (5, 1, 9, 3):
-            isolate_column(document.root, column).set("width", "1")
+            isolate_column(document.root, column, width=STANDARD).set("width", "1")
         mins = [int(e.get("min") or 0) for e in document.root.children_named("col")]
         assert mins == sorted(mins) == [1, 3, 5, 9]
 
@@ -94,7 +109,36 @@ class TestSplittingAColumnSpan:
     def test_a_column_outside_the_sheet_is_refused(self, column: int) -> None:
         document = cols(b"<cols></cols>")
         with pytest.raises(ValueError, match="column"):
-            isolate_column(document.root, column)
+            isolate_column(document.root, column, width=STANDARD)
+
+
+class TestTheStandardWidth:
+    """What Excel writes for a column it gives an entry at the standard
+    width, measured per Normal font on Excel 16 at 100% scaling."""
+
+    @pytest.mark.parametrize(
+        ("name", "size", "width"),
+        [("Calibri", 11, 9.140625), ("Aptos Narrow", 11, 9.140625), ("Aptos", 11, 9.0), ("Segoe UI", 9, 9.33203125)],
+    )
+    def test_by_the_normal_font(self, name: str, size: float, width: float) -> None:
+        assert standard_width(None, name, size) == width
+
+    def test_a_sheets_own_standard_width_wins(self) -> None:
+        """For every font measured, Excel wrote ``defaultColWidth``."""
+        head = XmlDocument.parse(b'<sheetFormatPr defaultColWidth="10.625" defaultRowHeight="15"/>').root
+        assert standard_width(head, "Calibri", 11) == 10.625
+
+    def test_a_font_not_measured_gets_calibris(self) -> None:
+        assert standard_width(None, "Wingdings", 13) == standard_width(None, "Calibri", 11)
+        assert standard_width(None, None, None) == 9.140625
+
+    def test_an_entry_at_the_standard_width_says_nothing(self) -> None:
+        plain = cols(b'<cols><col min="2" max="2" width="9.140625"/></cols>').root.require("col")
+        custom = cols(b'<cols><col min="2" max="2" width="12"/></cols>').root.require("col")
+        grouped = cols(b'<cols><col min="2" max="2" width="9.140625" outlineLevel="1"/></cols>').root.require("col")
+        assert says_nothing(plain, STANDARD)
+        assert not says_nothing(custom, STANDARD)
+        assert not says_nothing(grouped, STANDARD)
 
 
 class TestFreezeValue:

@@ -20,9 +20,11 @@ points needs the sheet's column widths, and a width is stored in characters
 of the standard font rather than in points. Excel converts using that font's
 maximum digit width, which the file does not carry, so this uses seven
 pixels per character plus five of padding, at three quarters of a point per
-pixel. Rows are exact, because a height is already in points. For the
-fixture's button that put the left edge a quarter of a point out, which is
-the error to expect for a form control and for nothing else.
+pixel. Rows are exact, because a height is already in points, while
+Excel's default row height is the one the file records; a row with no
+height of its own follows the display scaling instead. For the fixture's
+button that put the left edge a quarter of a point out, which is the error
+to expect for a form control and for nothing else.
 
 **A form control lives inside ``mc:AlternateContent``.** Excel wraps its
 anchor in a ``mc:Choice`` requiring the ``x14`` namespace, so a reader that
