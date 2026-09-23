@@ -578,6 +578,39 @@ def test_cell_asking_about_formatting_keeps_the_cached_value(book: Workbook) -> 
     assert report.unsupported == {"Data!A1": 'CELL("width"), which reads formatting'}
 
 
+def _flows(book: Workbook, flows: list[float]) -> str:
+    sheet = book["Data"]
+    for column, flow in enumerate(flows, start=1):
+        sheet.cell(1, column).value = flow
+    return f"A1:{sheet.cell(1, len(flows)).a1}"
+
+
+def test_irr_stops_short_of_the_root_where_excel_does(book: Workbook) -> None:
+    # 2.9e-10 of the result from the exact root: Excel's secant stops there.
+    flows = _flows(book, [-23518.90552495122, 5897.322375982933, 8074.228465462295, 3418.6542983744653, 6167.091710440405])
+    assert book["Data"].evaluate(f"IRR({flows},0.3)") == 0.0006747819308212666
+
+
+def test_irr_starts_again_from_a_tenth_when_its_guess_fails(book: Workbook) -> None:
+    # From a guess of 1 the secant overshoots and cycles for 200 steps.
+    flows = _flows(
+        book,
+        [
+            -24518.42305940892, 1937.6740514260678, 1767.627855347036, 1621.8383666307395, 3423.8749530313867,
+            4005.481458699994, 3303.67042464501, 4648.740185700573, 2305.081428575526, 7245.145640629922,
+            5949.791802306586,
+        ],
+    )
+    assert book["Data"].evaluate(f"IRR({flows},1)") == 0.06297805183414074
+
+
+def test_irr_needs_a_residual_under_its_tolerance(book: Workbook) -> None:
+    # Scaled by 2^40, only an exact zero passes. No rate reaches one here;
+    # the second series reaches one only after its guess stalls.
+    assert book["Data"].evaluate(f"IRR({_flows(book, [-1069510457926.0002, 1099511627776.0])})") == CellError("#NUM!")
+    assert book["Data"].evaluate(f"IRR({_flows(book, [-977338919173.8009, 1099511627776.0])},0.05)") == 0.12500546760736642
+
+
 # ----------------------------------------------------------------------
 # Special functions
 # ----------------------------------------------------------------------

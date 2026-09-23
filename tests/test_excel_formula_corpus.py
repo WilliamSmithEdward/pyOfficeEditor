@@ -54,10 +54,7 @@ INPUTS = frozenset(
 
 #: Formulas whose result the engine does not match, and why. Each must
 #: still differ: one that starts matching is taken off this list.
-KNOWN: dict[str, str] = {
-    # The rate is exactly 0; Excel's iteration stops at -1.96E-10.
-    "Financial!A19": "RATE(10,-100,1000)",
-}
+KNOWN: dict[str, str] = {}
 
 #: Functions the corpus holds to within a number of units in the last
 #: place of Excel's result rather than to the bit: the most any formula
@@ -93,7 +90,7 @@ NEAR: dict[str, int] = {
 #: hundred units in the last place away, XIRR within its documented
 #: 0.000001 percent. The engine converges fully; the two agree to this
 #: fraction of the result.
-ITERATIVE: dict[str, float] = {"RATE": 1e-12, "IRR": 1e-12, "XIRR": 1e-8, "YIELD": 1e-12}
+ITERATIVE: dict[str, float] = {"XIRR": 1e-8, "YIELD": 1e-12}
 
 
 def _groups() -> list[str]:
