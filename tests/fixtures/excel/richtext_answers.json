@@ -1,0 +1,200 @@
+{
+  "A1": {
+    "runs": [
+      {
+        "bold": true,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 1,
+        "superscript": false,
+        "underline": -4142
+      },
+      {
+        "bold": false,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 5,
+        "superscript": false,
+        "underline": -4142
+      }
+    ]
+  },
+  "A2": {
+    "runs": [
+      {
+        "bold": false,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 1,
+        "superscript": false,
+        "underline": -4142
+      },
+      {
+        "bold": false,
+        "color": 255,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 7,
+        "superscript": false,
+        "underline": -4142
+      },
+      {
+        "bold": false,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 10,
+        "superscript": false,
+        "underline": -4142
+      }
+    ]
+  },
+  "A3": {
+    "runs": [
+      {
+        "bold": false,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 16.0,
+        "start": 1,
+        "superscript": false,
+        "underline": -4142
+      },
+      {
+        "bold": false,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 4,
+        "superscript": false,
+        "underline": -4142
+      },
+      {
+        "bold": false,
+        "color": 0,
+        "italic": true,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 9,
+        "superscript": false,
+        "underline": -4142
+      }
+    ]
+  },
+  "A4": {
+    "runs": [
+      {
+        "bold": false,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 1,
+        "superscript": false,
+        "underline": 2
+      },
+      {
+        "bold": false,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 6,
+        "superscript": false,
+        "underline": -4142
+      },
+      {
+        "bold": false,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 7,
+        "superscript": true,
+        "underline": -4142
+      }
+    ]
+  },
+  "A5": {
+    "runs": [
+      {
+        "bold": false,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 1,
+        "superscript": false,
+        "underline": -4142
+      },
+      {
+        "bold": false,
+        "color": 0,
+        "italic": false,
+        "name": "Courier New",
+        "size": 11.0,
+        "start": 6,
+        "superscript": false,
+        "underline": -4142
+      }
+    ]
+  },
+  "A6": {
+    "runs": [
+      {
+        "bold": false,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 1,
+        "superscript": false,
+        "underline": -4142
+      },
+      {
+        "bold": true,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 11,
+        "superscript": false,
+        "underline": -4142
+      }
+    ]
+  },
+  "A7": {
+    "runs": [
+      {
+        "bold": true,
+        "color": 0,
+        "italic": true,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 1,
+        "superscript": false,
+        "underline": -4142
+      },
+      {
+        "bold": true,
+        "color": 0,
+        "italic": false,
+        "name": "Aptos Narrow",
+        "size": 11.0,
+        "start": 4,
+        "superscript": false,
+        "underline": -4142
+      }
+    ]
+  }
+}

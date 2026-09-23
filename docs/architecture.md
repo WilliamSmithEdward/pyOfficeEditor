@@ -76,6 +76,8 @@ Each layer knows the layer below it and not the layer above.
 |   _shapes       shapes, and the grid a form control needs |
 |   _comments     notes and threads, and the box each gets  |
 |   _pictures     images, sized as Excel sizes them         |
+|   _richtext     runs of text in several fonts, read as    |
+|                 Excel shows them, not as marked up        |
 |   _conditional  cfRules, and the compatibility formula    |
 |                 that makes them fire                      |
 |   _dxf          differential formats: what a rule paints  |
@@ -235,6 +237,7 @@ The Excel surface is exported from `pyofficeeditor.excel`:
 | `FilterOutcome` | `excel/_filters.py` | which rows applying a filter hid, showed and left alone |
 | `Comment` | `excel/_comments.py` | a note on a cell: text, author, and whether it shows |
 | `ThreadedComment`, `Reply` | `excel/_comments.py` | a conversation on a cell, and each answer in it |
+| `TextRun` | `excel/_richtext.py` | part of a cell's text, and the font it shows in |
 | `format_value` | `excel/_numfmt.py` | the text Excel shows for a value under a format code |
 
 `opc.py` also exports the path helpers (`normalize_part_name`,
@@ -330,10 +333,12 @@ tests/
   test_excel_pictures.py        pictures, against what Excel said of them
   test_excel_xstring.py         _xHHHH_ escapes, character by character,
                                 against what Excel wrote and read
+  test_excel_richtext.py        text in several fonts, against the fonts
+                                Excel showed and the entries it wrote
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               fifteen Excel-authored packages: three
-                                sourced, twelve scripted, and two
+  fixtures/excel/               sixteen Excel-authored packages: three
+                                sourced, thirteen scripted, and two
                                 measured corpora; see its README
 ```
 
@@ -342,7 +347,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against fifteen committed
+- The suite needs no Office installation. It runs against sixteen committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as
@@ -536,6 +541,15 @@ and reads either. Every place a workbook keeps text goes through
 `_xstring`, because one that does not either writes a file Excel refuses or
 reads back seven characters for one. A table's headers are the exception:
 Excel replaces such a character there with U+FFFD rather than escaping it.
+
+**Rich text is read by rules its markup does not state.** Excel writes the
+first run of a cell's text with no font and gives the cell that run's font;
+every later run carries its font in full. Other writers leave runs less
+complete, and Excel reads them by rules measured here rather than found in
+the specification. Runs with no font show in the cell's font until a run has
+one, and in the workbook's default font after that. A run's font takes what
+it leaves unsaid from the default font as well, so a run that says only
+"bold" in a Courier cell shows in the default typeface, not in Courier.
 
 **Inserting a row is not a local edit.** A cell's address is written into the
 file in a dozen places, and missing one gives a workbook that opens cleanly

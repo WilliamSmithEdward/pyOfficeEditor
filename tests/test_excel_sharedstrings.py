@@ -142,14 +142,15 @@ class TestWriting:
         assert strings.index_for("dup") == 0, "the earlier index is still valid"
         assert len(strings) == 2, "nothing was removed"
 
-    def test_rich_text_is_never_rewritten(self) -> None:
-        """Changing a rich-text entry in place would discard its runs, so a
-        string that happens to match one gets its own plain entry."""
+    def test_rich_text_is_never_rewritten_or_reused(self) -> None:
+        """Changing a rich-text entry in place would discard its runs, and
+        pointing plain text at one would show its fonts, so a string that
+        happens to match one gets its own plain entry."""
         strings = table(b"<sst><si><r><rPr><b/></rPr><t>bold</t></r></si></sst>")
         assert strings[0] == "bold"
-        index = strings.index_for("bold")
-        assert index == 0, "reading matches, so the existing index is reused"
-        assert strings.is_rich_text(0) is True, "and the runs are untouched"
+        assert strings.index_for("bold") == 1
+        assert strings.is_rich_text(0) is True, "the runs are untouched"
+        assert strings.is_rich_text(1) is False
 
     def test_empty_starts_usable(self) -> None:
         strings = SharedStrings.empty()

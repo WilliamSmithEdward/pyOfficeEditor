@@ -103,6 +103,7 @@ from pyofficeeditor.excel._pagesetup import (
 from pyofficeeditor.excel._pictures import RT_IMAGE, image_info, picture_anchor
 from pyofficeeditor.excel._protection import SheetProtection
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef, column_letter
+from pyofficeeditor.excel._richtext import TextRun, completed, read_runs, rich_entry, shown
 from pyofficeeditor.excel._rowcol import (
     RT_DRAWING,
     RT_VML,
@@ -167,6 +168,7 @@ from pyofficeeditor.excel._values import (
     CellValue,
     datetime_to_serial,
     read_value,
+    write_shared_index,
     write_value,
 )
 from pyofficeeditor.excel._xstring import decode, encode_text
@@ -338,6 +340,70 @@ class Worksheet:
             styles=self._workbook.styles,
             epoch_1904=self._workbook.epoch_1904,
         )
+        self._workbook.mark_values_changed()
+        self._invalidate()
+
+    def get_rich_text(self, reference: CellRef) -> tuple[TextRun, ...] | None:
+        """A text cell's text as runs, each with the font Excel shows it
+        in, or ``None`` for a cell that holds no text.
+
+        Plain text is one run in the cell's font, and so is a run with no
+        font of its own at the start, which is how Excel writes the first.
+        A run with no font after one that has a font shows in the
+        workbook's default font, not the cell's, and a run's font takes
+        what it leaves unsaid from that default font too. Excel shows them
+        that way; see :mod:`~pyofficeeditor.excel._richtext`.
+        """
+        element = self._find_cell(reference)
+        if element is None:
+            return None
+        kind = element.get("t")
+        container: Element | None = None
+        if kind == "inlineStr":
+            container = element.child("is")
+        elif kind == "s":
+            shared = self._workbook.shared_strings
+            raw = element.child("v")
+            if shared is None or raw is None or not raw.text.strip().isdigit():
+                return None
+            index = int(raw.text)
+            if not 0 <= index < len(shared):
+                return None
+            container = shared.entry(index)
+        if container is None:
+            return None
+        styles = self._workbook.styles
+        default = styles.font(0) if styles is not None else Font()
+        runs = read_runs(container)
+        fonts = shown(runs, self.get_format(reference).font, default)
+        return tuple(TextRun(text, font) for (text, _), font in zip(runs, fonts, strict=True))
+
+    def set_rich_text(self, reference: CellRef, runs: Sequence[TextRun | str]) -> None:
+        """Put text in several fonts in a cell, as Excel writes it.
+
+        Each run is a :class:`TextRun`, or a plain string in the font the
+        cell has before the call. A run's font takes the typeface, size and
+        colour it leaves unsaid from that font too, so ``Font(bold=True)``
+        is them in bold; bold, italic and the other on and off settings are
+        the run's own. As Excel does it, the cell takes the first run's
+        font, and the rest carry their own written out in full. One run is
+        plain text in that font.
+        """
+        pieces = [TextRun(run) if isinstance(run, str) else run for run in runs]
+        if not pieces or not "".join(piece.text for piece in pieces):
+            raise ValueError("rich text needs some text; clear the cell to leave it empty.")
+        current = self.get_format(reference)
+        fonts = [completed(piece.font, current.font) for piece in pieces]
+        if fonts[0] != current.font:
+            self.set_format(reference, replace(current, font=fonts[0]))
+        if len(pieces) == 1:
+            self.set_value(reference, pieces[0].text)
+            return
+        entry = rich_entry(
+            [(pieces[0].text, None)] + [(piece.text, font) for piece, font in zip(pieces[1:], fonts[1:], strict=True)]
+        )
+        index = self._workbook.ensure_shared_strings().index_for_entry(entry)
+        write_shared_index(self._ensure_cell(reference), index)
         self._workbook.mark_values_changed()
         self._invalidate()
 
@@ -3618,6 +3684,15 @@ class Cell:
     def text(self) -> str:
         """What Excel shows in the cell; see :meth:`Worksheet.get_text`."""
         return self._sheet.get_text(self._reference)
+
+    @property
+    def rich_text(self) -> tuple[TextRun, ...] | None:
+        """The text as runs, each in its font; see :meth:`Worksheet.get_rich_text`."""
+        return self._sheet.get_rich_text(self._reference)
+
+    @rich_text.setter
+    def rich_text(self, runs: Sequence[TextRun | str]) -> None:
+        self._sheet.set_rich_text(self._reference, runs)
 
     @property
     def comment(self) -> Comment | None:

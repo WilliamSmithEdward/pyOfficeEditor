@@ -113,6 +113,24 @@ anything trailing the file is swept into the oldest release's notes. -->
   twice is stored once, as Excel stores it, and removing the last picture
   of an image removes the image.
 
+- **Text in more than one font in a cell**: `Worksheet.get_rich_text`
+  and `set_rich_text`, and `Cell.rich_text`, with `TextRun` for a run of
+  text and its font. Written as Excel writes it, measured: the cell takes
+  the first run's font and that run carries none of its own, every later
+  run carries its font written out in full, and a line break is stored as
+  CRLF. For seven cells Excel made through `Characters`, bold, colour,
+  size, underline, superscript, another typeface and a line break among
+  them, the entries written here are Excel's byte for byte.
+
+  Runs are read the way Excel shows them, which the markup does not say.
+  Runs with no font of their own show in the cell's font until a run has
+  one. After that, a run with no font shows in the workbook's default
+  font, not the cell's. A run's font takes whatever it leaves unsaid from
+  that default font too, and an unsaid colour is automatic. Excel never
+  writes such runs itself, so the rule was measured on runs written by
+  hand, and a live gate has Excel check all twelve cases against this
+  library's reading.
+
 - **What a form control is wired to.** `Shape.control` carries the linked
   cell, the list range, the current value and which kind of control it
   is, read from the part the sheet points at. `Shape` and `ShapeKind`
@@ -238,6 +256,10 @@ anything trailing the file is swept into the oldest release's notes. -->
   every formula still named the old sheet. It does what
   `Workbook.rename_sheet` does now.
 
+- **Plain text that matched text in several fonts took on its fonts.**
+  Setting a cell to `"bold plain"` pointed it at an existing entry with
+  the same words in two fonts. Plain text gets a plain entry now.
+
 - **A line break in text of more than one font read with a stray
   carriage return.** Excel stores the break as CRLF inside a run, and an
   XML reader reads that as one line feed; this library kept both, so a
@@ -278,11 +300,12 @@ Button and nothing else, so it could prove none of this.
 `filters_answers.json` recording how many rows Excel hid on each, and
 `comments.xlsx` a third, with notes of every shape and
 `comments_answers.json` recording what Excel's object model said of each,
-and `pictures.xlsx` a fourth, with `pictures_answers.json`.
-`filter_semantics.json` and `number_formats.json` are new measured
-corpora, rebuilt by `scripts/measure_filters.py` and
-`scripts/measure_number_formats.py` on a machine with Excel; every case in
-them is a test.
+and `pictures.xlsx` a fourth, with `pictures_answers.json`, and
+`richtext.xlsx` a fifth, with `richtext_answers.json` recording the font
+Excel reported at every change in its text. `filter_semantics.json` and
+`number_formats.json` are new measured corpora, rebuilt by
+`scripts/measure_filters.py` and `scripts/measure_number_formats.py` on a
+machine with Excel; every case in them is a test.
 
 ### Internal
 
@@ -352,6 +375,10 @@ does not.
 A note's text is read and written as plain text. Formatting inside a note,
 a bold word say, reads as its text without the bold, and a note written
 here is in Excel's own note font.
+
+A run of text whose font names a typeface and the theme's font scheme as
+well shows in the theme's typeface, measured, and reads here as the
+typeface it names. Excel never writes one.
 
 The author of a threaded comment written here is a person no account
 stands behind, as Excel writes someone who is not signed in. Excel names

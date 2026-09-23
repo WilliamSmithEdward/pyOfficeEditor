@@ -32,7 +32,7 @@ fixtures to refresh.
 
 `scripts/build_excel_fixtures.py` drives real Excel through
 [pyvbaharness](https://github.com/WilliamSmithEdward/pyVBAharness) to author
-eleven more. These are committed like the rest: the script exists so a
+twelve more. These are committed like the rest: the script exists so a
 fixture's *content* can be changed deliberately and reproduced, not so the
 suite rebuilds them. Run it on a Windows machine with Excel; tests that need
 a fixture skip when it is absent.
@@ -50,6 +50,7 @@ a fixture skip when it is absent.
 | `controls.xlsm` | One of every Forms control, wired to cells and ranges, with `controls_answers.json` beside it recording what Excel's object model answered for each. |
 | `pictures.xlsx` | Pictures from `Shapes.AddPicture`: a PNG at its own size, one at 144 dots to the inch, the first stretched, and a GIF with alternative text, with `pictures_answers.json` recording what Excel's object model said of each. The recipe writes the images itself, from hex. |
 | `comments.xlsx` | Notes, plain, on two lines, showing, resized, on A1 and with a word in bold, and one sharing its sheet's VML part with a button, with `comments_answers.json` recording what Excel's object model said of each. The author is whoever ran the script: Excel takes it from the Office user name, and VBA cannot set it. |
+| `richtext.xlsx` | Seven cells of text in more than one font, made through `Characters`: bold, a colour, a bigger size, italic, underline, superscript, another typeface, a line break, and a cell whose own font is bold. `richtext_answers.json` records the font Excel reported at every change. |
 
 `shapes.xlsm` is committed but has no recipe here: it predates the script.
 It carries one of every shape a sheet can hold, with `shapes_answers.json`

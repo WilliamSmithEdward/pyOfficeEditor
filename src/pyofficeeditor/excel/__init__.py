@@ -90,6 +90,7 @@ from pyofficeeditor.excel._reference import (
     column_index,
     column_letter,
 )
+from pyofficeeditor.excel._richtext import TextRun
 from pyofficeeditor.excel._shapes import (
     XL_MIXED,
     XL_OFF,
@@ -164,6 +165,7 @@ __all__ = [
     "Table",
     "TableColumn",
     "TableStyle",
+    "TextRun",
     "ThreadedComment",
     "Top10Filter",
     "ValidationOperator",

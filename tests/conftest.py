@@ -9,6 +9,8 @@ producer's output encodes that producer's habits as rules.
 from __future__ import annotations
 
 import io
+import re
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -72,6 +74,34 @@ LIVE_COMMENTS_ANSWERS = EXCEL_FIXTURES / "comments_answers.json"
 #: Excel's object model said of each.
 LIVE_PICTURES_XLSX = EXCEL_FIXTURES / "pictures.xlsx"
 LIVE_PICTURES_ANSWERS = EXCEL_FIXTURES / "pictures_answers.json"
+#: Authored by Excel: text in more than one font in a cell, made through
+#: ``Characters``, and the font Excel reported at each change.
+LIVE_RICHTEXT_XLSX = EXCEL_FIXTURES / "richtext.xlsx"
+LIVE_RICHTEXT_ANSWERS = EXCEL_FIXTURES / "richtext_answers.json"
+#: Rich text as other writers leave it, which Excel never writes itself:
+#: runs with no font after one that has a font, fonts written in part, an
+#: empty ``<rPr/>``, and runs held inline in the cell. The cells are in red
+#: Courier New 16 and the workbook's default font is green Arial 10, so
+#: which font a run shows in cannot be mistaken. A4 alone is in the default.
+FOREIGN_RICH_TEXT = {
+    "A1": "<si><r><t>a</t></r><r><t>b</t></r><r><rPr><b/></rPr><t>c</t></r><r><t>d</t></r></si>",
+    "A2": "<si><r><rPr><b/></rPr><t>x</t></r><r><t>y</t></r></si>",
+    "A3": '<si><r><t>p</t></r><r><rPr><sz val="20"/></rPr><t>q</t></r></si>',
+    "A4": "<si><r><t>m</t></r><r><rPr><i/></rPr><t>n</t></r></si>",
+    "A5": '<si><r><t>e</t></r><r><rPr><rFont val="Times New Roman"/></rPr><t>f</t></r></si>',
+    "A6": "<si><r><t>j</t></r><r><rPr/><t>k</t></r></si>",
+    "A7": "<si><r><rPr><b/></rPr><t>u</t></r></si>",
+    "A8": "<si><r><rPr><b/></rPr><t>x</t></r><r><rPr/><t>y</t></r></si>",
+    "A9": (
+        '<si><r><t>a</t></r><r><rPr><b/><sz val="16"/><color rgb="FFFF0000"/><rFont val="Courier New"/>'
+        '<family val="3"/></rPr><t>b</t></r><r><t>c</t></r></si>'
+    ),
+    "A10": '<si><r><t>n</t></r><r><rPr><i/><color theme="1"/></rPr><t>o</t></r></si>',
+    "A11": "<is><r><rPr><b/></rPr><t>x</t></r><r><t>y</t></r></is>",
+    "A12": "<is><r><t>a</t></r><r><rPr><i/></rPr><t>b</t></r></is>",
+}
+#: The default font those cells are measured against.
+FOREIGN_DEFAULT_FONT = '<font><sz val="10"/><color rgb="FF00B050"/><name val="Arial"/><family val="2"/></font>'
 #: Measured by Excel: the text it shows for values under some five hundred
 #: format codes in both date systems, and what each builtin format id means.
 NUMBER_FORMATS_JSON = EXCEL_FIXTURES / "number_formats.json"
@@ -152,6 +182,14 @@ def data_descriptor_zip_bytes() -> bytes:
         archive.writestr("a.xml", b"<a/>" * 100)
         archive.writestr("b.xml", b"<b/>" * 100)
     return bytes(sink.buffer)
+
+
+@pytest.fixture(scope="session")
+def live_empty_xlsx() -> Path:
+    """The path to the workbook Excel saves when nothing is put in it."""
+    if not LIVE_EMPTY_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author empty.xlsx with real Excel")
+    return LIVE_EMPTY_XLSX
 
 
 @pytest.fixture(scope="session")
@@ -285,6 +323,71 @@ def live_pictures_answers() -> Path:
     if not LIVE_PICTURES_ANSWERS.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to measure the pictures with real Excel")
     return LIVE_PICTURES_ANSWERS
+
+
+@pytest.fixture(scope="session")
+def live_richtext_xlsx() -> Path:
+    """Text in several fonts, authored by Excel."""
+    if not LIVE_RICHTEXT_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author richtext.xlsx with real Excel")
+    return LIVE_RICHTEXT_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_richtext_answers() -> Path:
+    """The font Excel reported at each change in that text."""
+    if not LIVE_RICHTEXT_ANSWERS.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to measure the text with real Excel")
+    return LIVE_RICHTEXT_ANSWERS
+
+
+@pytest.fixture(scope="session")
+def foreign_rich_text(live_empty_xlsx: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A workbook holding :data:`FOREIGN_RICH_TEXT`.
+
+    Built from ``empty.xlsx``: this library formats the cells and fills
+    them with markers, then the markers' entries, the default font, and
+    the two inline cells are put in place by hand, as another writer would
+    have written them.
+    """
+    from pyofficeeditor.excel import CellFormat, CellRef, Color, Font, Workbook
+
+    base = tmp_path_factory.mktemp("foreign") / "base.xlsx"
+    shutil.copy(live_empty_xlsx, base)
+    courier = CellFormat(font=Font(name="Courier New", size=16, color=Color(rgb="FFFF0000"), family=3))
+    with Workbook.open(base) as book:
+        sheet = book[0]
+        for address in FOREIGN_RICH_TEXT:
+            if address != "A4":
+                sheet.set_format(CellRef.parse(address), courier)
+            sheet.set_value(CellRef.parse(address), f"@{address}@")
+        book.save()
+
+    def by_hand(name: str, text: str) -> str:
+        if name == "xl/styles.xml":
+            text, count = re.subn(r"<font>.*?</font>", FOREIGN_DEFAULT_FONT, text, count=1, flags=re.S)
+            assert count == 1, "the default font was not replaced"
+            return text
+        for address, markup in FOREIGN_RICH_TEXT.items():
+            if name == "xl/sharedStrings.xml" and markup.startswith("<si>"):
+                text, count = re.subn(re.escape(f"<si><t>@{address}@</t></si>"), markup, text)
+            elif name == "xl/worksheets/sheet1.xml" and markup.startswith("<is>"):
+                pattern = rf'<c r="{address}"( s="\d+")? t="s"><v>\d+</v></c>'
+                text, count = re.subn(pattern, rf'<c r="{address}"\1 t="inlineStr">{markup}</c>', text)
+            else:
+                continue
+            assert count == 1, f"{address} was not put in place in {name}"
+        return text
+
+    target = base.with_name("foreign.xlsx")
+    rewritten = {"xl/sharedStrings.xml", "xl/worksheets/sheet1.xml", "xl/styles.xml"}
+    with zipfile.ZipFile(base) as source, zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as built:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            if item.filename in rewritten:
+                data = by_hand(item.filename, data.decode("utf-8")).encode("utf-8")
+            built.writestr(item, data)
+    return target
 
 
 @pytest.fixture(scope="session")

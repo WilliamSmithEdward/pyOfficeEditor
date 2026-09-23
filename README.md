@@ -21,7 +21,7 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > Excel does not recompute a filter when the workbook opens. A cell's
 > text is what Excel shows for it, number format and all. Notes and
 > threaded comments, replies included, read and write the way Excel
-> writes them, and so do pictures.
+> writes them, and so do pictures and text in more than one font.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Nothing about a sheet makes that refuse any more: validation,
@@ -154,6 +154,8 @@ data descriptors.
 |               control                                  |
 |   _comments   notes and threads, and the box each gets |
 |   _pictures   images, sized as Excel sizes them        |
+|   _richtext   runs of text in several fonts, read as   |
+|               Excel shows them, not as marked up       |
 |   _pagesetup  margins in inches, and the three header  |
 |               boxes coded into one string              |
 |   _validation what a cell accepts, and the inverted    |

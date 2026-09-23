@@ -19,7 +19,8 @@ strip, and Excel does.
 ``<r>`` runs each with their own ``<rPr>`` formatting. Reading concatenates
 the runs, which is the string the cell displays. Rewriting such an entry
 would throw the formatting away, so this module never rewrites one: a
-changed string gets a new entry instead.
+changed string gets a new entry instead. Writing one is
+:mod:`pyofficeeditor.excel._richtext`'s business.
 """
 
 from __future__ import annotations
@@ -62,10 +63,11 @@ class SharedStrings:
         self._entries: list[Element] = list(self._root.children_named("si"))
         self._index_of: dict[str, int] = {}
         for index, entry in enumerate(self._entries):
-            text = entry_text(entry)
-            # First occurrence wins: if a workbook carries the same text
-            # twice, reusing the earlier index is correct and matches Excel.
-            self._index_of.setdefault(text, index)
+            # Rich text is left out: plain text reusing it would show its
+            # fonts. First occurrence wins: if a workbook carries the same
+            # text twice, reusing the earlier index matches Excel.
+            if entry.child("t") is not None:
+                self._index_of.setdefault(entry_text(entry), index)
 
     @classmethod
     def empty(cls) -> SharedStrings:
@@ -98,6 +100,25 @@ class SharedStrings:
         if not 0 <= index < len(self._entries):
             raise IndexError(f"shared string {index} is out of range")
         return self._entries[index].child("r") is not None
+
+    def entry(self, index: int) -> Element:
+        """The ``<si>`` at an index, runs and all."""
+        if not 0 <= index < len(self._entries):
+            raise IndexError(f"shared string {index} is out of range")
+        return self._entries[index]
+
+    def index_for_entry(self, entry: Element) -> int:
+        """The index for a whole ``<si>``, such as one of rich text runs,
+        appending it unless the table has one written the same already."""
+        wanted = entry.to_xml()
+        for index, existing in enumerate(self._entries):
+            if existing.child("r") is not None and existing.to_xml() == wanted:
+                return index
+        self._root.append(entry)
+        index = len(self._entries)
+        self._entries.append(entry)
+        self._refresh_counts()
+        return index
 
     def index_for(self, text: str) -> int:
         """The index for a string, appending an entry if it is new."""

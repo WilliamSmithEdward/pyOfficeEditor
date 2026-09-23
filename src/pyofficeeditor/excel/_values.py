@@ -341,6 +341,18 @@ def _format_for(value: dt.datetime | dt.date | dt.time) -> str:
     return ISO_DATE_FORMAT
 
 
+def write_shared_index(cell: Element, index: int) -> None:
+    """Point a cell at a shared string by index, as :func:`write_value`
+    does for text, for an entry written some other way, such as runs."""
+    for name in ("v", "is", "f"):
+        existing = cell.child(name)
+        while existing is not None:
+            cell.remove(existing)
+            existing = cell.child(name)
+    cell.set("t", "s")
+    _set_v(cell, str(index))
+
+
 def _set_v(cell: Element, text: str) -> None:
     value = Element.create("v")
     value.set_text(text)
@@ -368,5 +380,6 @@ __all__ = [
     "parse_number",
     "read_value",
     "serial_to_datetime",
+    "write_shared_index",
     "write_value",
 ]

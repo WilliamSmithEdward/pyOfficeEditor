@@ -199,7 +199,9 @@ class Font:
             underline = as_underline(raw) if raw is not None else "single"
         script_element = element.child("vertAlign")
         return cls(
-            name=_child_value(element, "name"),
+            # A run's properties in rich text are a font too, naming its
+            # typeface in rFont where a font in the styles part says name.
+            name=_child_value(element, "name") or _child_value(element, "rFont"),
             size=_child_float(element, "sz"),
             bold=_flag(element, "b"),
             italic=_flag(element, "i"),

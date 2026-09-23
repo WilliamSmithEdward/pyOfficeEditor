@@ -1829,6 +1829,137 @@ def test_excel_shows_the_pictures_this_library_adds(
         assert abs(float(found_height) - height) <= 2.5, name
 
 
+_RICH_TEXT_PROBE = r"""
+Private Function Describe(ByVal c As Range) As String
+    Dim i As Long
+    Dim f As Font
+    Dim out As String
+    Dim last As String
+    Dim now As String
+    For i = 1 To Len(c.Value)
+        Set f = c.Characters(i, 1).Font
+        now = f.Name & "," & CStr(f.Size) & "," & CStr(f.Bold) & "," & CStr(f.Italic) & "," & _
+              CStr(f.Color) & "," & CStr(f.ColorIndex = xlColorIndexAutomatic) & "," & _
+              CStr(f.Underline) & "," & CStr(f.Superscript)
+        If now <> last Then out = out & CStr(i) & ":" & now & ";"
+        last = now
+    Next i
+    Describe = out
+End Function
+
+Public Function Probe(ByVal Target As String, ByVal Count As Long) As String
+    Dim wb As Workbook
+    Dim i As Long
+    Dim out As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For i = 1 To Count
+        out = out & "A" & CStr(i) & "=" & Describe(wb.Worksheets(1).Cells(i, 1)) & "|"
+    Next i
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = Left(out, Len(out) - 1)
+End Function
+"""
+
+#: A font change as the rich text probe reports it: where it starts, then
+#: typeface, size, bold, italic, colour, whether that colour is automatic,
+#: underline and superscript.
+FontChange = tuple[int, str, float, bool, bool, int, bool, int, bool]
+
+
+def _font_changes(excel: object, path: Path, count: int, name: str) -> dict[str, list[FontChange]]:
+    """Every font change Excel shows in the first ``count`` cells of
+    column A, character by character."""
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _RICH_TEXT_PROBE, proc="Probe", args=(str(path), count), timeout=180, module_name=f"Probe_{name}"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+    seen: dict[str, list[FontChange]] = {}
+    for part in str(result.value).split("|"):
+        address, _, body = part.partition("=")
+        changes: list[FontChange] = []
+        for piece in filter(None, body.split(";")):
+            start, _, fields = piece.partition(":")
+            typeface, size, bold, italic, colour, automatic, underline, superscript = fields.split(",")
+            changes.append((
+                int(start), typeface, float(size), bold == "True", italic == "True",
+                int(colour), automatic == "True", int(underline), superscript == "True",
+            ))
+        seen[address] = changes
+    return seen
+
+
+def test_excel_shows_the_rich_text_this_library_writes(
+    excel: object, live_empty_xlsx: Path, live_richtext_xlsx: Path, tmp_path: Path
+) -> None:
+    """Text in several fonts is an entry of runs and a cell font that have
+    to agree: Excel gives the cell the first run's font and writes that run
+    with none of its own. Excel is asked the font of every character, in
+    what is written here and in the same text it wrote itself."""
+    from pyofficeeditor.excel import CellRef, Color, Font, TextRun
+
+    target = tmp_path / "richtext.xlsx"
+    shutil.copy(live_empty_xlsx, target)
+    red = Color(rgb="FFFF0000")
+    with Workbook.open(target) as book:
+        sheet = book[0]
+        sheet.set_rich_text(CellRef(1, 1), [TextRun("bold", Font(bold=True)), " plain"])
+        sheet.set_rich_text(CellRef(2, 1), ["plain ", TextRun("red", Font(color=red)), " end"])
+        sheet.set_rich_text(CellRef(3, 1), [TextRun("big", Font(size=16)), " and ", TextRun("italic", Font(italic=True))])
+        sheet.set_rich_text(
+            CellRef(4, 1), [TextRun("under", Font(underline="single")), " ", TextRun("over", Font(script="superscript"))]
+        )
+        sheet.set_rich_text(CellRef(5, 1), ["font ", TextRun("change", Font(name="Courier New", family=3))])
+        sheet.set_rich_text(CellRef(6, 1), ["two\nlines ", TextRun("bold", Font(bold=True))])
+        sheet.set_rich_text(CellRef(7, 1), [TextRun("all", Font(bold=True, italic=True)), TextRun(" bold", Font(bold=True))])
+        book.save()
+
+    ours = _font_changes(excel, target, 7, "rich_ours")
+    assert ours == _font_changes(excel, live_richtext_xlsx, 7, "rich_theirs")
+    assert ours["A2"][1][1:6] == ("Aptos Narrow", 11.0, False, False, 255), "the red run is red"
+
+
+def test_excel_shows_other_writers_runs_as_this_library_reads_them(
+    excel: object, foreign_rich_text: Path
+) -> None:
+    """Runs Excel never writes: none of a font after one with a font, a
+    font written in part, an empty ``<rPr/>``, runs held inline. Each run's
+    font as read here has to be the one Excel shows, which for most of them
+    is neither the cell's nor what the markup would suggest."""
+    from pyofficeeditor.excel import CellRef, Color
+
+    def colour(color: Color | None) -> int:
+        if color is None or color == Color(theme=1):
+            return 0  # automatic, and Text 1 of the Office theme, are black
+        assert color.rgb is not None
+        return int(color.rgb[2:4], 16) + (int(color.rgb[4:6], 16) << 8) + (int(color.rgb[6:8], 16) << 16)
+
+    sheet = Workbook.open(foreign_rich_text)[0]
+    count = 12
+    read: dict[str, list[FontChange]] = {}
+    for row in range(1, count + 1):
+        runs = sheet.get_rich_text(CellRef(row, 1))
+        assert runs is not None
+        changes: list[FontChange] = []
+        position = 0
+        for run in runs:
+            font = run.font
+            assert font is not None and font.name is not None and font.size is not None
+            described = (
+                font.name, float(font.size), font.bold, font.italic, colour(font.color), font.color is None,
+                2 if font.underline == "single" else -4142, font.script == "superscript",
+            )
+            for _ in run.text:
+                position += 1
+                if not changes or changes[-1][1:] != described:
+                    changes.append((position, *described))
+        read[f"A{row}"] = changes
+
+    assert _font_changes(excel, foreign_rich_text, count, "rich_foreign") == read
+
+
 _REMOVED_PROBE = r"""
 Public Function Probe(ByVal Target As String) As String
     Dim wb As Workbook

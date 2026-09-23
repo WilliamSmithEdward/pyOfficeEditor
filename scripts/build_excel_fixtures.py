@@ -829,6 +829,69 @@ End Function
     "{DENSE}", _png(120, 80, 144).hex().upper()
 ).replace("{DOT}", _GIF.hex().upper())
 
+#: Text in more than one font in one cell, made through ``Characters`` the
+#: way a person makes it: a bold word, a red one, a bigger one, underline
+#: and superscript, another typeface, a line break, and a cell whose own
+#: font is bold. The reply is one line per cell with each font change Excel
+#: reports: where it starts, then the typeface, size, bold, italic, colour,
+#: underline and superscript.
+_BUILD_RICHTEXT = r"""
+Private Function Describe(ByVal c As Range) As String
+    Dim i As Long
+    Dim f As Font
+    Dim out As String
+    Dim last As String
+    Dim now As String
+    For i = 1 To Len(c.Value)
+        Set f = c.Characters(i, 1).Font
+        now = f.Name & "," & CStr(f.Size) & "," & CStr(f.Bold) & "," & CStr(f.Italic) & "," & _
+              CStr(f.Color) & "," & CStr(f.Underline) & "," & CStr(f.Superscript)
+        If now <> last Then out = out & CStr(i) & ":" & now & ";"
+        last = now
+    Next i
+    Describe = out
+End Function
+
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim i As Long
+    Dim out As String
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Rich"
+
+    ws.Range("A1").Value = "bold plain"
+    ws.Range("A1").Characters(1, 4).Font.Bold = True
+    ws.Range("A2").Value = "plain red end"
+    ws.Range("A2").Characters(7, 3).Font.Color = RGB(255, 0, 0)
+    ws.Range("A3").Value = "big and italic"
+    ws.Range("A3").Characters(1, 3).Font.Size = 16
+    ws.Range("A3").Characters(9, 6).Font.Italic = True
+    ws.Range("A4").Value = "under over"
+    ws.Range("A4").Characters(1, 5).Font.Underline = xlUnderlineStyleSingle
+    ws.Range("A4").Characters(7, 4).Font.Superscript = True
+    ws.Range("A5").Value = "font change"
+    ws.Range("A5").Characters(6, 6).Font.Name = "Courier New"
+    ws.Range("A6").Value = "two" & vbLf & "lines bold"
+    ws.Range("A6").Characters(11, 4).Font.Bold = True
+    ws.Range("A6").WrapText = True
+    ws.Range("A7").Value = "all bold"
+    ws.Range("A7").Font.Bold = True
+    ws.Range("A7").Characters(1, 3).Font.Italic = True
+
+    For i = 1 To 7
+        out = out & "A" & CStr(i) & "|" & Describe(ws.Cells(i, 1)) & vbLf
+    Next i
+
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+"""
+
 #: Which fields of the reported line mean what.
 _CONTROL_FIELDS = ("type", "macro", "linked_cell", "list_range", "value")
 
@@ -900,6 +963,34 @@ def control_answers(reply: str) -> Answers:
             else:
                 entry[key] = raw
         answers[name] = entry
+    return answers
+
+
+def richtext_answers(reply: str) -> Answers:
+    """One line per cell: its address, then each font change as
+    ``start:name,size,bold,italic,colour,underline,superscript;``."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        address, _, body = line.partition("|")
+        runs: list[dict[str, object]] = []
+        for piece in body.split(";"):
+            if not piece:
+                continue
+            start, _, fields = piece.partition(":")
+            name, size, bold, italic, color, underline, superscript = fields.split(",")
+            runs.append({
+                "start": int(start),
+                "name": name,
+                "size": float(size),
+                "bold": bold == "True",
+                "italic": italic == "True",
+                "color": int(color),
+                "underline": int(underline),
+                "superscript": superscript == "True",
+            })
+        answers[address] = {"runs": runs}
     return answers
 
 
@@ -1007,6 +1098,7 @@ def main() -> int:
         ("filters.xlsx", _BUILD_FILTERS, filter_answers),
         ("comments.xlsx", _BUILD_COMMENTS, comment_answers),
         ("pictures.xlsx", _BUILD_PICTURES, picture_answers),
+        ("richtext.xlsx", _BUILD_RICHTEXT, richtext_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]
