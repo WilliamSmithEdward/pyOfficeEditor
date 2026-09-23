@@ -22,6 +22,7 @@ get each of them right, and each is tested against bytes real Excel wrote.
 
 from __future__ import annotations
 
+from pyofficeeditor.excel._cellstyles import CellStyle
 from pyofficeeditor.excel._comments import Comment, Reply, ThreadedComment
 from pyofficeeditor.excel._conditional import (
     Cfvo,
@@ -121,6 +122,7 @@ __all__ = [
     "CellError",
     "CellFormat",
     "CellRef",
+    "CellStyle",
     "CellValue",
     "Cfvo",
     "Color",

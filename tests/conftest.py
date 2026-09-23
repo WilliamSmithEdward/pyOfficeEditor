@@ -78,6 +78,11 @@ LIVE_PICTURES_ANSWERS = EXCEL_FIXTURES / "pictures_answers.json"
 #: ``Characters``, and the font Excel reported at each change.
 LIVE_RICHTEXT_XLSX = EXCEL_FIXTURES / "richtext.xlsx"
 LIVE_RICHTEXT_ANSWERS = EXCEL_FIXTURES / "richtext_answers.json"
+#: Authored by Excel: every built-in cell style applied to a cell of its own,
+#: a style of the workbook's own, and styles put over existing formatting,
+#: with what Excel showed for each cell and what each style includes.
+LIVE_STYLES_XLSX = EXCEL_FIXTURES / "styles.xlsx"
+LIVE_STYLES_ANSWERS = EXCEL_FIXTURES / "styles_answers.json"
 #: Authored by Excel: text XML cannot carry as it is, control characters,
 #: a lone carriage return and a literal "_x0041_", everywhere a workbook
 #: keeps text, and the characters Excel reported for each piece.
@@ -344,6 +349,22 @@ def live_richtext_answers() -> Path:
     if not LIVE_RICHTEXT_ANSWERS.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to measure the text with real Excel")
     return LIVE_RICHTEXT_ANSWERS
+
+
+@pytest.fixture(scope="session")
+def live_styles_xlsx() -> Path:
+    """Cell styles, authored by Excel."""
+    if not LIVE_STYLES_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author styles.xlsx with real Excel")
+    return LIVE_STYLES_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_styles_answers() -> Path:
+    """What Excel showed for each styled cell, and what each style includes."""
+    if not LIVE_STYLES_ANSWERS.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to measure the styles with real Excel")
+    return LIVE_STYLES_ANSWERS
 
 
 @pytest.fixture(scope="session")

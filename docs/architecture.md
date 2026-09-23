@@ -84,6 +84,8 @@ Each layer knows the layer below it and not the layer above.
 |   _styles       the five style tables; is this a date?   |
 |   _formats      fonts, fills, borders, alignment, as     |
 |                 immutable values                         |
+|   _cellstyles   named styles, and Excel's definitions of |
+|                 its own                                  |
 |   _formulas     reference shifting for shared formulas, |
 |                 and repointing a renamed sheet          |
 |   _sharedstrings  the per-workbook string table         |
@@ -238,6 +240,7 @@ The Excel surface is exported from `pyofficeeditor.excel`:
 | `Comment` | `excel/_comments.py` | a note on a cell: text, author, and whether it shows |
 | `ThreadedComment`, `Reply` | `excel/_comments.py` | a conversation on a cell, and each answer in it |
 | `TextRun` | `excel/_richtext.py` | part of a cell's text, and the font it shows in |
+| `CellStyle` | `excel/_cellstyles.py` | a named cell style: its format, and what of a cell it sets |
 | `format_value` | `excel/_numfmt.py` | the text Excel shows for a value under a format code |
 
 `opc.py` also exports the path helpers (`normalize_part_name`,
@@ -337,10 +340,12 @@ tests/
                                 against escapes_answers.json
   test_excel_richtext.py        text in several fonts, against the fonts
                                 Excel showed and the entries it wrote
+  test_excel_cellstyles.py      named styles, against the cells Excel
+                                styled itself
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               seventeen Excel-authored packages: three
-                                sourced, fourteen scripted, and two
+  fixtures/excel/               eighteen Excel-authored packages: three
+                                sourced, fifteen scripted, and two
                                 measured corpora; see its README
 ```
 
@@ -349,7 +354,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against seventeen committed
+- The suite needs no Office installation. It runs against eighteen committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as
@@ -532,6 +537,16 @@ reproduces. Both are held to corpora measured from Excel,
 states neither. A row that hangs on something not modelled, a colour filter
 or a formula whose cached result an edit has made stale, is left as it was
 rather than guessed at, and `FilterOutcome` says which rows those were.
+
+**A named style is defined only once something uses it.** A workbook's
+`cellStyles` names each style it has and points at the style's format in
+`cellStyleXfs`, whose `apply...="0"` attributes say what the style leaves
+out. Excel's own styles are not in a workbook until a cell uses one, when
+Excel writes one out from a definition of its own, and so does this library,
+from Excel's definitions as Excel wrote them. Those definitions name the
+theme's typefaces rather than the Normal style's, so they follow a change
+of theme and not a change of Normal. A cell in a style carries a copy of what
+the style sets, and its own `apply...="1"` marks where it differs.
 
 **Text is not stored as XML stores it.** XML cannot carry most control
 characters, and an attribute turns a line break into a space. SpreadsheetML

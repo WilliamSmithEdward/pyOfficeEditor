@@ -131,6 +131,23 @@ anything trailing the file is swept into the oldest release's notes. -->
   hand, and a live gate has Excel check all twelve cases against this
   library's reading.
 
+- **Named cell styles**: `Workbook.cell_styles`, `cell_style` and
+  `add_cell_style`, `Worksheet.get_cell_style` and `set_cell_style`,
+  `Cell.style` and `Range.apply_style`, with `CellStyle`. All 46 of
+  Excel's own styles, Good to 60% - Accent6, are defined from Excel's
+  definitions the first time a cell uses one, as Excel defines them, and
+  Excel shows every one applied here exactly as it shows it applied by
+  itself. The definitions do not follow the Normal style, measured: with
+  Normal in Arial 10, Good is still in the theme's body font at 11 points
+  and Title in its heading font at 18, so the typefaces come from the
+  theme.
+
+  A style sets some aspects of a cell and not others, the Style dialog's
+  "Style includes" boxes, and applying one replaces only those, measured:
+  Good over a bold, centred cell showing two decimals gives Good's font and
+  fill and keeps the decimals and the centring. A cell's own `apply...`
+  flags now mark what differs from its style, as Excel marks them.
+
 - **What a form control is wired to.** `Shape.control` carries the linked
   cell, the list range, the current value and which kind of control it
   is, read from the part the sheet points at. `Shape` and `ShapeKind`
@@ -304,9 +321,11 @@ and `pictures.xlsx` a fourth, with `pictures_answers.json`, and
 `richtext.xlsx` a fifth, with `richtext_answers.json` recording the font
 Excel reported at every change in its text, and `escapes.xlsx` a sixth,
 with text XML cannot carry as it is everywhere a workbook keeps text and
-`escapes_answers.json` recording each character Excel read back.
-`filter_semantics.json` and `number_formats.json` are new measured
-corpora, rebuilt by `scripts/measure_filters.py` and
+`escapes_answers.json` recording each character Excel read back, and
+`styles.xlsx` a seventh, every built-in cell style applied by Excel, with
+`styles_answers.json` recording what Excel showed for each cell and what
+each style includes. `filter_semantics.json` and `number_formats.json` are
+new measured corpora, rebuilt by `scripts/measure_filters.py` and
 `scripts/measure_number_formats.py` on a machine with Excel; every case in
 them is a test.
 

@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import re
 import shutil
 from collections.abc import Iterator
 from pathlib import Path
@@ -2062,6 +2063,101 @@ def test_excel_reads_the_text_this_library_escapes(
             seen[key] = units.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "surrogatepass")
     assert seen == {key: answers[key] for key in seen}
     assert len(seen) == 37, "fourteen cells, a result, two formulas, a note, three messages, a tip, twelve table cells"
+
+
+_STYLES_PROBE = r'''
+Private Function Describe(ByVal c As Range) As String
+    Dim s As String
+    Dim edges As Variant
+    Dim e As Variant
+    s = c.Style.Name & "|" & c.NumberFormat & "|" & c.Font.Name & "|" & CStr(c.Font.Size) & "|" & _
+        CStr(c.Font.Bold) & "|" & CStr(c.Font.Italic) & "|" & CStr(c.Font.Color) & "|" & _
+        CStr(c.Interior.Pattern) & "|" & CStr(c.Interior.Color) & "|" & CStr(c.HorizontalAlignment)
+    edges = Array(xlEdgeLeft, xlEdgeTop, xlEdgeBottom, xlEdgeRight)
+    For Each e In edges
+        s = s & "|" & CStr(c.Borders(e).LineStyle) & "," & CStr(c.Borders(e).Weight) & "," & CStr(c.Borders(e).Color)
+    Next e
+    Describe = s
+End Function
+
+Public Function Probe(ByVal Target As String, ByVal Count As Long) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim r As Long
+    Dim out As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets(1)
+    For r = 1 To Count
+        out = out & "B" & CStr(r) & "|" & Describe(ws.Cells(r, 2)) & vbLf
+    Next r
+    For r = 1 To 3
+        out = out & "D" & CStr(r) & "|" & Describe(ws.Cells(r, 4)) & vbLf
+    Next r
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = out
+End Function
+'''
+
+
+def test_excel_shows_the_cell_styles_this_library_applies(
+    excel: object, live_empty_xlsx: Path, live_styles_answers: Path, tmp_path: Path
+) -> None:
+    """A style is two entries that have to agree, its name in cellStyles and
+    its format in cellStyleXfs, and a cell in it carries a copy of what it
+    sets. Every one of Excel's own is defined here from Excel's definition
+    the first time a cell uses it; Excel has to show each cell as it showed
+    the same cell styled by itself."""
+    import json
+    from dataclasses import replace
+
+    from pyofficeeditor.excel import CellFormat, CellRef, Color, Fill
+
+    answers = json.loads(live_styles_answers.read_text(encoding="utf-8"))
+    rows = sorted((int(key[1:]), value["style"]) for key, value in answers.items() if re.fullmatch(r"B\d+", key))
+    target = tmp_path / "styles.xlsx"
+    shutil.copy(live_empty_xlsx, target)
+    with Workbook.open(target) as book:
+        sheet = book[0]
+        for row, name in rows:
+            sheet.set_cell_style(CellRef(row, 2), name)
+            sheet.set_value(CellRef(row, 2), 1234.5)
+        normal = sheet["A1"].font
+        book.add_cell_style(
+            "Mine",
+            CellFormat(
+                font=replace(normal, bold=True, color=Color(rgb="FF0000FF")),
+                fill=Fill(pattern="solid", foreground=Color(rgb="FFFFFF00"), background=Color(indexed=64)),
+            ),
+            aspects=("font", "fill"),
+        )
+        sheet["D1"].style = "Mine"
+        sheet["D1"].value = "mine"
+        good = sheet["D2"]
+        good.value = 1.5
+        good.format = replace(good.format, number_format="0.00", font=replace(normal, bold=True))
+        good.format = replace(good.format, alignment=replace(good.format.alignment, horizontal="center"))
+        good.style = "Good"
+        currency = sheet["D3"]
+        currency.value = 2.5
+        currency.style = "Currency"
+        currency.font = replace(currency.font, italic=True)
+        book.save()
+
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _STYLES_PROBE, proc="Probe", args=(str(target), len(rows)), timeout=300, module_name="Probe_styles"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+    fields = (
+        "style", "number_format", "font_name", "font_size", "bold", "italic", "font_color",
+        "pattern", "fill_color", "horizontal", "left", "top", "bottom", "right",
+    )
+    for line in str(result.value).splitlines():
+        if not line:
+            continue
+        key, *values = line.split("|")
+        assert dict(zip(fields, values, strict=True)) == answers[key], key
 
 
 _REMOVED_PROBE = r"""

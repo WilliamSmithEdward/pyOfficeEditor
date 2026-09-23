@@ -30,6 +30,7 @@ from __future__ import annotations
 import re
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._cellstyles import APPLY_ATTRIBUTES, ASPECTS, Aspect, CellStyle
 from pyofficeeditor.excel._dxf import Dxf
 from pyofficeeditor.excel._formats import (
     PATTERN_GRAY125,
@@ -530,19 +531,24 @@ class Styles:
             },
         )
         # The apply flags say this entry overrides its named style for that
-        # aspect. Excel writes them, and some readers honour them, so a
-        # format that sets a component says so.
-        if number_format_id != 0:
+        # aspect: measured, Excel sets one where the cell's differs from its
+        # style's, and a cell in Normal differs wherever it sets anything.
+        style = self._style_entry(wanted.style_id)
+        if number_format_id != _index_of_style(style, "numFmtId"):
             entry.set("applyNumberFormat", "1")
-        if font_id != 0:
+        if font_id != _index_of_style(style, "fontId"):
             entry.set("applyFont", "1")
-        if fill_id != 0:
+        if fill_id != _index_of_style(style, "fillId"):
             entry.set("applyFill", "1")
-        if border_id != 0:
+        if border_id != _index_of_style(style, "borderId"):
             entry.set("applyBorder", "1")
-        if not wanted.alignment.is_empty:
+        style_alignment = Alignment() if style is None else Alignment.read(style.child("alignment"))
+        if wanted.alignment != style_alignment and not (wanted.alignment.is_empty and style_alignment.is_empty):
             entry.set("applyAlignment", "1")
-        if not wanted.protection.is_default:
+        style_protection = Protection() if style is None else Protection.read(style.child("protection"))
+        if wanted.protection != style_protection and not (
+            wanted.protection.is_default and style_protection.is_default
+        ):
             entry.set("applyProtection", "1")
         # CT_Xf is a sequence: alignment, protection, extLst.
         if not wanted.alignment.is_empty:
@@ -569,6 +575,157 @@ class Styles:
             if self.number_format_id(index) == format_id and _is_plain(entry):
                 return index
         return self._append_cell_format(format_id)
+
+    # ------------------------------------------------------------------
+    # Named styles
+    # ------------------------------------------------------------------
+
+    def cell_styles(self) -> list[CellStyle]:
+        """The workbook's named styles, in the order ``cellStyles`` keeps
+        them, which Excel keeps in name order."""
+        found: list[CellStyle] = []
+        for entry in self._table("cellStyles"):
+            raw_name = entry.get("name")
+            if raw_name is None:
+                continue
+            style_id = _index_of(entry, "xfId")
+            builtin = entry.get("builtinId")
+            found.append(
+                CellStyle(
+                    name=decode(raw_name),
+                    format=self.style_format(style_id),
+                    aspects=self.style_aspects(style_id),
+                    builtin_id=int(builtin) if builtin is not None and builtin.isdigit() else None,
+                    hidden=entry.get("hidden") in ("1", "true"),
+                )
+            )
+        return found
+
+    def style_id(self, name: str) -> int | None:
+        """Where in ``cellStyleXfs`` the style of this name is, matched as
+        Excel matches a style's name, whatever its case."""
+        folded = name.casefold()
+        for entry in self._table("cellStyles"):
+            raw = entry.get("name")
+            if raw is not None and decode(raw).casefold() == folded:
+                return _index_of(entry, "xfId")
+        return None
+
+    def style_name(self, style_id: int) -> str | None:
+        """The name of the style at an index in ``cellStyleXfs``, if any
+        style has it."""
+        for entry in self._table("cellStyles"):
+            raw = entry.get("name")
+            if raw is not None and _index_of(entry, "xfId") == style_id:
+                return decode(raw)
+        return None
+
+    def style_format(self, style_id: int) -> CellFormat:
+        """Everything a style's entry in ``cellStyleXfs`` holds, as the
+        format a cell given the style starts from."""
+        entry = self._style_entry(style_id)
+        if entry is None:
+            return CellFormat(style_id=style_id)
+        return CellFormat(
+            number_format=self._code_for(_index_of(entry, "numFmtId")),
+            font=self.font(_index_of(entry, "fontId")),
+            fill=self.fill(_index_of(entry, "fillId")),
+            border=self.border(_index_of(entry, "borderId")),
+            alignment=Alignment.read(entry.child("alignment")),
+            protection=Protection.read(entry.child("protection")),
+            style_id=style_id,
+        )
+
+    def style_aspects(self, style_id: int) -> tuple[Aspect, ...]:
+        """What a style sets: each aspect whose ``apply...`` it does not
+        write as 0, since for a style they default to on."""
+        entry = self._style_entry(style_id)
+        if entry is None:
+            return ASPECTS
+        return tuple(aspect for aspect in ASPECTS if entry.get(APPLY_ATTRIBUTES[aspect]) not in ("0", "false"))
+
+    def add_cell_style(self, style: CellStyle, *, number_format_id: int | None = None, uid: str | None = None) -> int:
+        """Define a named style, and return where its format is in
+        ``cellStyleXfs``.
+
+        ``number_format_id`` pins a built-in format's id, for Comma and
+        Currency, whose codes Excel writes out beside the id. The format
+        goes at the end of ``cellStyleXfs`` and the name into
+        ``cellStyles`` in name order, as Excel keeps them.
+        """
+        styles_container = self._ensure_table("cellStyleXfs")
+        if not any(True for _ in styles_container.children_named("xf")):
+            # Every cell's xfId defaults to 0, which has to be Normal.
+            styles_container.append(Element.create("xf", {"numFmtId": "0", "fontId": "0", "fillId": "0", "borderId": "0"}))
+        if number_format_id is None:
+            format_id = self._ensure_format_id(style.format.number_format)
+        else:
+            format_id = self._ensure_format_with_id(number_format_id, style.format.number_format)
+        entry = Element.create(
+            "xf",
+            {
+                "numFmtId": str(format_id),
+                "fontId": str(self.ensure_font(style.format.font)),
+                "fillId": str(self.ensure_fill(style.format.fill)),
+                "borderId": str(self.ensure_border(style.format.border)),
+            },
+        )
+        for aspect in ASPECTS:
+            if aspect not in style.aspects:
+                entry.set(APPLY_ATTRIBUTES[aspect], "0")
+        if not style.format.alignment.is_empty:
+            entry.append(style.format.alignment.write())
+        if not style.format.protection.is_default:
+            entry.append(style.format.protection.write())
+        styles_container.append(entry)
+        style_id = self._refresh_count(styles_container, "xf") - 1
+
+        named = Element.create("cellStyle", {"name": encode_attribute(style.name), "xfId": str(style_id)})
+        if style.builtin_id is not None:
+            named.set("builtinId", str(style.builtin_id))
+        if style.hidden:
+            named.set("hidden", "1")
+        if uid is not None and self._root.has("xmlns:xr"):
+            named.set("xr:uid", uid)
+        names = self._ensure_table("cellStyles")
+        folded = style.name.casefold()
+        for existing in names.children_named("cellStyle"):
+            if decode(existing.get("name") or "").casefold() > folded:
+                names.insert_before(existing, named)
+                break
+        else:
+            names.append(named)
+        self._refresh_count(names, "cellStyle")
+        return style_id
+
+    def _style_entry(self, style_id: int) -> Element | None:
+        entries = self._table("cellStyleXfs")
+        return entries[style_id] if 0 <= style_id < len(entries) else None
+
+    def _code_for(self, format_id: int) -> str:
+        """The code of a number format id: the workbook's own, or what a
+        built-in one means to Excel, as :meth:`display_format` reads it."""
+        custom = self.custom_formats.get(format_id)
+        if custom is not None:
+            return custom
+        return BUILTIN_DISPLAY_CODES.get(format_id, "General")
+
+    def _ensure_format_with_id(self, format_id: int, code: str) -> int:
+        """A built-in format id with its code written out, as Excel writes
+        Comma's and Currency's; a workbook that already has one keeps it."""
+        if BUILTIN_NUMBER_FORMATS.get(format_id) == code or format_id in self.custom_formats:
+            return format_id
+        container = self._root.child("numFmts")
+        if container is None:
+            container = Element.create("numFmts", {"count": "0"})
+            first = next(iter(self._root.elements()), None)
+            if first is None:
+                self._root.append(container)
+            else:
+                self._root.insert_before(first, container)
+        container.append(Element.create("numFmt", {"numFmtId": str(format_id), "formatCode": encode_attribute(code)}))
+        container.set("count", str(sum(1 for _ in container.children_named("numFmt"))))
+        return format_id
 
     def _ensure_format_id(self, code: str) -> int:
         """The ``numFmtId`` for a format code, adding a ``numFmt`` if needed."""
@@ -639,6 +796,11 @@ def _index_of(entry: Element, attribute: str) -> int:
         return int(raw)
     except ValueError:
         return 0
+
+
+def _index_of_style(entry: Element | None, attribute: str) -> int:
+    """A component of a style's format, 0 for a style the table lacks."""
+    return 0 if entry is None else _index_of(entry, attribute)
 
 
 def _is_plain(entry: Element) -> bool:

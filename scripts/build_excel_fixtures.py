@@ -993,6 +993,91 @@ Public Function Build(ByVal Target As String) As String
 End Function
 '''
 
+#: Every built-in cell style Excel lists, each applied to a cell of its own
+#: in column B beside its name, a style of the workbook's own in D1, and
+#: two styles put over formatting a cell already had: "Good" over a bold,
+#: centred cell showing two decimals, and "Currency" then italic. The reply
+#: is a line per cell describing what Excel shows, and a line per built-in
+#: style saying which aspects it sets.
+_BUILD_STYLES = r'''
+Private Function Describe(ByVal c As Range) As String
+    Dim s As String
+    Dim edges As Variant
+    Dim e As Variant
+    s = c.Style.Name & "|" & c.NumberFormat & "|" & c.Font.Name & "|" & CStr(c.Font.Size) & "|" & _
+        CStr(c.Font.Bold) & "|" & CStr(c.Font.Italic) & "|" & CStr(c.Font.Color) & "|" & _
+        CStr(c.Interior.Pattern) & "|" & CStr(c.Interior.Color) & "|" & CStr(c.HorizontalAlignment)
+    edges = Array(xlEdgeLeft, xlEdgeTop, xlEdgeBottom, xlEdgeRight)
+    For Each e In edges
+        s = s & "|" & CStr(c.Borders(e).LineStyle) & "," & CStr(c.Borders(e).Weight) & "," & CStr(c.Borders(e).Color)
+    Next e
+    Describe = s
+End Function
+
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim st As Style
+    Dim mine As Style
+    Dim i As Long
+    Dim r As Long
+    Dim out As String
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Styles"
+    For Each st In wb.Styles
+        If st.BuiltIn And st.Name <> "Normal" Then
+            i = i + 1
+            ws.Cells(i, 1).Value = st.Name
+            ws.Cells(i, 2).Style = st.Name
+            ws.Cells(i, 2).Value = 1234.5
+            out = out & "includes|" & st.Name & "|" & CStr(st.IncludeNumber) & "," & CStr(st.IncludeFont) & "," & _
+                  CStr(st.IncludePatterns) & "," & CStr(st.IncludeBorder) & "," & CStr(st.IncludeAlignment) & "," & _
+                  CStr(st.IncludeProtection) & vbLf
+        End If
+    Next st
+
+    Set mine = wb.Styles.Add("Mine")
+    mine.IncludeNumber = False
+    mine.IncludeAlignment = False
+    mine.IncludeBorder = False
+    mine.IncludeProtection = False
+    mine.Font.Bold = True
+    mine.Font.Color = RGB(0, 0, 255)
+    mine.Interior.Color = RGB(255, 255, 0)
+    ws.Range("D1").Style = "Mine"
+    ws.Range("D1").Value = "mine"
+
+    ws.Range("D2").Value = 1.5
+    ws.Range("D2").NumberFormat = "0.00"
+    ws.Range("D2").Font.Bold = True
+    ws.Range("D2").HorizontalAlignment = xlCenter
+    ws.Range("D2").Style = "Good"
+    ws.Range("D3").Value = 2.5
+    ws.Range("D3").Style = "Currency"
+    ws.Range("D3").Font.Italic = True
+
+    For r = 1 To i
+        out = out & "B" & CStr(r) & "|" & Describe(ws.Cells(r, 2)) & vbLf
+    Next r
+    For r = 1 To 3
+        out = out & "D" & CStr(r) & "|" & Describe(ws.Cells(r, 4)) & vbLf
+    Next r
+
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+'''
+
+#: What each field of a described cell is.
+_STYLE_FIELDS = (
+    "style", "number_format", "font_name", "font_size", "bold", "italic", "font_color",
+    "pattern", "fill_color", "horizontal", "left", "top", "bottom", "right",
+)
+
 #: Which fields of the reported line mean what.
 _CONTROL_FIELDS = ("type", "macro", "linked_cell", "list_range", "value")
 
@@ -1092,6 +1177,24 @@ def richtext_answers(reply: str) -> Answers:
                 "superscript": superscript == "True",
             })
         answers[address] = {"runs": runs}
+    return answers
+
+
+def style_answers(reply: str) -> Answers:
+    """A line per built-in style, ``includes|name|`` and six flags, and a
+    line per cell, its address and then the fields of ``_STYLE_FIELDS``,
+    kept as the text Excel gave them."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        if parts[0] == "includes":
+            names = ("number_format", "font", "fill", "border", "alignment", "protection")
+            flags = [flag == "True" for flag in parts[2].split(",")]
+            answers[f"includes {parts[1]}"] = dict(zip(names, flags, strict=True))
+            continue
+        answers[parts[0]] = dict(zip(_STYLE_FIELDS, parts[1:], strict=True))
     return answers
 
 
@@ -1215,6 +1318,7 @@ def main() -> int:
         ("pictures.xlsx", _BUILD_PICTURES, picture_answers),
         ("richtext.xlsx", _BUILD_RICHTEXT, richtext_answers),
         ("escapes.xlsx", _BUILD_ESCAPES, escape_answers),
+        ("styles.xlsx", _BUILD_STYLES, style_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]

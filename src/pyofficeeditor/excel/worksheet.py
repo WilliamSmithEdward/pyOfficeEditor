@@ -532,6 +532,44 @@ class Worksheet:
         element.set("s", str(index))
         self._invalidate()
 
+    def get_cell_style(self, reference: CellRef) -> str | None:
+        """The name of a cell's style, Normal for a cell with none of its
+        own, or None if the style it points at has no name."""
+        styles = self._workbook.styles
+        if styles is None:
+            return None
+        return styles.style_name(self.get_format(reference).style_id)
+
+    def set_cell_style(self, reference: CellRef, name: str) -> None:
+        """Give a cell a named style, as Excel does.
+
+        Measured: the style's font, fill and the rest replace the cell's for
+        what the style sets, and the cell keeps its own for the rest, so
+        Good over a bold, centred cell showing two decimals gives Good's
+        font and fill and keeps the decimals and the centring. One of
+        Excel's own styles is defined the first time something uses it,
+        from Excel's definition.
+        """
+        styles = self._workbook.styles
+        if styles is None:
+            raise ValueError("this workbook has no styles part, so it has no cell styles.")
+        style_id = self._workbook.ensure_cell_style(name)
+        style = styles.style_format(style_id)
+        sets = styles.style_aspects(style_id)
+        current = self.get_format(reference)
+        self.set_format(
+            reference,
+            CellFormat(
+                number_format=style.number_format if "number_format" in sets else current.number_format,
+                font=style.font if "font" in sets else current.font,
+                fill=style.fill if "fill" in sets else current.fill,
+                border=style.border if "border" in sets else current.border,
+                alignment=style.alignment if "alignment" in sets else current.alignment,
+                protection=style.protection if "protection" in sets else current.protection,
+                style_id=style_id,
+            ),
+        )
+
     def clear_cell(self, reference: CellRef) -> None:
         """Remove a cell, leaving the sheet as if it were never set."""
         self._remove_cell(reference)
@@ -3741,6 +3779,16 @@ class Cell:
         self._sheet.set_format(self._reference, wanted)
 
     @property
+    def style(self) -> str | None:
+        """The name of the cell's style; see :meth:`Worksheet.get_cell_style`.
+        Assigning a name gives the cell that style, as Excel does."""
+        return self._sheet.get_cell_style(self._reference)
+
+    @style.setter
+    def style(self, name: str) -> None:
+        self._sheet.set_cell_style(self._reference, name)
+
+    @property
     def font(self) -> Font:
         return self.format.font
 
@@ -3903,6 +3951,12 @@ class Range:
         for reference in self._reference.cells():
             current = self._sheet.get_format(reference)
             self._sheet.set_format(reference, current.with_number_format(code))
+
+    def apply_style(self, name: str) -> None:
+        """Give every cell in the block a named style, each keeping its own
+        formatting for what the style does not set."""
+        for reference in self._reference.cells():
+            self._sheet.set_cell_style(reference, name)
 
     def clear(self) -> None:
         """Remove every cell in the block."""

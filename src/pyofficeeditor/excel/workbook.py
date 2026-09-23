@@ -24,11 +24,21 @@ Excel itself does when it cannot trust the cache. Excel rebuilds both.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 from pyofficeeditor._xml import Element
-from pyofficeeditor.excel._comments import CT_PERSONS, EMPTY_PERSONS, RT_PERSONS, read_persons
+from pyofficeeditor.excel._cellstyles import (
+    ASPECTS,
+    DEFAULT_BODY_FONT,
+    DEFAULT_HEADING_FONT,
+    Aspect,
+    CellStyle,
+    builtin_style,
+    is_builtin_name,
+)
+from pyofficeeditor.excel._comments import CT_PERSONS, EMPTY_PERSONS, RT_PERSONS, new_id, read_persons
+from pyofficeeditor.excel._formats import CellFormat
 from pyofficeeditor.excel._formulas import rename_sheet_in_formula
 from pyofficeeditor.excel._names import (
     BUILTIN_NAMES,
@@ -54,6 +64,7 @@ from pyofficeeditor.opc import OpcPackage
 
 RT_WORKSHEET = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
 RT_STYLES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
+RT_THEME = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"
 RT_CALC_CHAIN = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/calcChain"
 
 CT_WORKSHEET = "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"
@@ -840,6 +851,96 @@ class Workbook:
         self._shared_strings = created
         self._shared_strings_part = "xl/sharedStrings.xml"
         return created
+
+    @property
+    def theme_fonts(self) -> tuple[str, str]:
+        """The theme's heading and body typefaces, which Excel's own cell
+        styles name: Aptos Display and Aptos Narrow in its current theme,
+        and those two for a workbook without a theme."""
+        part = self._related_part(RT_THEME)
+        if part is None:
+            return DEFAULT_HEADING_FONT, DEFAULT_BODY_FONT
+        scheme = next(self._package.xml(part).root.descendants("fontScheme"), None)
+
+        def latin(which: str, fallback: str) -> str:
+            font = None if scheme is None else scheme.child(which)
+            typeface = None if font is None else font.child("latin")
+            return (None if typeface is None else typeface.get("typeface")) or fallback
+
+        return latin("majorFont", DEFAULT_HEADING_FONT), latin("minorFont", DEFAULT_BODY_FONT)
+
+    # ------------------------------------------------------------------
+    # Named cell styles
+    # ------------------------------------------------------------------
+
+    @property
+    def cell_styles(self) -> list[CellStyle]:
+        """The named styles the workbook defines, in name order: Normal,
+        those of Excel's own that something has used, and its own."""
+        styles = self.styles
+        return [] if styles is None else styles.cell_styles()
+
+    def cell_style(self, name: str) -> CellStyle | None:
+        """The named style of this name, whatever its case, if the workbook
+        defines one."""
+        folded = name.casefold()
+        return next((style for style in self.cell_styles if style.name.casefold() == folded), None)
+
+    def add_cell_style(
+        self,
+        name: str,
+        format: CellFormat,
+        *,
+        aspects: Sequence[Aspect] = ASPECTS,
+        hidden: bool = False,
+    ) -> CellStyle:
+        """Define a style of the workbook's own, as Excel's Style dialog does.
+
+        ``aspects`` is what the style sets, the dialog's "Style includes"
+        boxes; a cell given the style keeps its own for the rest. The name
+        cannot be one Excel keeps for its own styles, or one the workbook
+        has, whatever its case.
+        """
+        styles = self.styles
+        if styles is None:
+            raise ValueError("this workbook has no styles part, so there is nowhere to define a style.")
+        if not name.strip():
+            raise ValueError("a cell style needs a name.")
+        if is_builtin_name(name):
+            raise ValueError(f"{name!r} is one of Excel's own styles; give the new one another name.")
+        if styles.style_id(name) is not None:
+            raise ValueError(f"the workbook already has a style named {name!r}.")
+        unknown = [aspect for aspect in aspects if aspect not in ASPECTS]
+        if unknown:
+            raise ValueError(f"{unknown!r} are not aspects of a style; they are {', '.join(ASPECTS)}.")
+        wanted = CellStyle(name=name, format=format, aspects=tuple(a for a in ASPECTS if a in aspects), hidden=hidden)
+        styles.add_cell_style(wanted, uid=new_id())
+        self.mark_changed()
+        added = self.cell_style(name)
+        assert added is not None
+        return added
+
+    def ensure_cell_style(self, name: str) -> int:
+        """Where a named style's format is in ``cellStyleXfs``, defining one
+        of Excel's own the first time something uses it, as Excel does."""
+        styles = self.styles
+        if styles is None:
+            raise ValueError("this workbook has no styles part, so it has no cell styles.")
+        existing = styles.style_id(name)
+        if existing is not None:
+            return existing
+        heading, body = self.theme_fonts
+        builtin = builtin_style(name, heading_font=heading, body_font=body)
+        if builtin is None:
+            known = ", ".join(style.name for style in styles.cell_styles())
+            raise ValueError(
+                f"the workbook has no cell style named {name!r}, and Excel has none of its own by that "
+                f"name. It has: {known}."
+            )
+        style, number_format_id = builtin
+        style_id = styles.add_cell_style(style, number_format_id=number_format_id)
+        self.mark_changed()
+        return style_id
 
     def _related_part(self, relationship_type: str) -> str | None:
         found = self._package.relationships(self._workbook_part).by_type(relationship_type)

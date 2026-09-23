@@ -21,7 +21,8 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > Excel does not recompute a filter when the workbook opens. A cell's
 > text is what Excel shows for it, number format and all. Notes and
 > threaded comments, replies included, read and write the way Excel
-> writes them, and so do pictures and text in more than one font.
+> writes them, and so do pictures, text in more than one font, and named
+> cell styles, all of Excel's own among them.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Nothing about a sheet makes that refuse any more: validation,
@@ -146,6 +147,8 @@ data descriptors.
 |               Excel does not recompute one on open     |
 |   _formats    fonts, fills, borders, alignment, as     |
 |               immutable values                         |
+|   _cellstyles named styles, and Excel's definitions of |
+|               its own                                  |
 |   _tables     ListObjects: their own parts and wiring  |
 |   _dimensions widths, heights, hiding, frozen panes    |
 |   _names      defined names, and the naming rules      |
