@@ -743,7 +743,9 @@ def power(base: float, exponent: float) -> Scalar:
         if exponent == 0.0:
             return NUM
         return DIV0 if exponent < 0 else 0.0
-    if exponent.is_integer():
+    # Callers pass a count as an int, which a float annotation admits, and
+    # int has no is_integer before Python 3.12.
+    if float(exponent).is_integer():
         result = _whole_power(base, int(exponent))
     else:
         negative = False
