@@ -1,0 +1,122 @@
+{
+  "Text!A1": {
+    "text": "a\u0001b"
+  },
+  "Text!A10": {
+    "text": "bell\u0007end\u001f"
+  },
+  "Text!A11": {
+    "text": "high\ufffex"
+  },
+  "Text!A12": {
+    "text": "_x0001_\u0001"
+  },
+  "Text!A13": {
+    "text": "__x0041_"
+  },
+  "Text!A14": {
+    "text": "_x00e9_"
+  },
+  "Text!A2": {
+    "text": "tab\tx"
+  },
+  "Text!A3": {
+    "text": "cr\rx"
+  },
+  "Text!A4": {
+    "text": "crlf\r\nx"
+  },
+  "Text!A5": {
+    "text": "lf\nx"
+  },
+  "Text!A6": {
+    "text": "_x0041_"
+  },
+  "Text!A7": {
+    "text": "_X0041_"
+  },
+  "Text!A8": {
+    "text": "_x004_"
+  },
+  "Text!A9": {
+    "text": "a_x005F_b"
+  },
+  "Text!B1": {
+    "text": "a\u0001b\nc\rd"
+  },
+  "Text!B1 formula": {
+    "text": "=\"a\"&CHAR(1)&\"b\"&CHAR(10)&\"c\"&CHAR(13)&\"d\""
+  },
+  "Text!B2": {
+    "text": "_x0041_"
+  },
+  "Text!B2 formula": {
+    "text": "=\"_x0041_\""
+  },
+  "Text!B3": {
+    "text": "7"
+  },
+  "Text!B3 formula": {
+    "text": "=a_x0041_b!A1"
+  },
+  "hyperlink tip": {
+    "text": "tip\u0001\nx"
+  },
+  "name comment": {
+    "text": "c\n_x0041_"
+  },
+  "note": {
+    "text": "note\u0001x\ny\rz _x0041_"
+  },
+  "page header": {
+    "text": "head\ner _x0041_"
+  },
+  "sheet name": {
+    "text": "a_x0041_b"
+  },
+  "table column 1": {
+    "text": "head\ntwo"
+  },
+  "table column 2": {
+    "text": "_x0041_"
+  },
+  "table column 3": {
+    "text": "plain"
+  },
+  "table column 4": {
+    "text": "ctl\ufffdx"
+  },
+  "table column 5": {
+    "text": "tab\tx"
+  },
+  "table column 6": {
+    "text": "cr\rx"
+  },
+  "table header 1": {
+    "text": "head\ntwo"
+  },
+  "table header 2": {
+    "text": "_x0041_"
+  },
+  "table header 3": {
+    "text": "plain"
+  },
+  "table header 4": {
+    "text": "ctl\ufffdx"
+  },
+  "table header 5": {
+    "text": "tab\tx"
+  },
+  "table header 6": {
+    "text": "cr\rx"
+  },
+  "validation error": {
+    "text": "er\rror"
+  },
+  "validation message": {
+    "text": "in\nput\u0001 _x0041_"
+  },
+  "validation title": {
+    "text": "ti\u0001t"
+  }
+}

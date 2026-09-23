@@ -78,6 +78,11 @@ LIVE_PICTURES_ANSWERS = EXCEL_FIXTURES / "pictures_answers.json"
 #: ``Characters``, and the font Excel reported at each change.
 LIVE_RICHTEXT_XLSX = EXCEL_FIXTURES / "richtext.xlsx"
 LIVE_RICHTEXT_ANSWERS = EXCEL_FIXTURES / "richtext_answers.json"
+#: Authored by Excel: text XML cannot carry as it is, control characters,
+#: a lone carriage return and a literal "_x0041_", everywhere a workbook
+#: keeps text, and the characters Excel reported for each piece.
+LIVE_ESCAPES_XLSX = EXCEL_FIXTURES / "escapes.xlsx"
+LIVE_ESCAPES_ANSWERS = EXCEL_FIXTURES / "escapes_answers.json"
 #: Rich text as other writers leave it, which Excel never writes itself:
 #: runs with no font after one that has a font, fonts written in part, an
 #: empty ``<rPr/>``, and runs held inline in the cell. The cells are in red
@@ -339,6 +344,22 @@ def live_richtext_answers() -> Path:
     if not LIVE_RICHTEXT_ANSWERS.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to measure the text with real Excel")
     return LIVE_RICHTEXT_ANSWERS
+
+
+@pytest.fixture(scope="session")
+def live_escapes_xlsx() -> Path:
+    """Text XML cannot carry as it is, authored by Excel."""
+    if not LIVE_ESCAPES_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author escapes.xlsx with real Excel")
+    return LIVE_ESCAPES_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_escapes_answers() -> Path:
+    """The characters Excel reported for each piece of that text."""
+    if not LIVE_ESCAPES_ANSWERS.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to measure the text with real Excel")
+    return LIVE_ESCAPES_ANSWERS
 
 
 @pytest.fixture(scope="session")

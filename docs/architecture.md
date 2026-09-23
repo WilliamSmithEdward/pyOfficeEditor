@@ -333,12 +333,14 @@ tests/
   test_excel_pictures.py        pictures, against what Excel said of them
   test_excel_xstring.py         _xHHHH_ escapes, character by character,
                                 against what Excel wrote and read
+  test_excel_escapes.py         that text everywhere a workbook keeps it,
+                                against escapes_answers.json
   test_excel_richtext.py        text in several fonts, against the fonts
                                 Excel showed and the entries it wrote
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               sixteen Excel-authored packages: three
-                                sourced, thirteen scripted, and two
+  fixtures/excel/               seventeen Excel-authored packages: three
+                                sourced, fourteen scripted, and two
                                 measured corpora; see its README
 ```
 
@@ -347,7 +349,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against sixteen committed
+- The suite needs no Office installation. It runs against seventeen committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as

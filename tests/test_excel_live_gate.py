@@ -1960,6 +1960,110 @@ def test_excel_shows_other_writers_runs_as_this_library_reads_them(
     assert _font_changes(excel, foreign_rich_text, count, "rich_foreign") == read
 
 
+_ESCAPES_PROBE = r'''
+Private Function Codes(ByVal s As String) As String
+    Dim i As Long
+    Dim out As String
+    For i = 1 To Len(s)
+        out = out & Hex(AscW(Mid(s, i, 1))) & " "
+    Next i
+    Codes = Trim(out)
+End Function
+
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim lo As ListObject
+    Dim i As Long
+    Dim out As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Text")
+    For i = 1 To 14
+        out = out & "Text!A" & CStr(i) & "|" & Codes(CStr(ws.Cells(i, 1).Value)) & vbLf
+    Next i
+    out = out & "Text!B2|" & Codes(CStr(ws.Range("B2").Value)) & vbLf
+    out = out & "Text!B2 formula|" & Codes(ws.Range("B2").Formula) & vbLf
+    out = out & "Text!B3 formula|" & Codes(ws.Range("B3").Formula) & vbLf
+    out = out & "note|" & Codes(ws.Range("C1").Comment.Text) & vbLf
+    out = out & "validation title|" & Codes(ws.Range("D1").Validation.InputTitle) & vbLf
+    out = out & "validation message|" & Codes(ws.Range("D1").Validation.InputMessage) & vbLf
+    out = out & "validation error|" & Codes(ws.Range("D1").Validation.ErrorMessage) & vbLf
+    out = out & "hyperlink tip|" & Codes(ws.Hyperlinks(1).ScreenTip) & vbLf
+    Set lo = ws.ListObjects(1)
+    For i = 1 To lo.ListColumns.Count
+        out = out & "table column " & CStr(i) & "|" & Codes(lo.ListColumns(i).Name) & vbLf
+        out = out & "table header " & CStr(i) & "|" & Codes(CStr(lo.HeaderRowRange.Cells(1, i).Value)) & vbLf
+    Next i
+    out = out & "page header|" & Codes(ws.PageSetup.CenterHeader) & vbLf
+    out = out & "sheet name|" & Codes(wb.Worksheets(2).Name) & vbLf
+    out = out & "name comment|" & Codes(wb.Names("nm").Comment) & vbLf
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = out
+End Function
+'''
+
+
+def test_excel_reads_the_text_this_library_escapes(
+    excel: object, live_empty_xlsx: Path, live_escapes_answers: Path, tmp_path: Path
+) -> None:
+    """Text XML cannot carry as it is: control characters, a lone carriage
+    return, and text that reads as an escape. Written raw, a control
+    character made Excel refuse the workbook. Everything is written here
+    as Excel writes it, and Excel has to read back what it read from the
+    same text in its own file, character for character."""
+    import json
+
+    from pyofficeeditor.excel import CellRef, DataValidation, HeaderFooter, HeaderFooterText
+
+    answers = {key: value["text"] for key, value in json.loads(live_escapes_answers.read_text(encoding="utf-8")).items()}
+    headers = ["head\ntwo", "_x0041_", "plain", "ctl\x01x", "tab\tx", "cr\rx"]
+    target = tmp_path / "escapes.xlsx"
+    shutil.copy(live_empty_xlsx, target)
+    with Workbook.open(target) as book:
+        sheet = book.rename_sheet(book.sheet_names[0], "Text")
+        other = book.add_sheet(answers["sheet name"])
+        other.set_value(CellRef.parse("A1"), 7)
+        for row in range(1, 15):
+            sheet.set_value(CellRef(row, 1), answers[f"Text!A{row}"])
+        sheet.set_formula(CellRef.parse("B2"), '="_x0041_"')
+        sheet.set_formula(CellRef.parse("B3"), "'a_x0041_b'!A1")
+        sheet.set_comment("C1", answers["note"])
+        sheet.add_data_validation(
+            "D1",
+            DataValidation.whole_number(
+                1,
+                9,
+                prompt_title=answers["validation title"],
+                prompt_message=answers["validation message"],
+                error_message=answers["validation error"],
+            ),
+        )
+        sheet.add_hyperlink("E1", "https://example.com/", tooltip=answers["hyperlink tip"])
+        for offset, header in enumerate(headers):
+            sheet.set_value(CellRef(1, 7 + offset), header)
+            sheet.set_value(CellRef(2, 7 + offset), offset)
+        sheet.add_table("Escapes", "G1:L2")
+        sheet.header_footer = HeaderFooter(odd_header=HeaderFooterText(center=answers["page header"]))
+        book.add_defined_name("nm", "1", comment=answers["name comment"])
+        book.save()
+
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _ESCAPES_PROBE, proc="Probe", args=(str(target),), timeout=180, module_name="Probe_escapes"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+    seen: dict[str, str] = {}
+    for line in str(result.value).splitlines():
+        if line:
+            key, _, codes = line.partition("|")
+            units = "".join(chr(int(code, 16)) for code in codes.split())
+            seen[key] = units.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "surrogatepass")
+    assert seen == {key: answers[key] for key in seen}
+    assert len(seen) == 37, "fourteen cells, a result, two formulas, a note, three messages, a tip, twelve table cells"
+
+
 _REMOVED_PROBE = r"""
 Public Function Probe(ByVal Target As String) As String
     Dim wb As Workbook

@@ -892,6 +892,107 @@ Public Function Build(ByVal Target As String) As String
 End Function
 """
 
+#: Text XML cannot carry as it is, everywhere a workbook keeps text: cells
+#: with control characters, a lone carriage return, a CRLF and a literal
+#: "_x0041_", formula results and a formula naming a sheet called
+#: "a_x0041_b", a note, a validation's messages, a hyperlink's tip, a
+#: table's headers, a page header and a defined name's comment. The reply
+#: is one line per piece of text: what it is, then the UTF-16 code of each
+#: character Excel reports for it, in hex, so no character is lost on the
+#: way. Triple single quotes, because the formulas hold three double ones.
+_BUILD_ESCAPES = r'''
+Private Function Codes(ByVal s As String) As String
+    Dim i As Long
+    Dim out As String
+    For i = 1 To Len(s)
+        out = out & Hex(AscW(Mid(s, i, 1))) & " "
+    Next i
+    Codes = Trim(out)
+End Function
+
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim other As Worksheet
+    Dim lo As ListObject
+    Dim nm As Name
+    Dim texts As Variant
+    Dim headers As Variant
+    Dim i As Long
+    Dim out As String
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Text"
+    Set other = wb.Worksheets.Add(After:=ws)
+    other.Name = "a_x0041_b"
+    other.Range("A1").Value = 7
+
+    texts = Array("a" & Chr(1) & "b", "tab" & vbTab & "x", "cr" & vbCr & "x", "crlf" & vbCrLf & "x", _
+                  "lf" & vbLf & "x", "_x0041_", "_X0041_", "_x004_", "a_x005F_b", _
+                  "bell" & Chr(7) & "end" & Chr(31), "high" & ChrW(&HFFFE) & "x", "_x0001_" & Chr(1), _
+                  "__x0041_", "_x00e9_")
+    For i = 0 To UBound(texts)
+        ws.Cells(i + 1, 1).Value = texts(i)
+    Next i
+
+    ws.Range("B1").Formula = "=""a""&CHAR(1)&""b""&CHAR(10)&""c""&CHAR(13)&""d"""
+    ws.Range("B2").Formula = "=""_x0041_"""
+    ws.Range("B3").Formula = "='a_x0041_b'!A1"
+
+    ws.Range("C1").AddComment "note" & Chr(1) & "x" & vbLf & "y" & vbCr & "z _x0041_"
+
+    With ws.Range("D1").Validation
+        .Add Type:=xlValidateWholeNumber, AlertStyle:=xlValidAlertStop, Operator:=xlBetween, _
+             Formula1:="1", Formula2:="9"
+        .InputTitle = "ti" & Chr(1) & "t"
+        .InputMessage = "in" & vbLf & "put" & Chr(1) & " _x0041_"
+        .ErrorMessage = "er" & vbCr & "ror"
+    End With
+
+    ws.Hyperlinks.Add Anchor:=ws.Range("E1"), Address:="https://example.com/", _
+                      ScreenTip:="tip" & Chr(1) & vbLf & "x", TextToDisplay:="link"
+
+    headers = Array("head" & vbLf & "two", "_x0041_", "plain", "ctl" & Chr(1) & "x", _
+                    "tab" & vbTab & "x", "cr" & vbCr & "x")
+    For i = 0 To UBound(headers)
+        ws.Cells(1, 7 + i).Value = headers(i)
+        ws.Cells(2, 7 + i).Value = i
+    Next i
+    Set lo = ws.ListObjects.Add(xlSrcRange, ws.Range(ws.Cells(1, 7), ws.Cells(2, 7 + UBound(headers))), , xlYes)
+
+    ws.PageSetup.CenterHeader = "head" & vbLf & "er _x0041_"
+
+    Set nm = wb.Names.Add(Name:="nm", RefersTo:="=1")
+    nm.Comment = "c" & vbLf & "_x0041_"
+
+    For i = 0 To UBound(texts)
+        out = out & "Text!A" & CStr(i + 1) & "|" & Codes(CStr(ws.Cells(i + 1, 1).Value)) & vbLf
+    Next i
+    For i = 1 To 3
+        out = out & "Text!B" & CStr(i) & "|" & Codes(CStr(ws.Cells(i, 2).Value)) & vbLf
+        out = out & "Text!B" & CStr(i) & " formula|" & Codes(ws.Cells(i, 2).Formula) & vbLf
+    Next i
+    out = out & "note|" & Codes(ws.Range("C1").Comment.Text) & vbLf
+    out = out & "validation title|" & Codes(ws.Range("D1").Validation.InputTitle) & vbLf
+    out = out & "validation message|" & Codes(ws.Range("D1").Validation.InputMessage) & vbLf
+    out = out & "validation error|" & Codes(ws.Range("D1").Validation.ErrorMessage) & vbLf
+    out = out & "hyperlink tip|" & Codes(ws.Hyperlinks(1).ScreenTip) & vbLf
+    For i = 1 To lo.ListColumns.Count
+        out = out & "table column " & CStr(i) & "|" & Codes(lo.ListColumns(i).Name) & vbLf
+        out = out & "table header " & CStr(i) & "|" & Codes(CStr(lo.HeaderRowRange.Cells(1, i).Value)) & vbLf
+    Next i
+    out = out & "page header|" & Codes(ws.PageSetup.CenterHeader) & vbLf
+    out = out & "sheet name|" & Codes(other.Name) & vbLf
+    out = out & "name comment|" & Codes(nm.Comment) & vbLf
+
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+'''
+
 #: Which fields of the reported line mean what.
 _CONTROL_FIELDS = ("type", "macro", "linked_cell", "list_range", "value")
 
@@ -991,6 +1092,20 @@ def richtext_answers(reply: str) -> Answers:
                 "superscript": superscript == "True",
             })
         answers[address] = {"runs": runs}
+    return answers
+
+
+def escape_answers(reply: str) -> Answers:
+    """One line per piece of text: what it is, then its UTF-16 codes in
+    hex. A surrogate pair makes one character, as it does in Excel."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        key, _, codes = line.partition("|")
+        units = "".join(chr(int(code, 16)) for code in codes.split())
+        text = units.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "surrogatepass")
+        answers[key] = {"text": text}
     return answers
 
 
@@ -1099,6 +1214,7 @@ def main() -> int:
         ("comments.xlsx", _BUILD_COMMENTS, comment_answers),
         ("pictures.xlsx", _BUILD_PICTURES, picture_answers),
         ("richtext.xlsx", _BUILD_RICHTEXT, richtext_answers),
+        ("escapes.xlsx", _BUILD_ESCAPES, escape_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]

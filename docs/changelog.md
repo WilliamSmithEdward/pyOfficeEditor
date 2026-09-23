@@ -302,10 +302,13 @@ Button and nothing else, so it could prove none of this.
 `comments_answers.json` recording what Excel's object model said of each,
 and `pictures.xlsx` a fourth, with `pictures_answers.json`, and
 `richtext.xlsx` a fifth, with `richtext_answers.json` recording the font
-Excel reported at every change in its text. `filter_semantics.json` and
-`number_formats.json` are new measured corpora, rebuilt by
-`scripts/measure_filters.py` and `scripts/measure_number_formats.py` on a
-machine with Excel; every case in them is a test.
+Excel reported at every change in its text, and `escapes.xlsx` a sixth,
+with text XML cannot carry as it is everywhere a workbook keeps text and
+`escapes_answers.json` recording each character Excel read back.
+`filter_semantics.json` and `number_formats.json` are new measured
+corpora, rebuilt by `scripts/measure_filters.py` and
+`scripts/measure_number_formats.py` on a machine with Excel; every case in
+them is a test.
 
 ### Internal
 
