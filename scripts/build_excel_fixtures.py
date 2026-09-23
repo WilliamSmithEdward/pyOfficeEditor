@@ -1207,6 +1207,99 @@ Public Function Build(ByVal Target As String) As String
 End Function
 '''
 
+#: Data!A1:C11 feeding two pivot tables, each from a cache of its own:
+#: Summary on a sheet of its own at A3, and Beside on the data sheet at F3,
+#: where the edits reach it. Each edit is made by Excel on a fresh copy and
+#: saved to the temporary folder, or reported refused; the pivot tables are
+#: read from those files. The reply is where each file is.
+_BUILD_PIVOTS = r'''
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim pv As Worksheet
+    Dim pc As PivotCache
+    Dim pt As PivotTable
+    Dim r As Long
+    Dim ops As Variant
+    Dim i As Long
+    Dim again As Workbook
+    Dim out As String
+    Dim base As String
+    Dim edited As String
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Data"
+    ws.Range("A1:C1").Value = Array("Region", "Product", "Sales")
+    For r = 2 To 11
+        ws.Cells(r, 1).Value = Choose((r Mod 3) + 1, "North", "South", "West")
+        ws.Cells(r, 2).Value = Choose((r Mod 2) + 1, "Tea", "Coffee")
+        ws.Cells(r, 3).Value = r * 10
+    Next r
+    Set pv = wb.Worksheets.Add(After:=ws)
+    pv.Name = "Pivot"
+    Set pc = wb.PivotCaches.Create(SourceType:=xlDatabase, SourceData:="Data!R1C1:R11C3")
+    Set pt = pc.CreatePivotTable(TableDestination:=pv.Range("A3"), TableName:="Summary")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Total", xlSum
+    Set pc = wb.PivotCaches.Create(SourceType:=xlDatabase, SourceData:="Data!R1C1:R11C3")
+    Set pt = pc.CreatePivotTable(TableDestination:=ws.Range("F3"), TableName:="Beside")
+    pt.PivotFields("Product").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum", xlSum
+
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    base = Environ("TEMP") & "\pyofficeeditor_pivots_base.xlsx"
+    wb.SaveCopyAs base
+    out = "file|base|" & base & vbLf
+
+    ops = Array("insert row 1", "insert row 3", "insert row 7", "insert rows 5:6", "delete row 3", _
+                "delete row 4", "delete rows 3:6", "delete rows 2:7", "delete rows 1:11", "delete rows 1:2", _
+                "delete row 7", "insert column A", "insert column F", "insert column H", "delete column B", _
+                "delete column F", "delete columns E:H", "insert row 1 on Pivot", "rename Data")
+    For i = 0 To UBound(ops)
+        Set again = Workbooks.Open(base)
+        Set ws = again.Worksheets("Data")
+        On Error Resume Next
+        Select Case ops(i)
+            Case "insert row 1": ws.Rows(1).Insert
+            Case "insert row 3": ws.Rows(3).Insert
+            Case "insert row 7": ws.Rows(7).Insert
+            Case "insert rows 5:6": ws.Rows("5:6").Insert
+            Case "delete row 3": ws.Rows(3).Delete
+            Case "delete row 4": ws.Rows(4).Delete
+            Case "delete rows 3:6": ws.Rows("3:6").Delete
+            Case "delete rows 2:7": ws.Rows("2:7").Delete
+            Case "delete rows 1:11": ws.Rows("1:11").Delete
+            Case "delete rows 1:2": ws.Rows("1:2").Delete
+            Case "delete row 7": ws.Rows(7).Delete
+            Case "insert column A": ws.Columns("A").Insert
+            Case "insert column F": ws.Columns("F").Insert
+            Case "insert column H": ws.Columns("H").Insert
+            Case "delete column B": ws.Columns("B").Delete
+            Case "delete column F": ws.Columns("F").Delete
+            Case "delete columns E:H": ws.Columns("E:H").Delete
+            Case "insert row 1 on Pivot": again.Worksheets("Pivot").Rows(1).Insert
+            Case "rename Data": ws.Name = "Q1 Data"
+        End Select
+        If Err.Number <> 0 Then
+            Err.Clear
+            On Error GoTo 0
+            again.Close SaveChanges:=False
+            out = out & "refused|" & ops(i) & vbLf
+        Else
+            On Error GoTo 0
+            edited = Environ("TEMP") & "\pyofficeeditor_pivots_" & CStr(i) & ".xlsx"
+            again.SaveAs Filename:=edited, FileFormat:=51
+            again.Close SaveChanges:=False
+            out = out & "file|" & ops(i) & "|" & edited & vbLf
+        End If
+    Next i
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+'''
+
 #: What each field of a described cell is.
 _STYLE_FIELDS = (
     "style", "number_format", "font_name", "font_size", "bold", "italic", "font_color",
@@ -1313,6 +1406,55 @@ def richtext_answers(reply: str) -> Answers:
             })
         answers[address] = {"runs": runs}
     return answers
+
+
+def pivot_answers(reply: str) -> Answers:
+    """For the file as built and for each edit Excel made: whether Excel
+    refused it, and otherwise each pivot table's location and the source of
+    the cache it reads, with how many caches the workbook kept. Read from
+    the saved files, which are removed once read."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        if parts[0] == "refused":
+            answers[parts[1]] = {"refused": True}
+            continue
+        _, state, where = parts
+        path = Path(where)
+        answers[state] = {"refused": False, **_pivot_state(path)}
+        path.unlink()
+    return answers
+
+
+def _pivot_state(path: Path) -> dict[str, object]:
+    """Each pivot table's location and its cache's source, and how many
+    caches there are, read with nothing but the archive and a few
+    patterns."""
+    tables: dict[str, dict[str, str]] = {}
+    with zipfile.ZipFile(path) as package:
+        names = package.namelist()
+        for name in names:
+            if not re.fullmatch(r"xl/pivotTables/pivotTable\d+\.xml", name):
+                continue
+            text = package.read(name).decode("utf-8")
+            table = re.search(r'<pivotTableDefinition\b[^>]*\bname="([^"]*)"', text)
+            location = re.search(r'<location\b[^>]*\bref="([^"]*)"', text)
+            rels = package.read(f"xl/pivotTables/_rels/{name.rpartition('/')[2]}.rels").decode("utf-8")
+            target = re.search(r'Target="([^"]*pivotCacheDefinition[^"]*)"', rels)
+            source = ""
+            if target is not None:
+                cache = posixpath.normpath(posixpath.join("xl/pivotTables", target.group(1)))
+                found = re.search(r"<worksheetSource\b[^>]*>", package.read(cache).decode("utf-8"))
+                if found is not None:
+                    sheet = re.search(r'\bsheet="([^"]*)"', found.group(0))
+                    ref = re.search(r'\bref="([^"]*)"', found.group(0))
+                    source = f"{html.unescape(sheet.group(1)) if sheet else ''}!{ref.group(1) if ref else ''}"
+            if table is not None and location is not None:
+                tables[html.unescape(table.group(1))] = {"location": location.group(1), "source": source}
+        caches = sum(1 for name in names if re.fullmatch(r"xl/pivotCache/pivotCacheDefinition\d+\.xml", name))
+    return {"tables": tables, "caches": caches}
 
 
 def chart_answers(reply: str) -> Answers:
@@ -1526,6 +1668,7 @@ def main() -> int:
         ("escapes.xlsx", _BUILD_ESCAPES, escape_answers),
         ("styles.xlsx", _BUILD_STYLES, style_answers),
         ("charts.xlsx", _BUILD_CHARTS, chart_answers),
+        ("pivots.xlsx", _BUILD_PIVOTS, pivot_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]

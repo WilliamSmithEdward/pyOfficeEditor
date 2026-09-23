@@ -49,6 +49,7 @@ from pyofficeeditor.excel._names import (
     write_defined_name,
 )
 from pyofficeeditor.excel._pictures import ImageInfo
+from pyofficeeditor.excel._pivots import cache_parts, worksheet_source
 from pyofficeeditor.excel._rowcol import chart_parts
 from pyofficeeditor.excel._schema import WORKBOOK_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._shapes import vml_blocks
@@ -467,6 +468,7 @@ class Workbook:
             _rename_in_formulas(other, old, new)
         self._rename_in_defined_names(old, new)
         self._rename_in_charts(old, new)
+        self._rename_in_pivot_caches(old, new)
 
         position = self._order.index(old)
         self._order[position] = new
@@ -548,6 +550,14 @@ class Workbook:
         while candidate in used:
             candidate += 1
         return candidate
+
+    def _rename_in_pivot_caches(self, old: str, new: str) -> None:
+        """A cache names the sheet it was read from, and a renamed sheet is
+        renamed there too, measured."""
+        for part in cache_parts(self._package, self._workbook_part):
+            source = worksheet_source(self._package.xml(part).root)
+            if source is not None and decode(source.get("sheet") or "") == old:
+                source.set("sheet", encode_attribute(new))
 
     def _rename_in_charts(self, old: str, new: str) -> None:
         """Every reference a chart has names its sheet, so a renamed sheet is

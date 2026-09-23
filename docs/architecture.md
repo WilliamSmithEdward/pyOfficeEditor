@@ -77,6 +77,8 @@ Each layer knows the layer below it and not the layer above.
 |   _comments     notes and threads, and the box each gets  |
 |   _pictures     images, sized as Excel sizes them         |
 |   _charts       what each chart plots, and chart sheets   |
+|   _pivots       where each pivot table is, and what its   |
+|                 cache reads                               |
 |   _richtext     runs of text in several fonts, read as    |
 |                 Excel shows them, not as marked up        |
 |   _conditional  cfRules, and the compatibility formula    |
@@ -244,6 +246,7 @@ The Excel surface is exported from `pyofficeeditor.excel`:
 | `CellStyle` | `excel/_cellstyles.py` | a named cell style: its format, and what of a cell it sets |
 | `Chart`, `ChartSeries` | `excel/_charts.py` | what a chart plots, and each series' references |
 | `ChartSheet` | `excel/_charts.py` | a tab that is one chart and holds no cells |
+| `PivotTable` | `excel/_pivots.py` | where a pivot table is, and what its cache was read from |
 | `format_value` | `excel/_numfmt.py` | the text Excel shows for a value under a format code |
 
 `opc.py` also exports the path helpers (`normalize_part_name`,
@@ -348,10 +351,12 @@ tests/
   test_excel_charts.py          charts and chart sheets, and every
                                 reference after nine edits, against the
                                 files Excel saved after the same edits
+  test_excel_pivots.py          pivot tables through nineteen edits, and
+                                the ones Excel refuses
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               nineteen Excel-authored packages: three
-                                sourced, sixteen scripted, and two
+  fixtures/excel/               twenty Excel-authored packages: three
+                                sourced, seventeen scripted, and two
                                 measured corpora; see its README
 ```
 
@@ -360,7 +365,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against nineteen committed
+- The suite needs no Office installation. It runs against twenty committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as
@@ -554,6 +559,13 @@ cell's formula does, down to `Data!#REF!` for one deleted outright. Excel's
 object model is no witness for that last case: it reports the old address
 until the file is reopened, and then refuses to report the series, so the
 fixture records the references in the files Excel saved.
+
+**A pivot table is two parts away from its cells.** Its location is in its
+own part and the range its cache was read from is in the cache's, and
+neither is in the sheet. Excel refuses an insertion or deletion that cuts
+through a pivot table, and so does this library, rather than guess at a
+layout Excel would not produce; one that takes all of it deletes it, and its
+cache when nothing else reads from that, as Excel does.
 
 **A named style is defined only once something uses it.** A workbook's
 `cellStyles` names each style it has and points at the style's format in

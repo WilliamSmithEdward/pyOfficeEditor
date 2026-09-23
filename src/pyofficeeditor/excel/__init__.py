@@ -83,6 +83,7 @@ from pyofficeeditor.excel._pagesetup import (
     PageSetup,
     PrintOptions,
 )
+from pyofficeeditor.excel._pivots import PivotTable
 from pyofficeeditor.excel._protection import SheetProtection, hash_password
 from pyofficeeditor.excel._reference import (
     MAX_COLUMN,
@@ -157,6 +158,7 @@ __all__ = [
     "OpaqueCriterion",
     "PageMargins",
     "PageSetup",
+    "PivotTable",
     "PrintOptions",
     "Protection",
     "Range",

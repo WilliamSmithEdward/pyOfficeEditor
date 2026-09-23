@@ -2253,6 +2253,79 @@ def test_excel_reads_the_charts_this_library_moved(
     assert seen == read
 
 
+_PIVOTS_PROBE = r'''
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim pt As PivotTable
+    Dim out As String
+    Dim source As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For Each ws In wb.Worksheets
+        For Each pt In ws.PivotTables
+            source = Application.ConvertFormula("=" & pt.SourceData, xlR1C1, xlA1)
+            out = out & pt.Name & "=" & pt.TableRange1.Address(False, False) & "|" & source & vbLf
+        Next pt
+    Next ws
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = out
+End Function
+'''
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        "insert row 1", "insert row 3", "delete rows 3:6", "delete rows 1:2", "insert column A",
+        "delete column B", "delete columns E:H", "insert row 1 on Pivot", "rename Data",
+    ],
+)
+def test_excel_reads_the_pivot_tables_this_library_moved(
+    excel: object, live_pivots_xlsx: Path, tmp_path: Path, edit: str
+) -> None:
+    """A pivot table's location lives in its own part and its cache's source
+    in another, and neither moved with the cells before. Excel has to open
+    each result and find every pivot table where it is read here, reading
+    what its cache is read here to read; one deleted with its rows, and its
+    cache, have to be gone."""
+    target = tmp_path / "pivots.xlsx"
+    shutil.copy(live_pivots_xlsx, target)
+    with Workbook.open(target) as book:
+        data, pivot = book["Data"], book["Pivot"]
+        {
+            "insert row 1": lambda: data.insert_rows(1, 1),
+            "insert row 3": lambda: data.insert_rows(3, 1),
+            "delete rows 3:6": lambda: data.delete_rows(3, 4),
+            "delete rows 1:2": lambda: data.delete_rows(1, 2),
+            "insert column A": lambda: data.insert_columns(1, 1),
+            "delete column B": lambda: data.delete_columns(2, 1),
+            "delete columns E:H": lambda: data.delete_columns(5, 4),
+            "insert row 1 on Pivot": lambda: pivot.insert_rows(1, 1),
+            "rename Data": lambda: book.rename_sheet("Data", "Q1 Data"),
+        }[edit]()
+        book.save()
+
+    read: dict[str, str] = {}
+    with Workbook.open(target) as book:
+        for sheet in book.sheets:
+            for table in sheet.pivot_tables:
+                source = "" if table.source_range is None else table.source_range.a1
+                read[table.name] = f"{table.location.a1}|={table.source_sheet}!{source}"
+
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _PIVOTS_PROBE, proc="Probe", args=(str(target),), timeout=180, module_name="Probe_pivots"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+    # ConvertFormula runs in the probe's own workbook, so it names the file.
+    seen = {
+        name: re.sub(r"\[[^\]]*\]", "", value).replace("$", "").replace("'", "")
+        for name, value in (line.split("=", 1) for line in str(result.value).splitlines() if line)
+    }
+    assert seen == read
+
+
 _REMOVED_PROBE = r"""
 Public Function Probe(ByVal Target As String) As String
     Dim wb As Workbook

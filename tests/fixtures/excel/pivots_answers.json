@@ -1,0 +1,222 @@
+{
+  "base": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "F3:G6",
+        "source": "Data!A1:C11"
+      },
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:C11"
+      }
+    }
+  },
+  "delete column B": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "E3:F6",
+        "source": "Data!A1:B11"
+      },
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:B11"
+      }
+    }
+  },
+  "delete column F": {
+    "refused": true
+  },
+  "delete columns E:H": {
+    "caches": 1,
+    "refused": false,
+    "tables": {
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:C11"
+      }
+    }
+  },
+  "delete row 3": {
+    "refused": true
+  },
+  "delete row 4": {
+    "refused": true
+  },
+  "delete row 7": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "F3:G6",
+        "source": "Data!A1:C10"
+      },
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:C10"
+      }
+    }
+  },
+  "delete rows 1:11": {
+    "caches": 1,
+    "refused": false,
+    "tables": {
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:C11"
+      }
+    }
+  },
+  "delete rows 1:2": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "F1:G4",
+        "source": "Data!A1:C9"
+      },
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:C9"
+      }
+    }
+  },
+  "delete rows 2:7": {
+    "caches": 1,
+    "refused": false,
+    "tables": {
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:C5"
+      }
+    }
+  },
+  "delete rows 3:6": {
+    "caches": 1,
+    "refused": false,
+    "tables": {
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:C7"
+      }
+    }
+  },
+  "insert column A": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "G3:H6",
+        "source": "Data!B1:D11"
+      },
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!B1:D11"
+      }
+    }
+  },
+  "insert column F": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "G3:H6",
+        "source": "Data!A1:C11"
+      },
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:C11"
+      }
+    }
+  },
+  "insert column H": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "F3:G6",
+        "source": "Data!A1:C11"
+      },
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:C11"
+      }
+    }
+  },
+  "insert row 1": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "F4:G7",
+        "source": "Data!A2:C12"
+      },
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A2:C12"
+      }
+    }
+  },
+  "insert row 1 on Pivot": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "F3:G6",
+        "source": "Data!A1:C11"
+      },
+      "Summary": {
+        "location": "A4:B8",
+        "source": "Data!A1:C11"
+      }
+    }
+  },
+  "insert row 3": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "F4:G7",
+        "source": "Data!A1:C12"
+      },
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:C12"
+      }
+    }
+  },
+  "insert row 7": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "F3:G6",
+        "source": "Data!A1:C12"
+      },
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Data!A1:C12"
+      }
+    }
+  },
+  "insert rows 5:6": {
+    "refused": true
+  },
+  "rename Data": {
+    "caches": 2,
+    "refused": false,
+    "tables": {
+      "Beside": {
+        "location": "F3:G6",
+        "source": "Q1 Data!A1:C11"
+      },
+      "Summary": {
+        "location": "A3:B7",
+        "source": "Q1 Data!A1:C11"
+      }
+    }
+  }
+}

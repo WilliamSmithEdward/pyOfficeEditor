@@ -34,6 +34,11 @@ And in every chart in the workbook, since a chart on any sheet, or on a
 chart sheet, may read from this one: each ``<c:f>`` a series or a title
 reads from, moved as a cell's formula is, measured.
 
+And in pivot tables: the location of each on the sheet, and the source of
+every cache that reads from it. An edit that cuts through a pivot table is
+refused, as Excel refuses it, and one that takes all of a pivot table
+deletes it, with its cache if nothing else reads from that.
+
 Nothing is refused. There used to be a list of elements that made the
 operation raise rather than risk moving everything else and leaving them
 behind, which was the honest answer while they were unmodelled. It is empty
@@ -92,6 +97,15 @@ from pyofficeeditor.excel._formulas import (
     shift_formula,
     shift_range,
 )
+from pyofficeeditor.excel._pivots import (
+    RT_PIVOT_CACHE,
+    RT_PIVOT_RECORDS,
+    RT_PIVOT_TABLE,
+    PivotTable,
+    cache_parts,
+    read_pivot_tables,
+    worksheet_source,
+)
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef
 from pyofficeeditor.excel._xstring import decode, encode_attribute, escape
 from pyofficeeditor.exceptions import PackageError
@@ -113,6 +127,7 @@ def insert_rows(sheet: Worksheet, at: int, count: int) -> None:
             f"the last row Excel has."
         )
     shift = Shift.rows(at, count)
+    _check_pivot_tables(sheet, shift=shift)
     _shift_cells(sheet, shift)
     _shift_everything_else(sheet, shift)
 
@@ -127,6 +142,7 @@ def insert_columns(sheet: Worksheet, at: int, count: int) -> None:
             f"{MAX_COLUMN}, the last column Excel has."
         )
     shift = Shift.columns(at, count)
+    _check_pivot_tables(sheet, shift=shift)
     _shift_cells(sheet, shift)
     _shift_column_entries(sheet, shift)
     _shift_everything_else(sheet, shift)
@@ -137,6 +153,7 @@ def delete_rows(sheet: Worksheet, at: int, count: int) -> None:
     _check_bounds(at, count, MAX_ROW, "row")
     deletion = Deletion.rows(at, count)
     _check_table_headers(sheet, deletion)
+    _check_pivot_tables(sheet, deletion=deletion)
     _expand_orphaned_shared_formulas(sheet, deletion)
     _delete_formulas(sheet, deletion)
     _remove_rows(sheet, at, count)
@@ -147,6 +164,8 @@ def delete_rows(sheet: Worksheet, at: int, count: int) -> None:
     _move_extensions(sheet, shift=None, deletion=deletion)
     _move_related_parts(sheet, shift=None, deletion=deletion)
     _move_charts(sheet, shift=None, deletion=deletion)
+    _move_pivot_tables(sheet, shift=None, deletion=deletion)
+    _move_pivot_caches(sheet, shift=None, deletion=deletion)
     _delete_tables(sheet, deletion)
     _delete_breaks(sheet, deletion)
     _delete_defined_names(sheet, deletion)
@@ -158,6 +177,7 @@ def delete_columns(sheet: Worksheet, at: int, count: int) -> None:
     _check_bounds(at, count, MAX_COLUMN, "column")
     deletion = Deletion.columns(at, count)
     _check_table_headers(sheet, deletion)
+    _check_pivot_tables(sheet, deletion=deletion)
     _expand_orphaned_shared_formulas(sheet, deletion)
     _delete_formulas(sheet, deletion)
     _remove_columns(sheet, at, count)
@@ -169,6 +189,8 @@ def delete_columns(sheet: Worksheet, at: int, count: int) -> None:
     _move_extensions(sheet, shift=None, deletion=deletion)
     _move_related_parts(sheet, shift=None, deletion=deletion)
     _move_charts(sheet, shift=None, deletion=deletion)
+    _move_pivot_tables(sheet, shift=None, deletion=deletion)
+    _move_pivot_caches(sheet, shift=None, deletion=deletion)
     _delete_tables(sheet, deletion)
     _delete_breaks(sheet, deletion)
     _delete_defined_names(sheet, deletion)
@@ -543,6 +565,139 @@ def _delete_breaks(sheet: Worksheet, deletion: Deletion) -> None:
                 entry.set("id", str(value - count))
 
 
+CT_PIVOT_TABLE = "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml"
+
+
+def _check_pivot_tables(sheet: Worksheet, *, shift: Shift | None = None, deletion: Deletion | None = None) -> None:
+    """Refuse an edit that cuts through a pivot table, as Excel refuses it,
+    measured: inserting inside one, or deleting part of one. Inserting at
+    its first row or column moves it whole, and deleting all of it deletes
+    it."""
+    for pivot in read_pivot_tables(sheet.workbook.package, sheet.part_name):
+        block = pivot.location
+        if shift is not None:
+            rows = shift.rows_at is not None and shift.row_count and block.top < shift.rows_at <= block.bottom
+            columns = (
+                shift.columns_at is not None and shift.column_count and block.left < shift.columns_at <= block.right
+            )
+            if rows or columns:
+                raise ValueError(
+                    f"inserting there would cut through the pivot table {pivot.name!r} at {block.a1}, and "
+                    f"Excel refuses that too. Insert at its first row or column, or past its last."
+                )
+        if deletion is not None and _cuts(block, deletion):
+            raise ValueError(
+                f"deleting that would take part of the pivot table {pivot.name!r} at {block.a1}, and Excel "
+                f"refuses that too. Delete all of its rows or columns to delete it, or none of them."
+            )
+
+
+def _cuts(block: RangeRef, deletion: Deletion) -> bool:
+    """Whether a deletion takes part of a block and not all of it."""
+    if deletion.rows_at is not None and deletion.row_count:
+        covered = sum(1 for row in range(block.top, block.bottom + 1) if deletion.covers_row(row))
+        return 0 < covered < block.height
+    if deletion.columns_at is not None and deletion.column_count:
+        covered = sum(1 for column in range(block.left, block.right + 1) if deletion.covers_column(column))
+        return 0 < covered < block.width
+    return False
+
+
+def _move_pivot_tables(sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | None) -> None:
+    """Move each pivot table on the sheet with its cells, or delete one whose
+    every row or column went, as Excel does."""
+    package = sheet.workbook.package
+    for pivot in read_pivot_tables(package, sheet.part_name):
+        location = package.xml(pivot.part_name).root.child("location")
+        if location is None:
+            continue
+        if shift is not None:
+            moved: RangeRef | None = shift_range(pivot.location, shift)
+        elif deletion is not None:
+            moved = deletion.moved_range(pivot.location)
+        else:
+            continue
+        if moved is None:
+            _remove_pivot_table(sheet, pivot)
+        elif moved.a1 != location.get("ref"):
+            location.set("ref", moved.a1)
+
+
+def _move_pivot_caches(sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | None) -> None:
+    """Move the source of every cache that reads from this sheet, as a
+    formula's range moves. One deleted outright keeps its address, as
+    Excel keeps it, measured."""
+    workbook = sheet.workbook
+    package = workbook.package
+    for part in cache_parts(package, workbook.workbook_part):
+        source = worksheet_source(package.xml(part).root)
+        if source is None or decode(source.get("sheet") or "") != sheet.name:
+            continue
+        raw = source.get("ref")
+        try:
+            block = RangeRef.parse(raw or "")
+        except ValueError:
+            continue
+        if shift is not None:
+            moved: RangeRef | None = shift_range(block, shift)
+        elif deletion is not None:
+            moved = deletion.moved_range(block)
+        else:
+            continue
+        if moved is not None and moved.a1 != raw:
+            source.set("ref", moved.a1)
+
+
+def _remove_pivot_table(sheet: Worksheet, pivot: PivotTable) -> None:
+    """Take a pivot table out, and its cache with it if no other pivot table
+    reads from it, as Excel drops one, measured."""
+    workbook = sheet.workbook
+    package = workbook.package
+    relationships = package.relationships(sheet.part_name)
+    for relationship in list(relationships.by_type(RT_PIVOT_TABLE)):
+        if relationship.target_part == pivot.part_name:
+            relationships.remove(relationship.id)
+    package.remove_part(pivot.part_name)
+
+    cache = pivot.cache_part
+    if cache is None or not package.has_part(cache) or _cache_in_use(package, cache):
+        return
+    root = package.xml(workbook.workbook_part).root
+    listed = root.child("pivotCaches")
+    book_relationships = package.relationships(workbook.workbook_part)
+    for relationship in list(book_relationships.by_type(RT_PIVOT_CACHE)):
+        if relationship.target_part != cache:
+            continue
+        if listed is not None:
+            for entry in list(listed.children_named("pivotCache")):
+                if entry.get("r:id") == relationship.id:
+                    listed.remove(entry)
+        book_relationships.remove(relationship.id)
+    if listed is not None and next(listed.children_named("pivotCache"), None) is None:
+        # CT_PivotCaches needs an entry; an empty list is not allowed.
+        root.remove(listed)
+    records = [
+        relationship.target_part
+        for relationship in package.relationships(cache).by_type(RT_PIVOT_RECORDS)
+        if not relationship.is_external
+    ]
+    package.remove_part(cache)
+    for part in records:
+        if package.has_part(part):
+            package.remove_part(part)
+
+
+def _cache_in_use(package: OpcPackage, cache: str) -> bool:
+    """Whether any pivot table in the workbook reads from a cache."""
+    types = package.content_types
+    for name in package.part_names():
+        if types.of(name) != CT_PIVOT_TABLE:
+            continue
+        if any(relationship.target_part == cache for relationship in package.relationships(name).by_type(RT_PIVOT_CACHE)):
+            return True
+    return False
+
+
 #: The content types of the parts a chart lives in: DrawingML charts, and
 #: the newer kinds, such as a waterfall, which Excel keeps in chartex parts.
 CT_CHART = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
@@ -715,6 +870,8 @@ def _shift_everything_else(sheet: Worksheet, shift: Shift) -> None:
     _move_extensions(sheet, shift=shift, deletion=None)
     _move_related_parts(sheet, shift=shift, deletion=None)
     _move_charts(sheet, shift=shift, deletion=None)
+    _move_pivot_tables(sheet, shift=shift, deletion=None)
+    _move_pivot_caches(sheet, shift=shift, deletion=None)
     _shift_tables(sheet, shift)
     _shift_breaks(sheet, shift)
     _shift_defined_names(sheet, shift)

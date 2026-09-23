@@ -102,6 +102,7 @@ from pyofficeeditor.excel._pagesetup import (
     PrintOptions,
 )
 from pyofficeeditor.excel._pictures import RT_IMAGE, image_info, picture_anchor
+from pyofficeeditor.excel._pivots import PivotTable, read_pivot_tables
 from pyofficeeditor.excel._protection import SheetProtection
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef, column_letter
 from pyofficeeditor.excel._richtext import TextRun, completed, read_runs, rich_entry, shown
@@ -1923,6 +1924,12 @@ class Worksheet:
     # ------------------------------------------------------------------
     # Shapes
     # ------------------------------------------------------------------
+
+    @property
+    def pivot_tables(self) -> list[PivotTable]:
+        """Every pivot table on the sheet, with where it is and what its
+        cache was read from."""
+        return read_pivot_tables(self._workbook.package, self._part_name)
 
     @property
     def charts(self) -> list[Chart]:

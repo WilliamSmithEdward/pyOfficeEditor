@@ -154,6 +154,10 @@ anything trailing the file is swept into the oldest release's notes. -->
   is the one Excel's formula bar shows, `=SERIES(Data!$B$1,...,1)`, the
   same character for character for every chart in `charts.xlsx`.
 
+- **Pivot tables, read**: `Worksheet.pivot_tables` gives each one's name,
+  the block of the sheet it fills, and the range, table or name its cache
+  was read from, as `PivotTable`.
+
 - **Chart sheets**, `Workbook.chart_sheets` and `chart_sheet`, as
   `ChartSheet`. They keep their place among the tabs, in `sheet_names` and
   in the positions a defined name's scope and the active tab count by, and
@@ -289,6 +293,17 @@ anything trailing the file is swept into the oldest release's notes. -->
   `Data!#REF!`, as is a title linked to a deleted cell. Renaming a sheet
   renames it in every chart too.
 
+- **Inserting or deleting rows or columns left pivot tables behind.** A
+  pivot table's place on its sheet and its cache's source range were not
+  moved, so the table claimed cells its data no longer filled and the cache
+  read the wrong rows. Both move now, as Excel moves them, measured edit by
+  edit. As Excel does, an insertion inside a pivot table or a deletion of
+  part of one is refused, since Excel refuses it too; inserting at its first
+  row or column moves it whole, and deleting all its rows or columns
+  deletes it, and its cache when no other pivot table reads from that. A
+  source deleted outright keeps its address, as Excel keeps it, and a
+  renamed sheet is renamed in every cache that reads from it.
+
 - **A chart sheet was opened as a worksheet.** Writing a cell or inserting
   a row there would have put cells in a part that holds a chart.
 
@@ -358,8 +373,11 @@ kinds of sheet and `charts_answers.json` recording every reference in them
 as Excel wrote it, before any edit and after each of nine. Those are read
 from the files Excel saved: its object model reports a deleted reference
 by its old address, and once the file is reopened refuses to report the
-series at all. `filter_semantics.json` and `number_formats.json` are new
-measured corpora, rebuilt by `scripts/measure_filters.py` and
+series at all. `pivots.xlsx` is a ninth, two pivot tables reading one
+range, with `pivots_answers.json` recording where each was and what its
+cache read after each of nineteen edits, or that Excel refused the edit.
+`filter_semantics.json` and `number_formats.json` are new measured
+corpora, rebuilt by `scripts/measure_filters.py` and
 `scripts/measure_number_formats.py` on a machine with Excel; every case in
 them is a test.
 
