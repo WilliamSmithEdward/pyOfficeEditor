@@ -32,7 +32,7 @@ fixtures to refresh.
 
 `scripts/build_excel_fixtures.py` drives real Excel through
 [pyvbaharness](https://github.com/WilliamSmithEdward/pyVBAharness) to author
-nine more. These are committed like the rest: the script exists so a
+ten more. These are committed like the rest: the script exists so a
 fixture's *content* can be changed deliberately and reproduced, not so the
 suite rebuilds them. Run it on a Windows machine with Excel; tests that need
 a fixture skip when it is absent.
@@ -48,6 +48,7 @@ a fixture skip when it is absent.
 | `geometry.xlsx` | One shape of each `MsoAutoShapeType`, so the preset geometry table is held to what Excel wrote rather than to a transcription. |
 | `filters.xlsx` | One autofilter criterion per sheet, with `filters_answers.json` recording what Excel answered and how many rows it hid. The hidden counts are the measurement: Excel stores a filter twice and does not recompute it on open. |
 | `controls.xlsm` | One of every Forms control, wired to cells and ranges, with `controls_answers.json` beside it recording what Excel's object model answered for each. |
+| `comments.xlsx` | Notes, plain, on two lines, showing, resized, on A1 and with a word in bold, and one sharing its sheet's VML part with a button, with `comments_answers.json` recording what Excel's object model said of each. The author is whoever ran the script: Excel takes it from the Office user name, and VBA cannot set it. |
 
 `shapes.xlsm` is committed but has no recipe here: it predates the script.
 It carries one of every shape a sheet can hold, with `shapes_answers.json`

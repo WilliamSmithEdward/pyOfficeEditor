@@ -28,6 +28,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from pyofficeeditor._xml import Element
+from pyofficeeditor.excel._comments import CT_PERSONS, EMPTY_PERSONS, RT_PERSONS, read_persons
 from pyofficeeditor.excel._formulas import rename_sheet_in_formula
 from pyofficeeditor.excel._names import (
     BUILTIN_NAMES,
@@ -37,6 +38,7 @@ from pyofficeeditor.excel._names import (
     write_defined_name,
 )
 from pyofficeeditor.excel._schema import WORKBOOK_CHILD_ORDER, insert_in_schema_order
+from pyofficeeditor.excel._shapes import vml_blocks
 from pyofficeeditor.excel._sharedstrings import (
     CT_SHARED_STRINGS,
     RT_SHARED_STRINGS,
@@ -716,6 +718,38 @@ class Workbook:
 
     def free_table_part_name(self) -> str:
         return self.free_part_name("xl/tables/table{n}.xml")
+
+    def persons(self) -> dict[str, str]:
+        """The people the workbook's threaded comments name, by id."""
+        for relationship in self._package.relationships(self._workbook_part).by_type(RT_PERSONS):
+            return read_persons(self._package.xml(relationship.target_part).root)
+        return {}
+
+    def persons_root(self) -> Element:
+        """The root of the workbook's person list, made if it has none, as
+        Excel names it: one list for every sheet's threads."""
+        relationships = self._package.relationships(self._workbook_part)
+        for relationship in relationships.by_type(RT_PERSONS):
+            return self._package.xml(relationship.target_part).root
+        part = self.free_part_name("xl/persons/person{n}.xml")
+        if not self._package.has_part("xl/persons/person.xml"):
+            part = "xl/persons/person.xml"
+        self._package.write(part, EMPTY_PERSONS.encode("utf-8"), content_type=CT_PERSONS)
+        relationships.add_part(RT_PERSONS, part)
+        return self._package.xml(part).root
+
+    def free_vml_block(self) -> int:
+        """The lowest block of 1024 shape ids no VML part in the workbook
+        claims, for a new one to claim: Excel gives each sheet's VML part a
+        block of its own."""
+        claimed: set[int] = set()
+        for name in self._package.part_names():
+            if name.lower().endswith(".vml"):
+                claimed |= vml_blocks(self._package.read(name).decode("utf-8", errors="replace"))
+        block = 1
+        while block in claimed:
+            block += 1
+        return block
 
     # ------------------------------------------------------------------
     # Shared parts

@@ -22,6 +22,7 @@ get each of them right, and each is tested against bytes real Excel wrote.
 
 from __future__ import annotations
 
+from pyofficeeditor.excel._comments import Comment, Reply, ThreadedComment
 from pyofficeeditor.excel._conditional import (
     Cfvo,
     ColorScale,
@@ -123,6 +124,7 @@ __all__ = [
     "Cfvo",
     "Color",
     "ColorScale",
+    "Comment",
     "Comparison",
     "ConditionalFormatting",
     "ConditionalRule",
@@ -152,6 +154,7 @@ __all__ = [
     "Protection",
     "Range",
     "RangeRef",
+    "Reply",
     "Shape",
     "ShapeKind",
     "SharedStrings",
@@ -161,6 +164,7 @@ __all__ = [
     "Table",
     "TableColumn",
     "TableStyle",
+    "ThreadedComment",
     "Top10Filter",
     "ValidationOperator",
     "ValidationType",

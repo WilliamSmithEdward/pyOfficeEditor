@@ -63,6 +63,10 @@ LIVE_CONTROLS_ANSWERS = EXCEL_FIXTURES / "controls_answers.json"
 #: so they are what an evaluator here has to reproduce.
 LIVE_FILTERS_XLSX = EXCEL_FIXTURES / "filters.xlsx"
 LIVE_FILTERS_ANSWERS = EXCEL_FIXTURES / "filters_answers.json"
+#: Authored by Excel: notes of every shape, one sharing its VML part with a
+#: form control, and what Excel's object model said of each.
+LIVE_COMMENTS_XLSX = EXCEL_FIXTURES / "comments.xlsx"
+LIVE_COMMENTS_ANSWERS = EXCEL_FIXTURES / "comments_answers.json"
 #: Measured by Excel: the text it shows for values under some five hundred
 #: format codes in both date systems, and what each builtin format id means.
 NUMBER_FORMATS_JSON = EXCEL_FIXTURES / "number_formats.json"
@@ -244,6 +248,22 @@ def live_filters_answers() -> Path:
     if not LIVE_FILTERS_ANSWERS.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to measure the filters with real Excel")
     return LIVE_FILTERS_ANSWERS
+
+
+@pytest.fixture(scope="session")
+def live_comments_xlsx() -> Path:
+    """Notes authored by Excel."""
+    if not LIVE_COMMENTS_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author comments.xlsx with real Excel")
+    return LIVE_COMMENTS_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_comments_answers() -> Path:
+    """What Excel's object model said of those notes."""
+    if not LIVE_COMMENTS_ANSWERS.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to measure the notes with real Excel")
+    return LIVE_COMMENTS_ANSWERS
 
 
 @pytest.fixture(scope="session")

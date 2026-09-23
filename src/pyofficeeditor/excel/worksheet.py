@@ -30,6 +30,34 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Literal
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._comments import (
+    CT_COMMENTS,
+    CT_THREADED_COMMENTS,
+    EMPTY_COMMENTS,
+    EMPTY_THREADED_COMMENTS,
+    RT_COMMENTS,
+    RT_THREADED_COMMENTS,
+    Comment,
+    ThreadedComment,
+    delete_comment,
+    delete_thread,
+    is_empty,
+    note_anchor,
+    note_shapes,
+    note_vml,
+    person_id,
+    placeholder_text,
+    read_comments,
+    read_threads,
+    set_resolved,
+    shape_count,
+    shown_as,
+    shows,
+    thread_ids,
+    with_note_shape_type,
+    write_comment,
+    write_thread,
+)
 from pyofficeeditor.excel._conditional import ConditionalFormatting, ConditionalRule
 from pyofficeeditor.excel._dimensions import (
     Freeze,
@@ -116,6 +144,10 @@ from pyofficeeditor.excel._shapes import (
     read_control,
     read_drawing,
     set_vml_macro,
+    vml_blocks,
+    vml_has_shapes,
+    vml_shape_ids,
+    with_vml_block,
     with_vml_shape,
     without_vml_shape,
 )
@@ -1506,6 +1538,282 @@ class Worksheet:
         return cell.child("v") is not None or cell.child("is") is not None
 
     # ------------------------------------------------------------------
+    # Comments
+    # ------------------------------------------------------------------
+
+    @property
+    def comments(self) -> list[Comment]:
+        """Every note on the sheet, in the order the file holds them.
+
+        Excel's Review tab calls these notes, and keeps "comments" for the
+        threaded kind; the file calls them comments. The text and author
+        come from the comments part, and whether each shows from the box
+        its VML draws. A threaded comment is in :attr:`threaded_comments`,
+        not here, although Excel keeps a placeholder note beside it.
+        """
+        part = self._comments_part()
+        if part is None:
+            return []
+        boxes = self._note_boxes()
+        threaded = self._thread_ids()
+        found: list[Comment] = []
+        for comment in read_comments(self._workbook.package.xml(part).root):
+            if comment.ref in threaded:
+                continue
+            try:
+                box = boxes.get(CellRef.parse(comment.ref))
+            except ValueError:
+                box = None
+            found.append(replace(comment, visible=box is not None and shows(box)))
+        return found
+
+    def comment(self, reference: str | CellRef) -> Comment | None:
+        """A cell's note, or ``None`` if it has none."""
+        wanted = _as_cell(reference).a1
+        return next((found for found in self.comments if found.ref == wanted), None)
+
+    def set_comment(
+        self, reference: str | CellRef, text: str, *, author: str = "", visible: bool = False
+    ) -> Comment:
+        """Put a note on a cell, replacing the one it has.
+
+        Three things change together, as Excel changes them: the text in
+        the comments part, a box in the VML part, and the sheet's
+        ``<legacyDrawing>``, each made if the sheet has none. A new note
+        gets the box Excel gives one, 15 pixels right of the cell and 10
+        above it; a note already there keeps its box and only has its
+        visibility set. The text is written in Excel's own note font.
+        """
+        cell = _as_cell(reference)
+        if cell.a1 in self._thread_ids():
+            raise ValueError(
+                f"{cell.a1} has a threaded comment, and Excel keeps a cell's note and its thread "
+                "apart. Remove the thread with remove_comment() first."
+            )
+        write_comment(self._comments_root(), cell.a1, text, author)
+        self._note_box(cell, visible)
+        self._invalidate()
+        return Comment(ref=cell.a1, text=text, author=author, visible=visible)
+
+    def _comments_root(self) -> Element:
+        """The root of the sheet's comments part, made if it has none."""
+        package = self._workbook.package
+        part = self._comments_part()
+        if part is None:
+            part = self._workbook.free_part_name("xl/comments{n}.xml")
+            package.write(part, EMPTY_COMMENTS.encode("utf-8"), content_type=CT_COMMENTS)
+            package.relationships(self._part_name).add_part(RT_COMMENTS, part)
+        return package.xml(part).root
+
+    def _note_box(self, cell: CellRef, visible: bool) -> None:
+        """Give a cell's note its box in the VML part, placed as Excel
+        places a new one, or set the visibility of the box it has."""
+        package = self._workbook.package
+        vml_part = self._vml_part()
+        vml = package.read(vml_part).decode("utf-8")
+        box = note_shapes(vml).get(cell)
+        if box is None:
+            anchor, left, top = note_anchor(cell, *self._pixel_grid(cell))
+            markup = note_vml(
+                self._next_control_id(), cell, anchor, left, top,
+                visible=visible, z_index=shape_count(vml) + 1,
+            )
+            vml = with_vml_shape(with_note_shape_type(vml), markup)
+        else:
+            vml = vml.replace(box, shown_as(box, visible), 1)
+        package.write(vml_part, vml.encode("utf-8"))
+
+    def remove_comment(self, reference: str | CellRef) -> bool:
+        """Take a cell's note or thread off, box and all; whether it had
+        one.
+
+        A thread goes with its replies and the placeholder note Excel keeps
+        beside it. A part left empty goes, and so does a VML part left
+        drawing nothing, with the ``<legacyDrawing>`` that named it, so a
+        sheet whose last comment is removed is as if it never had one.
+        """
+        cell = _as_cell(reference)
+        package = self._workbook.package
+        relationships = package.relationships(self._part_name)
+        threads = self._threads_part()
+        if threads is not None:
+            thread_root = package.xml(threads).root
+            if delete_thread(thread_root, cell.a1) and next(
+                thread_root.children_named("threadedComment"), None
+            ) is None:
+                for relationship in relationships.by_type(RT_THREADED_COMMENTS):
+                    if relationship.target_part == threads:
+                        relationships.remove(relationship.id)
+                package.remove_part(threads)
+
+        part = self._comments_part()
+        if part is None:
+            return False
+        root = package.xml(part).root
+        if not delete_comment(root, cell.a1):
+            return False
+        if is_empty(root):
+            for relationship in relationships.by_type(RT_COMMENTS):
+                if relationship.target_part == part:
+                    relationships.remove(relationship.id)
+            package.remove_part(part)
+
+        for vml_part in related_parts(self, RT_VML):
+            vml = package.read(vml_part).decode("utf-8")
+            box = note_shapes(vml).get(cell)
+            if box is None:
+                break
+            vml = vml.replace(box, "", 1)
+            if vml_has_shapes(vml):
+                package.write(vml_part, vml.encode("utf-8"))
+            else:
+                self._remove_vml_part(vml_part)
+            break
+        self._invalidate()
+        return True
+
+    def _comments_part(self) -> str | None:
+        for part in related_parts(self, RT_COMMENTS):
+            return part
+        return None
+
+    @property
+    def threaded_comments(self) -> list[ThreadedComment]:
+        """Every threaded comment on the sheet, each with its replies, in
+        the order the file holds them.
+
+        Threaded comments are what Excel's Review tab calls comments since
+        2019: a conversation on a cell, each entry with an author and a
+        time, which a thread can be marked resolved. Notes, the older kind,
+        are in :attr:`comments`.
+        """
+        part = self._threads_part()
+        if part is None:
+            return []
+        return read_threads(self._workbook.package.xml(part).root, self._workbook.persons())
+
+    def threaded_comment(self, reference: str | CellRef) -> ThreadedComment | None:
+        """A cell's thread, or ``None`` if it has none."""
+        wanted = _as_cell(reference).a1
+        return next((found for found in self.threaded_comments if found.ref == wanted), None)
+
+    def add_threaded_comment(
+        self, reference: str | CellRef, text: str, *, author: str, when: dt.datetime | None = None
+    ) -> ThreadedComment:
+        """Start a thread on a cell.
+
+        Written as Excel writes one: the comment in the sheet's threads
+        part, its author in the workbook's person list, and a placeholder
+        note beside it, in a box, for a version of Excel that cannot show
+        threads. ``when`` is stored in UTC, now unless given; a moment with
+        no time zone is taken as UTC already. The author is a person no
+        account stands behind, as Excel writes someone not signed in.
+
+        A cell with a note or a thread already is refused: Excel keeps one
+        of either.
+        """
+        cell = _as_cell(reference)
+        if cell.a1 in self._thread_ids() or self.comment(cell) is not None:
+            raise ValueError(
+                f"{cell.a1} already has a comment; Excel keeps one note or one thread on a cell. "
+                "Add a reply with add_threaded_reply(), or remove it first."
+            )
+        root = self._threads_root()
+        person = person_id(self._workbook.persons_root(), author)
+        identifier = write_thread(root, cell.a1, text, person, when or _now())
+        return self._placeholder(cell, identifier)
+
+    def add_threaded_reply(
+        self, reference: str | CellRef, text: str, *, author: str, when: dt.datetime | None = None
+    ) -> ThreadedComment:
+        """Reply to a cell's thread, at its end, and bring its placeholder
+        note up to date as Excel does."""
+        cell = _as_cell(reference)
+        parent = self._thread_ids().get(cell.a1)
+        if parent is None:
+            raise ValueError(f"{cell.a1} has no thread to reply to; start one with add_threaded_comment().")
+        person = person_id(self._workbook.persons_root(), author)
+        write_thread(self._threads_root(), cell.a1, text, person, when or _now(), parent=parent)
+        return self._placeholder(cell, parent)
+
+    def resolve_threaded_comment(self, reference: str | CellRef, resolved: bool = True) -> ThreadedComment:
+        """Mark a cell's thread resolved, or open it again."""
+        cell = _as_cell(reference)
+        part = self._threads_part()
+        if part is None or not set_resolved(self._workbook.package.xml(part).root, cell.a1, resolved):
+            raise ValueError(f"{cell.a1} has no thread to resolve.")
+        self._invalidate()
+        found = self.threaded_comment(cell)
+        assert found is not None
+        return found
+
+    def _placeholder(self, cell: CellRef, identifier: str) -> ThreadedComment:
+        """Write the note Excel keeps beside a thread, and its box."""
+        thread = self.threaded_comment(cell)
+        assert thread is not None
+        write_comment(
+            self._comments_root(), cell.a1, placeholder_text(thread), f"tc={identifier}",
+            run=False, uid=identifier,
+        )
+        self._note_box(cell, visible=False)
+        self._invalidate()
+        return thread
+
+    def _threads_part(self) -> str | None:
+        for part in related_parts(self, RT_THREADED_COMMENTS):
+            return part
+        return None
+
+    def _threads_root(self) -> Element:
+        """The root of the sheet's threads part, made if it has none."""
+        package = self._workbook.package
+        part = self._threads_part()
+        if part is None:
+            part = self._workbook.free_part_name("xl/threadedComments/threadedComment{n}.xml")
+            package.write(part, EMPTY_THREADED_COMMENTS.encode("utf-8"), content_type=CT_THREADED_COMMENTS)
+            package.relationships(self._part_name).add_part(RT_THREADED_COMMENTS, part)
+        return package.xml(part).root
+
+    def _thread_ids(self) -> dict[str, str]:
+        """Each thread's id, by the cell it is on."""
+        part = self._threads_part()
+        return {} if part is None else thread_ids(self._workbook.package.xml(part).root)
+
+    def _note_boxes(self) -> dict[CellRef, str]:
+        package = self._workbook.package
+        for part in related_parts(self, RT_VML):
+            return note_shapes(package.read(part).decode("utf-8", errors="replace"))
+        return {}
+
+    def _pixel_grid(self, cell: CellRef) -> tuple[list[int], list[int]]:
+        """Column widths and row heights in pixels, from the first to far
+        enough past a cell to hold a note's box, at 96 pixels an inch."""
+        grid = SheetGrid.of(self._root)
+        columns = [
+            round(grid.column_widths.get(index, grid.default_column) / 0.75)
+            for index in range(min(cell.column + 40, MAX_COLUMN))
+        ]
+        rows = [
+            round(grid.row_heights.get(index, grid.default_row) / 0.75)
+            for index in range(min(cell.row + 40, MAX_ROW))
+        ]
+        return columns, rows
+
+    def _remove_vml_part(self, part: str) -> None:
+        """Take a sheet's VML part away, with its relationship and the
+        ``<legacyDrawing>`` that names it."""
+        package = self._workbook.package
+        relationships = package.relationships(self._part_name)
+        for relationship in relationships.by_type(RT_VML):
+            if relationship.target_part != part:
+                continue
+            for element in list(self._root.children_named("legacyDrawing")):
+                if (element.get("r:id") or element.get("id")) == relationship.id:
+                    self._root.remove(element)
+            relationships.remove(relationship.id)
+        package.remove_part(part)
+
+    # ------------------------------------------------------------------
     # Shapes
     # ------------------------------------------------------------------
 
@@ -1827,9 +2135,25 @@ class Worksheet:
         return max([one for one in used if one < FIRST_CONTROL_ID] + [1]) + 1
 
     def _next_control_id(self) -> int:
-        """Controls are numbered from 1025, apart from drawing shapes."""
-        used = [shape.shape_id for shape in self.shapes if shape.shape_id >= FIRST_CONTROL_ID]
-        return max(used) + 1 if used else FIRST_CONTROL_ID
+        """The next id for a form control or a note, which share one
+        sequence apart from drawing shapes.
+
+        Measured: Excel numbers them from the block of 1024 ids the sheet's
+        VML part claims, so 1025 on the first sheet to have one and 2049 on
+        the second, and a note and a button on one sheet take consecutive
+        ids. Counting the drawing's controls alone gave a note's id to the
+        next button.
+        """
+        used = {shape.shape_id for shape in self.shapes if shape.shape_id >= FIRST_CONTROL_ID}
+        block = 1
+        package = self._workbook.package
+        for part in related_parts(self, RT_VML):
+            vml = package.read(part).decode("utf-8", errors="replace")
+            block = min(vml_blocks(vml), default=1)
+            used |= vml_shape_ids(vml)
+            break
+        base = block * 1024
+        return max((number for number in used if base < number < base + 1024), default=base) + 1
 
     def _drawing_part(self) -> tuple[str, XmlDocument]:
         """The sheet's drawing part, made if it has none."""
@@ -1858,7 +2182,7 @@ class Worksheet:
 
         part = self._workbook.free_part_name("xl/drawings/vmlDrawing{n}.vml")
         package.content_types.set_default("vml", CT_VML)
-        package.write(part, EMPTY_VML.encode("utf-8"))
+        package.write(part, with_vml_block(EMPTY_VML, self._workbook.free_vml_block()).encode("utf-8"))
         relationship = package.relationships(self._part_name).add_part(RT_VML, part)
         element = Element.create("legacyDrawing", {"r:id": relationship.id})
         insert_in_schema_order(self._root, element, WORKSHEET_CHILD_ORDER)
@@ -3198,6 +3522,20 @@ class Cell:
         return self._sheet.get_text(self._reference)
 
     @property
+    def comment(self) -> Comment | None:
+        """The cell's note, or ``None``; see :meth:`Worksheet.set_comment`."""
+        return self._sheet.comment(self._reference)
+
+    @comment.setter
+    def comment(self, text: str | None) -> None:
+        """Set the note's text, with no author and hidden, or ``None`` to
+        take it off."""
+        if text is None:
+            self._sheet.remove_comment(self._reference)
+        else:
+            self._sheet.set_comment(self._reference, text)
+
+    @property
     def formula(self) -> str | None:
         return self._sheet.get_formula(self._reference)
 
@@ -3403,6 +3741,15 @@ class Range:
 
 
 __all__ = ["Cell", "Range", "Worksheet", "column_letter"]
+
+
+def _as_cell(reference: str | CellRef) -> CellRef:
+    """A cell as the parts that store one address it: ``C3``, not ``$C$3``."""
+    return (CellRef.parse(reference) if isinstance(reference, str) else reference).relative
+
+
+def _now() -> dt.datetime:
+    return dt.datetime.now(dt.timezone.utc)
 
 
 def _as_number(raw: str | None) -> int | None:

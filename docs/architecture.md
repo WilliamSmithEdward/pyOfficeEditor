@@ -74,6 +74,7 @@ Each layer knows the layer below it and not the layer above.
 |   _collate      Windows word sort, the order and the      |
 |                 equality a filter compares text by        |
 |   _shapes       shapes, and the grid a form control needs |
+|   _comments     notes and threads, and the box each gets  |
 |   _conditional  cfRules, and the compatibility formula    |
 |                 that makes them fire                      |
 |   _dxf          differential formats: what a rule paints  |
@@ -231,6 +232,8 @@ The Excel surface is exported from `pyofficeeditor.excel`:
 | `MAX_ROW`, `MAX_COLUMN` | `excel/_reference.py` | Excel's real limits |
 | `AutoFilter`, `FilterColumn`, `ValueFilter`, `CustomFilter`, `Comparison`, `FilterOperator`, `Top10Filter`, `DynamicFilter`, `DateGroup`, `OpaqueCriterion`, `criteria` | `excel/_filters.py` | a filter's criteria, validated as Excel validates them |
 | `FilterOutcome` | `excel/_filters.py` | which rows applying a filter hid, showed and left alone |
+| `Comment` | `excel/_comments.py` | a note on a cell: text, author, and whether it shows |
+| `ThreadedComment`, `Reply` | `excel/_comments.py` | a conversation on a cell, and each answer in it |
 | `format_value` | `excel/_numfmt.py` | the text Excel shows for a value under a format code |
 
 `opc.py` also exports the path helpers (`normalize_part_name`,
@@ -322,13 +325,14 @@ tests/
   test_excel_shapes.py          shapes, against what Excel said of them
   test_excel_controls.py        what a form control is wired to
   test_excel_shapes_write.py    adding, removing and rewiring shapes
+  test_excel_comments.py        notes and threads, against what Excel said
   test_excel_xstring.py         _xHHHH_ escapes, character by character,
                                 against what Excel wrote and read
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               thirteen Excel-authored packages: three
-                                sourced, ten scripted, and two measured
-                                corpora; see its README
+  fixtures/excel/               fourteen Excel-authored packages: three
+                                sourced, eleven scripted, and two
+                                measured corpora; see its README
 ```
 
 - **Always** run pytest with `-p no:randomly` to keep ordering reproducible.
@@ -336,7 +340,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against thirteen committed
+- The suite needs no Office installation. It runs against fourteen committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as

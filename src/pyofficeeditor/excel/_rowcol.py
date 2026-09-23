@@ -75,6 +75,7 @@ from pyofficeeditor.excel._addresses import (
     shift_sqref,
     shift_vml_anchor,
 )
+from pyofficeeditor.excel._comments import RT_COMMENTS, RT_THREADED_COMMENTS, note_shapes
 from pyofficeeditor.excel._conditional import (
     CONDITION_FORMULA_TYPES,
     ConditionalFormatting,
@@ -1111,7 +1112,6 @@ def _delete_inline_anchors(root: Element, deletion: Deletion) -> None:
 #: Relationship types of the sheet's own parts that record cell addresses.
 RT_DRAWING = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"
 RT_VML = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing"
-RT_COMMENTS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
 
 
 def related_parts(sheet: Worksheet, relationship_type: str) -> list[str]:
@@ -1160,6 +1160,10 @@ def _move_related_parts(sheet: Worksheet, *, shift: Shift | None, deletion: Dele
     for name in related_parts(sheet, RT_COMMENTS):
         document = sheet.workbook.package.xml(name)
         _move_comments(document.root, shift=shift, deletion=deletion)
+
+    for name in related_parts(sheet, RT_THREADED_COMMENTS):
+        document = sheet.workbook.package.xml(name)
+        _move_threads(document.root, shift=shift, deletion=deletion)
 
     for name in related_parts(sheet, RT_VML):
         _move_vml(sheet, name, shift=shift, deletion=deletion)
@@ -1217,6 +1221,25 @@ def _move_comments(root: Element, *, shift: Shift | None, deletion: Deletion | N
     return changed
 
 
+def _move_threads(root: Element, *, shift: Shift | None, deletion: Deletion | None) -> None:
+    """Move each threaded comment, and each reply, onto its cell's new
+    address. A thread whose cell is deleted goes with it, replies and all,
+    as its placeholder note does; left behind, it would sit on a cell
+    whose note had moved."""
+    for element in list(root.children_named("threadedComment")):
+        raw = element.get("ref")
+        if raw is None:
+            continue
+        moved = (
+            shift_cell(raw, shift) if shift is not None
+            else delete_cell(raw, deletion)  # type: ignore[arg-type]
+        )
+        if moved is None:
+            root.remove(element)
+        elif moved != raw:
+            element.set("ref", moved)
+
+
 def _move_vml(
     sheet: Worksheet, name: str, *, shift: Shift | None, deletion: Deletion | None
 ) -> None:
@@ -1233,6 +1256,15 @@ def _move_vml(
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         return
+    original = text
+
+    if deletion is not None:
+        # A note whose cell is deleted goes, as its text in the comments
+        # part does; collapsing its cell onto a neighbour would leave a box
+        # with no text behind it.
+        for cell, box in note_shapes(text).items():
+            if deletion.covers_row(cell.row) or deletion.covers_column(cell.column):
+                text = text.replace(box, "", 1)
 
     def move(match: re.Match[str]) -> str:
         body = match.group(1)
@@ -1245,7 +1277,7 @@ def _move_vml(
 
     rewritten = re.sub(r"<x:Anchor>(.*?)</x:Anchor>", move, text, flags=re.S)
     rewritten = _move_vml_owner(rewritten, shift=shift, deletion=deletion)
-    if rewritten != text:
+    if rewritten != original:
         package.write(name, rewritten.encode("utf-8"))
 
 

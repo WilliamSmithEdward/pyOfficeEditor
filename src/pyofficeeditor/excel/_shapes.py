@@ -1265,6 +1265,35 @@ def without_vml_shape(vml: str, shape_id: int) -> str:
     return pattern.sub("", vml, count=1)
 
 
+def vml_shape_ids(vml: str) -> set[int]:
+    """Every shape id a VML part spends. A sheet's notes and its form
+    controls are numbered in one sequence, so both count."""
+    return {int(number) for number in re.findall(r"_x0000_s(\d+)", vml)}
+
+
+def vml_blocks(vml: str) -> set[int]:
+    """The blocks of 1024 shape ids a VML part claims in its ``o:idmap``.
+
+    Measured: Excel gives each sheet's VML part a block of its own, the
+    first sheet's 1 and the second's 2, and numbers that sheet's shapes
+    from 1024 times the block, plus one.
+    """
+    found = re.search(r'<o:idmap\b[^>]*\bdata="([^"]*)"', vml)
+    if found is None:
+        return set()
+    return {int(number) for number in re.findall(r"\d+", found.group(1))}
+
+
+def with_vml_block(vml: str, block: int) -> str:
+    """A VML part claiming ``block`` for its shape ids."""
+    return re.sub(r'(<o:idmap\b[^>]*\bdata=")[^"]*(")', rf"\g<1>{block}\g<2>", vml, count=1)
+
+
+def vml_has_shapes(vml: str) -> bool:
+    """Whether a VML part still draws anything, note or control."""
+    return re.search(r"<v:shape\b", vml) is not None
+
+
 #: The content type of each part a shape needs. VML is a Default by
 #: extension rather than an Override, which is how Excel writes it.
 CT_DRAWING = "application/vnd.openxmlformats-officedocument.drawing+xml"
@@ -1483,7 +1512,11 @@ __all__ = [
     "set_vml_macro",
     "text_body",
     "vml_anchor",
+    "vml_blocks",
+    "vml_has_shapes",
     "vml_id",
+    "vml_shape_ids",
+    "with_vml_block",
     "with_vml_shape",
     "without_vml_shape",
 ]

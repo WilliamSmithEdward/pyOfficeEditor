@@ -682,8 +682,68 @@ Public Function Build(ByVal Target As String) As String
 End Function
 """
 
+#: Notes, which Excel's object model still calls comments: plain, on two
+#: lines, showing, resized, on the first row and column, with a word in
+#: bold, and one beside a form control, since the two share a VML part.
+#:
+#: The reply is one line per note, with what Excel's object model says of
+#: it. The text comes back with its line breaks spelled ``\n``, because the
+#: harness turns a control character into a space.
+_BUILD_COMMENTS = r"""
+Private Function Report(ByVal c As Comment) As String
+    Report = c.Parent.Parent.Name & "!" & c.Parent.Address(False, False) & "|" & _
+             Replace(c.Text, vbLf, "\n") & "|" & c.Author & "|" & CStr(c.Visible) & "|" & _
+             CStr(c.Shape.Left) & "|" & CStr(c.Shape.Top) & "|" & _
+             CStr(c.Shape.Width) & "|" & CStr(c.Shape.Height)
+End Function
+
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim both As Worksheet
+    Dim c As Comment
+    Dim out As String
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Notes"
+    ws.Range("A1:D6").Value = 1
+
+    ws.Range("C3").AddComment "plain note"
+    Set c = ws.Range("E5").AddComment("two" & vbLf & "lines")
+    c.Visible = True
+    Set c = ws.Range("B8").AddComment("sized")
+    c.Shape.Width = 200
+    c.Shape.Height = 80
+    ws.Range("A1").AddComment "corner"
+    Set c = ws.Range("D10").AddComment("bold start")
+    c.Shape.TextFrame.Characters(1, 4).Font.Bold = True
+
+    Set both = wb.Worksheets.Add(After:=ws)
+    both.Name = "Both"
+    both.Buttons.Add 100, 30, 60, 20
+    both.Range("B2").AddComment "beside a button"
+
+    For Each ws In wb.Worksheets
+        For Each c In ws.Comments
+            out = out & Report(c) & vbLf
+        Next c
+    Next ws
+
+    wb.Worksheets(1).Activate
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+"""
+
 #: Which fields of the reported line mean what.
 _CONTROL_FIELDS = ("type", "macro", "linked_cell", "list_range", "value")
+
+#: The same for a note, after its sheet-qualified address.
+_COMMENT_FIELDS = ("text", "author", "visible", "left", "top", "width", "height")
+
 
 #: What a measured fixture's reply turns into: an entry per thing measured.
 Answers = dict[str, dict[str, object]]
@@ -749,6 +809,28 @@ def control_answers(reply: str) -> Answers:
     return answers
 
 
+def comment_answers(reply: str) -> Answers:
+    """One line per note: ``Sheet!A1``, then the fields of ``_COMMENT_FIELDS``."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        fields = (parts[1:] + [""] * len(_COMMENT_FIELDS))[: len(_COMMENT_FIELDS)]
+        entry: dict[str, object] = {}
+        for key, raw in zip(_COMMENT_FIELDS, fields, strict=True):
+            if key == "text":
+                entry[key] = raw.replace("\\n", "\n")
+            elif key == "visible":
+                entry[key] = raw == "True"
+            elif key in ("left", "top", "width", "height"):
+                entry[key] = float(raw)
+            else:
+                entry[key] = raw
+        answers[parts[0]] = entry
+    return answers
+
+
 def filter_answers(reply: str) -> Answers:
     """One entry per sheet: the name, whether the autofilter is on, each
     live filter's criteria and operator, and how many rows Excel hid. The
@@ -807,6 +889,7 @@ def main() -> int:
     measured = [
         ("controls.xlsm", _BUILD_CONTROLS, control_answers),
         ("filters.xlsx", _BUILD_FILTERS, filter_answers),
+        ("comments.xlsx", _BUILD_COMMENTS, comment_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]

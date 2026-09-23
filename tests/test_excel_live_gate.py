@@ -1631,6 +1631,130 @@ def test_excel_accepts_shapes_this_library_adds(
     assert seen["stepValue"] == "7", "a spinner whose maximum was left at 0 reads 0"
 
 
+_NOTES_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim c As Comment
+    Dim out As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For Each ws In wb.Worksheets
+        For Each c In ws.Comments
+            out = out & ws.Name & "!" & c.Parent.Address(False, False) & "=" & _
+                  Replace(c.Text, vbLf, "\n") & ";" & c.Author & ";" & CStr(c.Visible) & "|"
+        Next c
+        out = out & ws.Name & "!shapes=" & CStr(ws.Shapes.Count) & "|"
+    Next ws
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = Left(out, Len(out) - 1)
+End Function
+"""
+
+
+def test_excel_reads_the_notes_this_library_writes(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """A note is three things that have to agree: its text in the comments
+    part, its box in the VML part, and ``<legacyDrawing>`` on the sheet.
+    Beside a form control the two share one VML part and one sequence of
+    shape ids, and Excel refused the first version of that."""
+    target = tmp_path / "notes.xlsx"
+    shutil.copy(live_sample_xlsx, target)
+    with Workbook.open(target) as book:
+        data = book["Data"]
+        data.set_comment("C3", "plain note", author="Ada")
+        data.set_comment("E5", "two\nlines", visible=True)
+        data.set_comment("A1", "corner")
+        data.set_comment("B8", "removed again")
+        data.remove_comment("B8")
+        notes = book["Notes"]
+        notes.set_comment("B2", "second sheet")
+        notes.add_form_control("Press", left=150, top=40, width=60, height=20, text="Click")
+        notes.set_comment("D6", "after the button", author="Bo")
+        book.save()
+
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _NOTES_PROBE, proc="Probe", args=(str(target),), timeout=180, module_name="Probe_notes"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+    seen = dict(part.split("=", 1) for part in str(result.value).split("|"))
+    assert seen == {
+        "Data!A1": "corner;;False",
+        "Data!C3": "plain note;Ada;False",
+        "Data!E5": "two\\nlines;;True",
+        "Data!shapes": "3",
+        "Notes!B2": "second sheet;;False",
+        "Notes!D6": "after the button;Bo;False",
+        "Notes!shapes": "3",
+    }
+
+
+_THREADS_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim t As CommentThreaded
+    Dim r As CommentThreaded
+    Dim out As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For Each ws In wb.Worksheets
+        For Each t In ws.CommentsThreaded
+            out = out & ws.Name & "!" & t.Parent.Address(False, False) & "=" & _
+                  Replace(t.Text, vbLf, "\n") & ";" & t.Author.Name & ";" & CStr(t.Resolved)
+            For Each r In t.Replies
+                out = out & ";" & r.Text & "/" & r.Author.Name
+            Next r
+            out = out & "|"
+        Next t
+        out = out & ws.Name & "!notes=" & CStr(ws.Comments.Count) & "|"
+    Next ws
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = Left(out, Len(out) - 1)
+End Function
+"""
+
+
+def test_excel_reads_the_threads_this_library_writes(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """A thread is four things: its entries in the sheet's threads part,
+    their authors in the workbook's person list, the placeholder note Excel
+    keeps beside it, and that note's box. Excel lists replies written at
+    one moment by their ids, so their order is part of what it checks."""
+    target = tmp_path / "threads.xlsx"
+    shutil.copy(live_sample_xlsx, target)
+    when = dt.datetime(2026, 9, 22, 18, 30, tzinfo=dt.timezone.utc)
+    with Workbook.open(target) as book:
+        data = book["Data"]
+        data.add_threaded_comment("C3", "first line\nsecond line", author="Ada", when=when)
+        data.add_threaded_reply("C3", "a reply", author="Bo", when=when)
+        data.add_threaded_reply("C3", "and another", author="Ada", when=when)
+        data.add_threaded_comment("B2", "done with", author="Bo", when=when)
+        data.resolve_threaded_comment("B2")
+        data.set_comment("E5", "a plain note beside them")
+        book["Notes"].add_threaded_comment("A1", "second sheet", author="Cy", when=when)
+        book.save()
+
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _THREADS_PROBE, proc="Probe", args=(str(target),), timeout=180, module_name="Probe_threads"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+    seen = dict(part.split("=", 1) for part in str(result.value).split("|"))
+    assert seen == {
+        "Data!B2": "done with;Bo;True",
+        "Data!C3": "first line\\nsecond line;Ada;False;a reply/Bo;and another/Ada",
+        "Data!notes": "1",
+        "Notes!A1": "second sheet;Cy;False",
+        "Notes!notes": "0",
+    }
+
+
 _REMOVED_PROBE = r"""
 Public Function Probe(ByVal Target As String) As String
     Dim wb As Workbook

@@ -72,6 +72,38 @@ anything trailing the file is swept into the oldest release's notes. -->
   `0.3`, where Python's `str` gives `0.30000000000000004`; a value
   filter needs the former.
 
+- **Notes on cells**, which the file and Excel's object model call
+  comments: `Worksheet.comments`, `comment`, `set_comment` and
+  `remove_comment`, and `Cell.comment`, read and set. A note is three
+  things that have to agree: its text in the comments part, a box in the
+  VML part, and `<legacyDrawing>` on the sheet. All three are written the
+  way Excel wrote them when measured, down to the Tahoma 9 run the text
+  sits in, the CRLF it stores a line break as, and the box 144 by 79
+  pixels placed 15 right of the cell and 10 above it. Excel reads notes
+  written here back with their text, author and visibility intact, beside
+  a form control as well as alone.
+
+  A note and a form control on one sheet share its VML part and one
+  sequence of shape ids, and each sheet's VML part claims a block of ids
+  of its own. Both are measured, and both were wrong for controls before:
+  every new VML part claimed the first block, and a control added after a
+  note would have taken the note's id.
+
+- **Threaded comments**, Excel's newer kind, which its Review tab calls
+  comments: `Worksheet.threaded_comments`, `threaded_comment`,
+  `add_threaded_comment`, `add_threaded_reply` and
+  `resolve_threaded_comment`, with `ThreadedComment` and `Reply`, and
+  `remove_comment` taking a thread off as it takes a note. A thread is
+  four things: its entries in the sheet's threads part, their authors in
+  the person list the workbook shares, the placeholder note Excel keeps
+  beside it for versions that cannot show threads, and that note's box.
+  Each is written as Excel wrote it when measured, the placeholder's
+  wording included, and kept up to date as replies are added.
+
+  Excel lists replies written at one moment in the order of their ids,
+  measured, so a reply here takes the id after the thread's last, as
+  Excel's own do; a random one put the second reply first.
+
 - **What a form control is wired to.** `Shape.control` carries the linked
   cell, the list range, the current value and which kind of control it
   is, read from the part the sheet points at. `Shape` and `ShapeKind`
@@ -142,14 +174,29 @@ anything trailing the file is swept into the oldest release's notes. -->
   way: `add_table` over `["", "Amount", ""]` gives `Column1` and
   `Column2`, where it gave `Column1` and `Column3`.
 
+- **A form control made Excel refuse a sheet with a table.** The schema
+  order this library inserts elements by had no place for
+  `<legacyDrawing>`, so it was appended after `<tableParts>` or `<extLst>`
+  where a sheet had them, which Excel refuses rather than repairs. A
+  drawing added after it landed after it too, in the wrong order again.
+
+- **Deleting a row or column left a deleted cell's note half there.** Its
+  text went from the comments part and its box stayed in the VML part.
+  Both go now.
+
+- **Threaded comments stayed put when rows or columns moved.** Their
+  placeholder notes moved and the threads did not, leaving each thread on
+  a cell whose note had gone. Threads now move with their cells, and go
+  with a deleted one.
+
 - **Text holding a control character made Excel refuse the workbook.**
   XML cannot carry most characters below U+0020, and they were written
   as they were: a cell set to `"a\x01b"` gave a file Excel would not
   open. SpreadsheetML spells such a character `_xHHHH_`, and text is now
   written the way Excel writes it, measured for every one of them, in
-  cells, formulas, headers and footers, validations, hyperlinks, tables,
-  sheet names, defined names, filters, conditional formats and number
-  formats. A literal `_x0041_` is written with its
+  cells, formulas, notes, threads, headers and footers, validations,
+  hyperlinks, tables, sheet names, defined names, filters, conditional
+  formats and number formats. A literal `_x0041_` is written with its
   underscore escaped, as Excel writes it, so it reads back as itself.
 
 - **Text Excel had escaped read back escaped.** A carriage return Excel
@@ -212,7 +259,9 @@ object model answered for each. The committed `shapes.xlsm` carries a
 Button and nothing else, so it could prove none of this.
 
 `filters.xlsx` is another, one criterion kind per sheet, with
-`filters_answers.json` recording how many rows Excel hid on each.
+`filters_answers.json` recording how many rows Excel hid on each, and
+`comments.xlsx` a third, with notes of every shape and
+`comments_answers.json` recording what Excel's object model said of each.
 `filter_semantics.json` and `number_formats.json` are new measured
 corpora, rebuilt by `scripts/measure_filters.py` and
 `scripts/measure_number_formats.py` on a machine with Excel; every case in
@@ -282,6 +331,16 @@ cannot find there hides the rows holding it.
 A table without a header row cannot take a filter here. Excel turns the
 header row back on to filter one, which inserts a row, and this library
 does not.
+
+A note's text is read and written as plain text. Formatting inside a note,
+a bold word say, reads as its text without the bold, and a note written
+here is in Excel's own note font.
+
+The author of a threaded comment written here is a person no account
+stands behind, as Excel writes someone who is not signed in. Excel names
+the signed-in account in its own, which is also why no Excel-authored
+thread is committed as a fixture: the tests hold the reader to Excel's
+measured markup with the person replaced.
 
 ## [0.2.2] - 2026-09-20
 

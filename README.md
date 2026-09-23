@@ -19,7 +19,9 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > and value. Autofilters, on a sheet or a table, read and write every
 > criterion but colour and icon, and hide the rows they exclude, because
 > Excel does not recompute a filter when the workbook opens. A cell's
-> text is what Excel shows for it, number format and all.
+> text is what Excel shows for it, number format and all. Notes and
+> threaded comments, replies included, read and write the way Excel
+> writes them.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Nothing about a sheet makes that refuse any more: validation,
@@ -150,6 +152,7 @@ data descriptors.
 |               tables share with them                   |
 |   _shapes     shapes, and the grid that places a       |
 |               control                                  |
+|   _comments   notes and threads, and the box each gets |
 |   _pagesetup  margins in inches, and the three header  |
 |               boxes coded into one string              |
 |   _validation what a cell accepts, and the inverted    |

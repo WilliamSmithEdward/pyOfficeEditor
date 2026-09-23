@@ -1,0 +1,56 @@
+{
+  "Both!B2": {
+    "author": "William",
+    "height": 59.25,
+    "left": 107.25,
+    "text": "beside a button",
+    "top": 7.5,
+    "visible": false,
+    "width": 108.0
+  },
+  "Notes!A1": {
+    "author": "William",
+    "height": 59.25,
+    "left": 59.25,
+    "text": "corner",
+    "top": 1.5,
+    "visible": false,
+    "width": 108.0
+  },
+  "Notes!B8": {
+    "author": "William",
+    "height": 80.25,
+    "left": 107.25,
+    "text": "sized",
+    "top": 97.5,
+    "visible": false,
+    "width": 200.25
+  },
+  "Notes!C3": {
+    "author": "William",
+    "height": 59.25,
+    "left": 155.25,
+    "text": "plain note",
+    "top": 22.5,
+    "visible": false,
+    "width": 108.0
+  },
+  "Notes!D10": {
+    "author": "William",
+    "height": 59.25,
+    "left": 203.25,
+    "text": "bold start",
+    "top": 127.5,
+    "visible": false,
+    "width": 108.0
+  },
+  "Notes!E5": {
+    "author": "William",
+    "height": 59.25,
+    "left": 251.25,
+    "text": "two\nlines",
+    "top": 52.5,
+    "visible": true,
+    "width": 108.0
+  }
+}

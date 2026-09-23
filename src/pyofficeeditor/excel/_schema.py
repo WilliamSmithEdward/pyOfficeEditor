@@ -50,6 +50,8 @@ WORKSHEET_CHILD_ORDER: tuple[str, ...] = (
     "ignoredErrors",
     "smartTags",
     "drawing",
+    "legacyDrawing",
+    "legacyDrawingHF",
     "drawingHF",
     "picture",
     "oleObjects",
