@@ -820,7 +820,7 @@ def resolve(
     if isinstance(criterion, DynamicFilter):
         if criterion.kind in AVERAGES:
             numbers = _numbers(cell for cell in cells if not cell.unknown)
-            mean = sum(numbers) / len(numbers) if numbers else None
+            mean = _mean(numbers)
             return DynamicFilter(criterion.kind, mean)
         if criterion.kind in RELATIVE_PERIODS:
             low, high = period_bounds(criterion.kind, today)
@@ -840,6 +840,18 @@ def is_blank(cell: FilterCell) -> bool:
 
 def _numbers(cells: Iterable[FilterCell]) -> list[float]:
     return [cell.value for cell in cells if isinstance(cell.value, float)]
+
+
+def _mean(numbers: Sequence[float]) -> float | None:
+    """The average of a column, added in order. Python's ``sum`` compensates
+    for rounding from 3.12 on, so a mean taken with it, and the rows compared
+    against that mean, would depend on the interpreter."""
+    if not numbers:
+        return None
+    total = 0.0
+    for number in numbers:
+        total += number
+    return total / len(numbers)
 
 
 def _shown(cell: FilterCell) -> str:
@@ -955,7 +967,7 @@ def _dynamic(
             return [None] * len(cells)
         else:
             numbers = _numbers(cells)
-            mean = sum(numbers) / len(numbers) if numbers else None
+            mean = _mean(numbers)
         verdicts: list[Verdict] = []
         for cell in cells:
             value = cell.value

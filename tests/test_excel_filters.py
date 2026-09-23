@@ -736,3 +736,11 @@ class TestTheEvaluatorDirectly:
     def test_an_ignored_criterion_keeps_everything(self) -> None:
         ignored = OpaqueCriterion("<filters/>", ignored=True)
         assert keeps(ignored, [FilterCell("a", "a")], today=TODAY) == [True]
+
+    def test_an_average_adds_in_order_on_every_python(self) -> None:
+        """1e16 + 1 rounds back to 1e16, so the mean is 0.0625 and 0.25 is
+        above it. Python's ``sum`` compensates from 3.12 on and makes the
+        mean 0.3125, which would hide that row on some interpreters only."""
+        values = [1e16, 1.0, -1e16, 0.25]
+        cells = [FilterCell(value, str(value)) for value in values]
+        assert keeps(DynamicFilter("aboveAverage", 0.0), cells, today=TODAY) == [True, True, False, True]
