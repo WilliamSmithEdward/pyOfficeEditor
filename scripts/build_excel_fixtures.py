@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 FIXTURES = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "excel"
@@ -197,7 +198,7 @@ def build(session: object, source: str, target: Path, label: str, *, force: bool
         raise SystemExit(f"{label}: Excel refused the build ({result.outcome}): {result!r}")
     if not target.is_file():
         raise SystemExit(f"{label}: Excel reported success but {target} is not there.")
-    print(f"  wrote {target.relative_to(FIXTURES.parent.parent.parent)} ({target.stat().st_size} bytes)")
+    print(f"  wrote {target.name} ({target.stat().st_size} bytes)")
 
 
 
@@ -257,7 +258,10 @@ Public Function Build(ByVal Target As String) As String
     ' A comment, whose cell is in the comments part and again in VML.
     ws.Range("C3").AddComment "note here"
 
-    Build = "ok"
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = wb.FullName
 End Function
 """
 
@@ -321,7 +325,10 @@ Public Function Build(ByVal Target As String) As String
     other.Name = "Plain"
     other.Protect DrawingObjects:=False, Contents:=True, Scenarios:=False, AllowFormattingCells:=True, AllowSorting:=True
 
-    Build = "ok"
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = wb.FullName
 End Function
 """
 
@@ -364,7 +371,10 @@ Public Function Build(ByVal Target As String) As String
     ws.Outline.SummaryRow = 0
     ws.Outline.SummaryColumn = 0
 
-    Build = "ok"
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = wb.FullName
 End Function
 """
 
@@ -393,7 +403,10 @@ Public Function Build(ByVal Target As String) As String
         On Error GoTo 0
     Next i
 
-    Build = "ok"
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = wb.FullName
 End Function
 """
 
@@ -548,17 +561,149 @@ Public Function Build(ByVal Target As String) As String
 End Function
 """
 
+#: One of every autofilter criterion, each on its own sheet.
+#:
+#: Each kind is a different child element rather than a variation on one,
+#: so a model built from the two kinds a typical file carries would be
+#: wrong about the other four. ``links.xlsx`` has a value list and one
+#: comparison; this adds the rest.
+#:
+#: One kind per sheet, because stacking them fails: after three criteria
+#: almost no rows are left showing and Excel refuses a top-ten call that
+#: has nothing to rank. That is the probe's problem rather than a limit
+#: worth recording, and separate sheets avoid it.
+#:
+#: What each sheet is for is the row count it hides as much as the markup.
+#: Excel stores a filter twice, the criteria and a ``hidden`` flag on each
+#: row, and does not recompute the first when the workbook opens.
+_BUILD_FILTERS = r"""
+Private Function Safe(ByVal f As Object, ByVal which As Long) As String
+    On Error Resume Next
+    If which = 1 Then Safe = CStr(f.Criteria1)
+    If which = 2 Then Safe = CStr(f.Criteria2)
+    If which = 3 Then Safe = CStr(f.Operator)
+    If Err.Number <> 0 Then Safe = "n/a"
+    Err.Clear
+End Function
+
+Private Sub Fill(ByVal ws As Worksheet)
+    Dim i As Long
+    ws.Range("A1").Value = "Name"
+    ws.Range("B1").Value = "Units"
+    ws.Range("C1").Value = "When"
+    For i = 2 To 21
+        ws.Cells(i, 1).Value = "r" & i
+        ws.Cells(i, 2).Value = (i * 7) Mod 50
+        ws.Cells(i, 3).Value = DateSerial(2026, ((i - 2) Mod 12) + 1, 5)
+    Next i
+    ' One blank, so a blanks filter has something to keep.
+    ws.Range("A15").ClearContents
+End Sub
+
+Private Function Report(ByVal ws As Worksheet) As String
+    Dim i As Long
+    Dim f As Object
+    Dim hidden As Long
+    Dim out As String
+
+    out = ws.Name & ";" & CStr(ws.AutoFilterMode)
+    If ws.AutoFilterMode Then
+        For i = 1 To ws.AutoFilter.Filters.Count
+            Set f = ws.AutoFilter.Filters(i)
+            If f.On Then
+                out = out & ";" & CStr(i) & ":" & Safe(f, 1) & _
+                      ":" & Safe(f, 2) & ":" & Safe(f, 3)
+            End If
+        Next i
+    End If
+    For i = 2 To 21
+        If ws.Rows(i).Hidden Then hidden = hidden + 1
+    Next i
+    Report = out & ";hidden=" & CStr(hidden)
+End Function
+
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim out As String
+    Dim names As Variant
+    Dim i As Long
+
+    Set wb = ActiveWorkbook
+    names = Array("Values", "Compare", "Between", "TopTen", "Blanks", "Dynamic", _
+                  "Numbers", "Dates")
+
+    For i = LBound(names) To UBound(names)
+        If wb.Worksheets.Count <= i Then wb.Worksheets.Add After:=wb.Worksheets(wb.Worksheets.Count)
+        Set ws = wb.Worksheets(i + 1)
+        ws.Name = names(i)
+        Fill ws
+    Next i
+
+    ' A value list.
+    wb.Worksheets("Values").Range("A1:C21").AutoFilter _
+        Field:=1, Criteria1:=Array("r2", "r3", "r4"), Operator:=7
+
+    ' One comparison.
+    wb.Worksheets("Compare").Range("A1:C21").AutoFilter Field:=2, Criteria1:=">=10"
+
+    ' Two comparisons joined by And.
+    wb.Worksheets("Between").Range("A1:C21").AutoFilter _
+        Field:=2, Criteria1:=">=5", Operator:=1, Criteria2:="<=40"
+
+    ' Top ten items, on a sheet nothing else has narrowed.
+    wb.Worksheets("TopTen").Range("A1:C21").AutoFilter _
+        Field:=2, Criteria1:="3", Operator:=3
+
+    ' Blanks, which is its own spelling rather than a value.
+    wb.Worksheets("Blanks").Range("A1:C21").AutoFilter Field:=1, Criteria1:="="
+
+    ' Above average, which stores the average Excel worked out.
+    wb.Worksheets("Dynamic").Range("A1:C21").AutoFilter Field:=2, Operator:=11, Criteria1:=33
+
+    ' A value list over numbers, which writes the plain number as text.
+    wb.Worksheets("Numbers").Range("A1:C21").AutoFilter _
+        Field:=2, Criteria1:=Array("14", "21", "28"), Operator:=7
+
+    ' And over dates, which through the object model keeps the text it was
+    ' given rather than writing a dateGroupItem.
+    wb.Worksheets("Dates").Range("A1:C21").AutoFilter _
+        Field:=3, Criteria1:=Array("1/5/2026", "3/5/2026"), Operator:=7
+
+    For i = 1 To wb.Worksheets.Count
+        out = out & Report(wb.Worksheets(i)) & "|"
+    Next i
+
+    Application.DisplayAlerts = False
+    wb.SaveAs Target, 51
+    Application.DisplayAlerts = True
+
+    Build = out
+End Function
+"""
+
 #: Which fields of the reported line mean what.
 _CONTROL_FIELDS = ("type", "macro", "linked_cell", "list_range", "value")
 
+#: What a measured fixture's reply turns into: an entry per thing measured.
+Answers = dict[str, dict[str, object]]
 
-def build_answers(session: object, source: str, target: Path, label: str, *, force: bool) -> None:
+
+def build_answers(
+    session: object,
+    source: str,
+    target: Path,
+    label: str,
+    *,
+    force: bool,
+    parse: Callable[[str], Answers],
+) -> None:
     """Author a fixture and record what Excel's object model said about it.
 
     The measurements are the point of this one, so they are written beside
     the workbook instead of being read once and remembered. A reader that
     disagrees with them is wrong about Excel, which is the only authority
-    that settles it.
+    that settles it. ``parse`` reads the fixture's own reply.
     """
     from pyvbaharness import ExcelSession
 
@@ -578,8 +723,17 @@ def build_answers(session: object, source: str, target: Path, label: str, *, for
     if not target.is_file():
         raise SystemExit(f"{label}: Excel reported success but {target} is not there.")
 
-    answers: dict[str, dict[str, object]] = {}
-    for line in str(result.value or "").splitlines():
+    answers = parse(str(result.value or ""))
+    answers_path.write_text(
+        json.dumps(answers, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    print(f"  wrote {target.name} ({target.stat().st_size} bytes) and {answers_path.name}")
+
+
+def control_answers(reply: str) -> Answers:
+    """One line per control: its name, then the fields of ``_CONTROL_FIELDS``."""
+    answers: Answers = {}
+    for line in reply.splitlines():
         if not line.strip():
             continue
         parts = line.split("|")
@@ -592,11 +746,35 @@ def build_answers(session: object, source: str, target: Path, label: str, *, for
             else:
                 entry[key] = raw
         answers[name] = entry
+    return answers
 
-    answers_path.write_text(
-        json.dumps(answers, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    print(f"  wrote {target.name} ({target.stat().st_size} bytes) and {answers_path.name}")
+
+def filter_answers(reply: str) -> Answers:
+    """One entry per sheet: the name, whether the autofilter is on, each
+    live filter's criteria and operator, and how many rows Excel hid. The
+    last is the measurement that matters, because Excel does not recompute
+    a filter when the workbook opens."""
+    answers: Answers = {}
+    for row in reply.split("|"):
+        if not row.strip():
+            continue
+        parts = row.split(";")
+        name, mode = parts[0], parts[1] == "True"
+        hidden = 0
+        filters: dict[str, dict[str, str]] = {}
+        for piece in parts[2:]:
+            if piece.startswith("hidden="):
+                hidden = int(piece.partition("=")[2] or 0)
+                continue
+            index, _, rest = piece.partition(":")
+            first, second, operator = [*rest.split(":"), "", "", ""][:3]
+            filters[index] = {
+                "criteria1": first,
+                "criteria2": second,
+                "operator": operator,
+            }
+        answers[name] = {"on": mode, "hidden": hidden, "filters": filters}
+    return answers
 
 
 def main() -> int:
@@ -624,13 +802,15 @@ def main() -> int:
         ("links.xlsx", _BUILD_LINKS),
         ("geometry.xlsx", _BUILD_GEOMETRY),
     ]
-    #: Fixtures whose measurements are recorded beside them.
+    #: Fixtures whose measurements are recorded beside them, each with what
+    #: reads its reply back.
     measured = [
-        ("controls.xlsm", _BUILD_CONTROLS),
+        ("controls.xlsm", _BUILD_CONTROLS, control_answers),
+        ("filters.xlsx", _BUILD_FILTERS, filter_answers),
     ]
 
-    everything = [name for name, _ in wanted + measured]
-    everything += [f"{Path(name).stem}_answers.json" for name, _ in measured]
+    everything = [name for name, _ in wanted] + [name for name, _, _ in measured]
+    everything += [f"{Path(name).stem}_answers.json" for name, _, _ in measured]
     if not force and all((FIXTURES / name).exists() for name in everything):
         print("every fixture is already there; nothing to do (pass --force to rebuild)")
         return 0
@@ -641,9 +821,9 @@ def main() -> int:
         for name, source in wanted:
             excel.new_workbook()
             build(excel, source, FIXTURES / name, name, force=force)
-        for name, source in measured:
+        for name, source, parse in measured:
             excel.new_workbook()
-            build_answers(excel, source, FIXTURES / name, name, force=force)
+            build_answers(excel, source, FIXTURES / name, name, force=force, parse=parse)
     print("done")
     return 0
 

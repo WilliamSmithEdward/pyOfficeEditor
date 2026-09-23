@@ -57,6 +57,15 @@ LIVE_GEOMETRY_XLSX = EXCEL_FIXTURES / "geometry.xlsx"
 #: else, so it can prove nothing about a linked cell or a value.
 LIVE_CONTROLS_XLSM = EXCEL_FIXTURES / "controls.xlsm"
 LIVE_CONTROLS_ANSWERS = EXCEL_FIXTURES / "controls_answers.json"
+#: Authored by Excel: one autofilter criterion per sheet, with what Excel
+#: answered for each and how many rows it hid. The hidden counts are the
+#: point: Excel stores a filter twice and does not recompute it on open,
+#: so they are what an evaluator here has to reproduce.
+LIVE_FILTERS_XLSX = EXCEL_FIXTURES / "filters.xlsx"
+LIVE_FILTERS_ANSWERS = EXCEL_FIXTURES / "filters_answers.json"
+#: Measured by Excel: the text it shows for values under some five hundred
+#: format codes in both date systems, and what each builtin format id means.
+NUMBER_FORMATS_JSON = EXCEL_FIXTURES / "number_formats.json"
 
 
 @pytest.fixture(scope="session")
@@ -219,3 +228,27 @@ def live_controls_answers() -> Path:
     if not LIVE_CONTROLS_ANSWERS.is_file():
         pytest.skip("run scripts/build_excel_fixtures.py to measure the controls with real Excel")
     return LIVE_CONTROLS_ANSWERS
+
+
+@pytest.fixture(scope="session")
+def live_filters_xlsx() -> Path:
+    """One autofilter criterion per sheet, authored by Excel."""
+    if not LIVE_FILTERS_XLSX.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to author filters.xlsx with real Excel")
+    return LIVE_FILTERS_XLSX
+
+
+@pytest.fixture(scope="session")
+def live_filters_answers() -> Path:
+    """What Excel said about those filters, and how many rows it hid."""
+    if not LIVE_FILTERS_ANSWERS.is_file():
+        pytest.skip("run scripts/build_excel_fixtures.py to measure the filters with real Excel")
+    return LIVE_FILTERS_ANSWERS
+
+
+@pytest.fixture(scope="session")
+def number_formats_json() -> Path:
+    """What Excel showed for values under number formats, measured."""
+    if not NUMBER_FORMATS_JSON.is_file():
+        pytest.skip("run scripts/measure_number_formats.py to measure the formats with real Excel")
+    return NUMBER_FORMATS_JSON

@@ -1,0 +1,90 @@
+{
+  "Between": {
+    "filters": {
+      "2": {
+        "criteria1": ">=5",
+        "criteria2": "<=40",
+        "operator": "1"
+      }
+    },
+    "hidden": 5,
+    "on": true
+  },
+  "Blanks": {
+    "filters": {
+      "1": {
+        "criteria1": "=",
+        "criteria2": "n/a",
+        "operator": "0"
+      }
+    },
+    "hidden": 19,
+    "on": true
+  },
+  "Compare": {
+    "filters": {
+      "2": {
+        "criteria1": ">=10",
+        "criteria2": "n/a",
+        "operator": "0"
+      }
+    },
+    "hidden": 2,
+    "on": true
+  },
+  "Dates": {
+    "filters": {
+      "3": {
+        "criteria1": "=1/5/2026",
+        "criteria2": "=3/5/2026",
+        "operator": "2"
+      }
+    },
+    "hidden": 16,
+    "on": true
+  },
+  "Dynamic": {
+    "filters": {
+      "2": {
+        "criteria1": "33",
+        "criteria2": "n/a",
+        "operator": "11"
+      }
+    },
+    "hidden": 11,
+    "on": true
+  },
+  "Numbers": {
+    "filters": {
+      "2": {
+        "criteria1": "n/a",
+        "criteria2": "n/a",
+        "operator": "7"
+      }
+    },
+    "hidden": 17,
+    "on": true
+  },
+  "TopTen": {
+    "filters": {
+      "2": {
+        "criteria1": ">=47",
+        "criteria2": "n/a",
+        "operator": "3"
+      }
+    },
+    "hidden": 17,
+    "on": true
+  },
+  "Values": {
+    "filters": {
+      "1": {
+        "criteria1": "n/a",
+        "criteria2": "n/a",
+        "operator": "7"
+      }
+    },
+    "hidden": 17,
+    "on": true
+  }
+}

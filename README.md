@@ -16,7 +16,10 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > you set them up. Hyperlinks, outline grouping, and the shapes on a sheet:
 > AutoShapes, text boxes, lines and all nine Forms controls read, added,
 > removed and pointed at a macro, with a control's linked cell, list range
-> and value.
+> and value. Autofilters, on a sheet or a table, read and write every
+> criterion but colour and icon, and hide the rows they exclude, because
+> Excel does not recompute a filter when the workbook opens. A cell's
+> text is what Excel shows for it, number format and all.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Nothing about a sheet makes that refuse any more: validation,
@@ -25,7 +28,9 @@ cell, the formula, the paragraph, the slide, the table, the query.
 
 ```python
 import datetime as dt
-from pyofficeeditor.excel import Border, Dxf, Workbook, cell_is, gradient
+from pyofficeeditor.excel import (
+    Border, Dxf, FilterColumn, Workbook, cell_is, criteria, gradient,
+)
 
 with Workbook.open("orders.xlsx") as book:
     sheet = book["Data"]
@@ -50,6 +55,8 @@ with Workbook.open("orders.xlsx") as book:
     table = sheet.add_table("Sales", "A1:F20", totals_row=True)
     table.column_names                           # from the header row
     table.data_range                             # excludes header and totals
+    sheet.set_table_filter("Sales", [FilterColumn(1, criteria(">100"))])
+                                                 # and hides the rows it drops
 
     sheet.set_row_height(1, 24)                  # points, exact
     sheet.set_column_hidden(4, True)
@@ -129,6 +136,12 @@ data descriptors.
 |   _values     the six cell encodings, and serial dates |
 |   _styles     number formats, which is how a date is   |
 |               told from a number                       |
+|   _numfmt     what a number format shows, rounding and |
+|               Excel's fictional 1900 leap day included |
+|   _collate    Windows word sort, the order and the     |
+|               equality a filter compares text by       |
+|   _filters    autofilters, and which rows they hide:   |
+|               Excel does not recompute one on open     |
 |   _formats    fonts, fills, borders, alignment, as     |
 |               immutable values                         |
 |   _tables     ListObjects: their own parts and wiring  |

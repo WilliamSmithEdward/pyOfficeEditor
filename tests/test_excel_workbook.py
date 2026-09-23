@@ -346,6 +346,23 @@ class TestStructure:
             ]
             assert columns == sorted(columns), f"row {row.get('r')} out of order: {columns}"
 
+    def test_a_row_past_the_last_is_appended_even_after_the_last_goes(self, book: Workbook) -> None:
+        """A row past the highest is appended rather than placed, which is
+        what keeps writing a sheet top to bottom linear. Emptying the last
+        row brings the highest back down, so the next row past it still
+        lands in order."""
+        sheet = book["Data"]
+        sheet["A30"].value = "thirty"
+        sheet["A25"].value = "twenty-five"
+        sheet["A30"].clear()
+        sheet["A28"].value = "twenty-eight"
+        sheet["A40"].value = "forty"
+        data = sheet.document.root.require("sheetData")
+        numbers = [int(r.get("r") or 0) for r in data.children_named("row")]
+        assert numbers == sorted(numbers)
+        assert numbers[-3:] == [25, 28, 40]
+        assert sheet.max_row == 40
+
     def test_iterating_rows(self, book: Workbook) -> None:
         rows = list(book["Data"].rows())
         assert len(rows) == 9, "nine rows carry cells in the fixture"

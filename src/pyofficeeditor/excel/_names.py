@@ -50,9 +50,13 @@ PRINT_AREA = "_xlnm.Print_Area"
 #: And the rows and columns it repeats on every page.
 PRINT_TITLES = "_xlnm.Print_Titles"
 
+#: The range a sheet's autofilter covers, which Excel defines, hidden,
+#: whenever a filter goes on and keeps after it comes off.
+FILTER_DATABASE = "_xlnm._FilterDatabase"
+
 #: Every built-in name this library writes. Excel has more, and one it does
 #: not know is refused rather than written under the reserved prefix.
-BUILTIN_NAMES = frozenset({PRINT_AREA, PRINT_TITLES})
+BUILTIN_NAMES = frozenset({PRINT_AREA, PRINT_TITLES, FILTER_DATABASE})
 
 
 def check_name(
@@ -180,6 +184,7 @@ def write_defined_name(entry: DefinedName, sheet_order: list[str]) -> Element:
 __all__ = [
     "BUILTIN_NAMES",
     "BUILTIN_NAME_PREFIX",
+    "FILTER_DATABASE",
     "MAX_NAME_LENGTH",
     "PRINT_AREA",
     "PRINT_TITLES",

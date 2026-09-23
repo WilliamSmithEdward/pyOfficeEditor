@@ -106,6 +106,14 @@ SHEET_PR_CHILD_ORDER: tuple[str, ...] = (
     "pageSetUpPr",
 )
 
+#: ``CT_AutoFilter``: every filter column before the sort state and the
+#: extensions. Excel refuses a workbook with a column after the sort state.
+AUTO_FILTER_CHILD_ORDER: tuple[str, ...] = (
+    "filterColumn",
+    "sortState",
+    "extLst",
+)
+
 
 def insert_in_schema_order(parent: Element, element: Element, order: tuple[str, ...]) -> None:
     """Put ``element`` where ``order`` says it belongs among its siblings.
@@ -141,6 +149,7 @@ def ensure_child(parent: Element, name: str, order: tuple[str, ...]) -> Element:
 
 
 __all__ = [
+    "AUTO_FILTER_CHILD_ORDER",
     "SHEET_PR_CHILD_ORDER",
     "STYLESHEET_CHILD_ORDER",
     "WORKBOOK_CHILD_ORDER",

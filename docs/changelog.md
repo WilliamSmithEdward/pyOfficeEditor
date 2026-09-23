@@ -22,6 +22,56 @@ anything trailing the file is swept into the oldest release's notes. -->
 
 ### Added
 
+- **Autofilters, on a sheet and on a table.** Every criterion Excel's
+  object model sets is read and written, colour and icon aside: value
+  lists and blanks, date groups from a year down to a second, one or two
+  comparisons with wildcards, top and bottom N or N percent, above and
+  below average, and the periods measured from today, from yesterday to
+  year to date, with Q1 to Q4 and each month. `Worksheet.auto_filter`,
+  `set_auto_filter`, `apply_auto_filter` and `clear_auto_filter` work on
+  the sheet's filter; `Table.auto_filter`, `set_table_filter`,
+  `apply_table_filter` and `clear_table_filter` on a table's.
+  `criteria(">=10")` builds a criterion from Excel's own `Criteria1`
+  spelling and stores it the way Excel does.
+
+  Setting one hides the rows it excludes, because Excel does not
+  recompute a filter when the workbook opens. The criteria live in
+  `<autoFilter>` and which rows are out of view lives on each row, and
+  Excel trusts the second: a file carrying criteria with every `hidden`
+  flag stripped opens with the dropdowns lit and every row showing.
+
+  So which rows a criterion keeps is worked out here, and held to 358
+  cases in `filter_semantics.json`, each a criterion Excel applied to a
+  column built to trip it. A value list matches the text a cell shows,
+  its number format applied, and compares the way Windows sorts words:
+  case does not count, and `ae` equals `æ`. `<` and `>` compare numbers
+  with a number and text with text, and a blank or an error never passes
+  either. `<>5` hides the number 5 and keeps the text "5". Once a list
+  has a date group, a date is matched by the groups alone, even when its
+  text is in the list.
+
+  What Excel refuses to open, or opens and ignores, is refused when the
+  criterion is built: no comparisons or three, an empty value, a top ten
+  of 0 or 501, an unknown period. So is a sheet filter overlapping a
+  table, and a top ten or an average over a column holding an error,
+  which Excel's object model refuses as well.
+
+  A filter by colour, by icon or in markup not modelled here reads as an
+  `OpaqueCriterion` and is written back unchanged. `FilterOutcome` says
+  which rows were hidden and which shown, and which were left as they
+  were: those only such a criterion could decide, and those decided by
+  a formula whose cached result an edit has made stale.
+
+- **What a cell shows.** `Cell.text` is the value under its number
+  format, Excel's `Range.Text` in a column wide enough to hold it, and
+  `format_value(value, code)` does the same for any value and format
+  code. It is held to 27,898 texts Excel rendered for 503 format codes,
+  covering sections and conditions, fractions, exponents, elapsed time
+  and both date systems, and to all 164 built-in format ids and the 782
+  cells of the committed fixtures. Under General, `=0.1+0.2` shows
+  `0.3`, where Python's `str` gives `0.30000000000000004`; a value
+  filter needs the former.
+
 - **What a form control is wired to.** `Shape.control` carries the linked
   cell, the list range, the current value and which kind of control it
   is, read from the part the sheet points at. `Shape` and `ShapeKind`
@@ -57,13 +107,34 @@ anything trailing the file is swept into the oldest release's notes. -->
 
 ### Fixed
 
+- **Clearing the last cell in a row dropped the row's own settings.** The
+  row element went with the cell, and with it the row's hidden flag,
+  height, style and outline level, so a row a filter had hidden came back
+  into view. The element stays now while it says anything.
+
+- **Inserting or deleting columns left a filter's criteria on the wrong
+  columns.** A criterion names its column by offset from the filter's
+  left edge, and the edge moved while the offsets stayed. Each is
+  renumbered now, in a sheet's filter, a table's and a custom view's, and
+  one whose column is deleted goes with it. A sheet's or a table's filter
+  is then applied again, as Excel does, so the rows only that criterion
+  hid come back.
+
+- **A column inserted inside a table made Excel refuse the workbook.** The
+  table grew while its list of columns did not. It now takes the new
+  column as Excel does, named `ColumnN` with the smallest `N` free, and
+  writes the name into the header cell. A blank header is named the same
+  way: `add_table` over `["", "Amount", ""]` gives `Column1` and
+  `Column2`, where it gave `Column1` and `Column3`.
+
 - **Text holding a control character made Excel refuse the workbook.**
   XML cannot carry most characters below U+0020, and they were written
   as they were: a cell set to `"a\x01b"` gave a file Excel would not
   open. SpreadsheetML spells such a character `_xHHHH_`, and text is now
   written the way Excel writes it, measured for every one of them, in
   cells, formulas, headers and footers, validations, hyperlinks, tables,
-  sheet names, defined names, conditional formats and number formats. A literal `_x0041_` is written with its
+  sheet names, defined names, filters, conditional formats and number
+  formats. A literal `_x0041_` is written with its
   underscore escaped, as Excel writes it, so it reads back as itself.
 
 - **Text Excel had escaped read back escaped.** A carriage return Excel
@@ -95,6 +166,11 @@ anything trailing the file is swept into the oldest release's notes. -->
   cell Excel shows as `two` over `lines` read as `"two\r\nlines"`. Line
   ends in text are read as XML reads them now.
 
+- **A cell formatted with `e` read as a number.** `e` is the era year,
+  which Excel in en-US shows as the year: 0 under it shows 1900. The
+  cell layer now reads such a cell as a date, and a test holds its idea
+  of which codes are dates to the renderer's across every measured code.
+
 ### Verified
 
 Four rules cost a refused workbook each to find, since Excel declines to
@@ -120,7 +196,23 @@ control, wired up, with `controls_answers.json` recording what Excel's
 object model answered for each. The committed `shapes.xlsm` carries a
 Button and nothing else, so it could prove none of this.
 
+`filters.xlsx` is another, one criterion kind per sheet, with
+`filters_answers.json` recording how many rows Excel hid on each.
+`filter_semantics.json` and `number_formats.json` are new measured
+corpora, rebuilt by `scripts/measure_filters.py` and
+`scripts/measure_number_formats.py` on a machine with Excel; every case in
+them is a test.
+
 ### Internal
+
+- Four fixture recipes never saved. `refused`, `settings`, `links` and
+  `geometry` ended without a `SaveAs`, so rebuilding any of them stopped
+  at "Excel reported success but the file is not there". They save now;
+  run into a scratch folder, all four write a workbook that opens. The
+  committed files were left alone.
+
+- The two builders of measured fixtures were one function written
+  twice. There is one now, handed the parser for each fixture's reply.
 
 - Text with a line break between words is written without
   `xml:space="preserve"`, as Excel writes it; only white space at either
@@ -130,6 +222,10 @@ Button and nothing else, so it could prove none of this.
 - An attribute value set with a tab, a line feed or a carriage return is
   written as a character reference, the one spelling an XML reader keeps,
   and one read as it was written reads as the space XML makes it.
+
+- Writing a sheet top to bottom was quadratic: each new row searched
+  every row for its place. A row past the last is appended now, and
+  20,000 rows of three cells take 0.7 seconds where they took 3.6.
 
 - The kind of control being added is checked before any of its four
   parts is written. The VML is what knows an unknown kind is wrong, and
@@ -157,6 +253,16 @@ An option button group stores its linked cell once, on the button marked
 cell for every member; `linked_cell` reports what the part says, which is
 empty for all but the first, because what makes a group is not measured
 here.
+
+The text a cell shows is Excel's in en-US, the locale every corpus here
+was measured in. A value list stores the text of the machine that set
+it, so a filter set in another locale names values as that locale showed
+them. Applied here, it decides its rows by the en-US text, and a value it
+cannot find there hides the rows holding it.
+
+A table without a header row cannot take a filter here. Excel turns the
+header row back on to filter one, which inserts a row, and this library
+does not.
 
 ## [0.2.2] - 2026-09-20
 

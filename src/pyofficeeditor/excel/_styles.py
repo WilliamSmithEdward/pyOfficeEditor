@@ -41,6 +41,7 @@ from pyofficeeditor.excel._formats import (
     Font,
     Protection,
 )
+from pyofficeeditor.excel._numfmt import BUILTIN_DISPLAY_CODES
 from pyofficeeditor.excel._schema import STYLESHEET_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._xstring import decode, encode_attribute
 
@@ -110,9 +111,11 @@ _ELAPSED_BODY = re.compile(r"^(h+|m+|s+)$", re.IGNORECASE)
 def format_tokens(code: str) -> set[str]:
     """The date and time letters a format code actually uses as tokens.
 
-    The letters that matter are ``y m d h s``, but only outside the parts
-    of a code that are literal text. A code carries literals three ways,
-    and all three have to be skipped or a currency symbol becomes a month:
+    The letters that matter are ``y m d h s``, and ``e``, the era year,
+    which Excel in en-US shows as the year and so reports as ``y``. They
+    count only outside ``General``, an exponent's ``E+`` and the parts of
+    a code that are literal text. A code carries literals three ways, and
+    all three have to be skipped or a currency symbol becomes a month:
 
     - ``"..."`` a quoted run, so ``#,##0 "days"`` is not a date
     - ``\\x`` an escaped character, so ``yyyy\\-mm`` has literal hyphens
@@ -143,8 +146,16 @@ def format_tokens(code: str) -> set[str]:
                 found.add(body[0].lower())
             index = close + 1
             continue
+        if section[index : index + 7].lower() == "general":
+            index += 7
+            continue
         lowered = character.lower()
-        if lowered in _DATE_TOKENS:
+        if lowered == "e":
+            if section[index + 1 : index + 2] in ("+", "-"):
+                index += 2
+                continue
+            found.add("y")
+        elif lowered in _DATE_TOKENS:
             found.add(lowered)
         index += 1
     return found
@@ -296,6 +307,20 @@ class Styles:
         if custom is not None:
             return custom
         return BUILTIN_NUMBER_FORMATS.get(format_id, "")
+
+    def display_format(self, style_index: int | None) -> str:
+        """The format code Excel displays a cell with.
+
+        The workbook's own code when it has one for the id; otherwise what
+        the builtin id means to Excel, including the locale-dependent ids
+        :meth:`number_format` leaves empty. Those are read as en-US Excel
+        reads them, since the file does not say which locale wrote it.
+        """
+        format_id = self.number_format_id(style_index)
+        custom = self.custom_formats.get(format_id)
+        if custom is not None:
+            return custom
+        return BUILTIN_DISPLAY_CODES.get(format_id, "General")
 
     def is_date(self, style_index: int | None) -> bool:
         """Whether a cell with this style holds a date or a time.

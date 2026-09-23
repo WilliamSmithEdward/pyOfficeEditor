@@ -32,7 +32,7 @@ fixtures to refresh.
 
 `scripts/build_excel_fixtures.py` drives real Excel through
 [pyvbaharness](https://github.com/WilliamSmithEdward/pyVBAharness) to author
-eight more. These are committed like the rest: the script exists so a
+nine more. These are committed like the rest: the script exists so a
 fixture's *content* can be changed deliberately and reproduced, not so the
 suite rebuilds them. Run it on a Windows machine with Excel; tests that need
 a fixture skip when it is absent.
@@ -46,6 +46,7 @@ a fixture skip when it is absent.
 | `settings.xlsx` | Sheet protection, tab colour, view settings and the three visibility states. |
 | `links.xlsx` | Hyperlinks of every kind, an autofilter with two sorts of criteria, and outline grouping on rows and columns. |
 | `geometry.xlsx` | One shape of each `MsoAutoShapeType`, so the preset geometry table is held to what Excel wrote rather than to a transcription. |
+| `filters.xlsx` | One autofilter criterion per sheet, with `filters_answers.json` recording what Excel answered and how many rows it hid. The hidden counts are the measurement: Excel stores a filter twice and does not recompute it on open. |
 | `controls.xlsm` | One of every Forms control, wired to cells and ranges, with `controls_answers.json` beside it recording what Excel's object model answered for each. |
 
 `shapes.xlsm` is committed but has no recipe here: it predates the script.
@@ -57,6 +58,23 @@ A measured fixture is worth more than its workbook. `controls_answers.json`
 is what settles a disagreement, because the reader is held to what Excel
 said rather than to a reading of the markup: the current value alone is
 spelled three ways, and the off state is -4146 rather than 0.
+
+## Measured by script
+
+Two corpora record what Excel did rather than what it wrote, and each case
+in them is a test. Both came from Excel 16.0 build 20326 in en-US. The
+first script runs beside other harness sessions, since it only runs
+hidden macros; the second waits for the lock like the fixture builder.
+
+| File | Built by | What it records |
+|------|----------|-----------------|
+| `number_formats.json` | `scripts/measure_number_formats.py` | The text Excel showed for 503 format codes, each under 21 to 73 values, 27,898 texts in all across both date systems, and the nine codes it refused; the code of all 164 built-in ids with its text for five sample values; and the text of 782 cells of the committed fixtures. `test_excel_numfmt.py` renders every one. |
+| `filter_semantics.json` | `scripts/measure_filters.py` | 358 criteria, each applied by Excel to one of 31 columns built to trip it, with the rows it hid and the markup it stored. 261 went through the object model; 93 were written straight into a package and applied from the file, for markup the object model will not write; 4 are special cases, such as rows hidden by hand. `test_excel_filter_semantics.py` evaluates every one. |
+
+Rebuilding either of them replaces it, since a corpus has no content to
+keep: what it holds is whatever Excel answers. The dates in
+`filter_semantics.json` are relative to the day it was built, which it
+records, and its tests measure "today" from that day.
 
 A fixture that already exists is left alone, because Excel stamps every part
 with a fresh revision GUID and so never produces the same bytes twice.

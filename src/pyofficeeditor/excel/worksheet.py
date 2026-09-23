@@ -24,6 +24,7 @@ address that reads nicely; everything it does, the worksheet exposes too.
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING, Literal
@@ -37,6 +38,18 @@ from pyofficeeditor.excel._dimensions import (
     isolate_column,
 )
 from pyofficeeditor.excel._dxf import Dxf
+from pyofficeeditor.excel._filters import (
+    AutoFilter,
+    FilterCell,
+    FilterColumn,
+    FilterOutcome,
+    decide,
+    filter_column_element,
+    keeps,
+    read_auto_filter,
+    read_filter_column,
+    resolve,
+)
 from pyofficeeditor.excel._formats import (
     Alignment,
     Border,
@@ -47,7 +60,9 @@ from pyofficeeditor.excel._formats import (
 )
 from pyofficeeditor.excel._formulas import quote_sheet_name, shared_formula_for
 from pyofficeeditor.excel._hyperlinks import RT_HYPERLINK, Hyperlink
-from pyofficeeditor.excel._names import PRINT_AREA, PRINT_TITLES, DefinedName
+from pyofficeeditor.excel._names import FILTER_DATABASE, PRINT_AREA, PRINT_TITLES, DefinedName
+from pyofficeeditor.excel._numfmt import format_value
+from pyofficeeditor.excel._numfmt import parse as parse_format
 from pyofficeeditor.excel._pagesetup import (
     HeaderFooter,
     PageMargins,
@@ -66,6 +81,7 @@ from pyofficeeditor.excel._rowcol import (
     related_parts,
 )
 from pyofficeeditor.excel._schema import (
+    AUTO_FILTER_CHILD_ORDER,
     SHEET_PR_CHILD_ORDER,
     WORKSHEET_CHILD_ORDER,
     insert_in_schema_order,
@@ -106,10 +122,16 @@ from pyofficeeditor.excel._tables import (
     Table,
     TableStyle,
     build_table_part,
+    insert_table_child,
     unique_column_names,
 )
 from pyofficeeditor.excel._validation import DataValidation
-from pyofficeeditor.excel._values import CellValue, read_value, write_value
+from pyofficeeditor.excel._values import (
+    CellValue,
+    datetime_to_serial,
+    read_value,
+    write_value,
+)
 from pyofficeeditor.excel._xstring import decode, encode_text
 from pyofficeeditor.exceptions import PackageError
 
@@ -171,15 +193,11 @@ class Worksheet:
             insert_in_schema_order(self._root, data, WORKSHEET_CHILD_ORDER)
         self._data: Element = data
 
+        #: Every ``<row>``, by number, and the highest number among them,
+        #: which is where a sheet written top to bottom adds the next.
         self._rows: dict[int, Element] = {}
-        for row in self._data.children_named("row"):
-            raw = row.get("r")
-            if raw is None:
-                continue
-            try:
-                self._rows[int(raw)] = row
-            except ValueError:
-                continue
+        self._highest_row = 0
+        self.reindex_rows()
         self._masters: dict[str, tuple[CellRef, str]] | None = None
 
     # ------------------------------------------------------------------
@@ -279,6 +297,7 @@ class Worksheet:
             styles=self._workbook.styles,
             epoch_1904=self._workbook.epoch_1904,
         )
+        self._workbook.mark_values_changed()
         self._invalidate()
 
     def get_formula(self, reference: CellRef) -> str | None:
@@ -318,6 +337,7 @@ class Worksheet:
         """
         element = self._ensure_cell(reference)
         self._drop_children(element, "f")
+        self._workbook.mark_values_changed()
 
         if formula is None:
             self._invalidate()
@@ -329,6 +349,33 @@ class Worksheet:
         node.set_text(encode_text(formula[1:] if formula.startswith("=") else formula))
         element.insert(0, node)
         self._invalidate()
+
+    def get_text(self, reference: CellRef) -> str:
+        """The text Excel shows for a cell: its value under its number format.
+
+        This is ``Range.Text`` in a column wide enough to show all of it, so
+        it depends on the cell and not on the column: General keeps its
+        eleven characters where a narrow column would cut it to fewer, and a
+        fill (``*x``), whose length is the column's, is left out. It is also
+        the text a value filter matches, once its outer spaces are trimmed.
+
+        A value the format cannot show, such as a negative date in the 1900
+        date system, is ``########``. A formula cell shows its cached result,
+        and an empty cell shows nothing.
+        """
+        element = self._find_cell(reference)
+        if element is None:
+            return ""
+        # No styles, so a number stays the number Excel formats, not a date.
+        value = read_value(
+            element,
+            shared_strings=self._workbook.shared_strings,
+            styles=None,
+            epoch_1904=self._workbook.epoch_1904,
+        )
+        styles = self._workbook.styles
+        code = "General" if styles is None else styles.display_format(self.style_index(reference))
+        return format_value(value, code, epoch_1904=self._workbook.epoch_1904)
 
     def style_index(self, reference: CellRef) -> int | None:
         """A cell's ``s`` attribute, an index into the workbook's cell
@@ -381,6 +428,7 @@ class Worksheet:
     def clear_cell(self, reference: CellRef) -> None:
         """Remove a cell, leaving the sheet as if it were never set."""
         self._remove_cell(reference)
+        self._workbook.mark_values_changed()
         self._invalidate()
 
     # ------------------------------------------------------------------
@@ -403,11 +451,13 @@ class Worksheet:
         the wrong cells, which is worse than not doing it.
         """
         insert_rows(self, at, count)
+        self._workbook.mark_values_changed()
 
     def insert_columns(self, at: int, count: int = 1) -> None:
         """Insert blank columns, pushing everything at or right of ``at``
         over.  The same shifting and the same refusal as :meth:`insert_rows`."""
         insert_columns(self, at, count)
+        self._workbook.mark_values_changed()
 
     def delete_rows(self, at: int, count: int = 1) -> None:
         """Delete rows, closing the gap behind them.
@@ -423,11 +473,35 @@ class Worksheet:
         from there.
         """
         delete_rows(self, at, count)
+        self._workbook.mark_values_changed()
 
     def delete_columns(self, at: int, count: int = 1) -> None:
         """Delete columns, closing the gap.  The same repointing and the same
-        refusals as :meth:`delete_rows`."""
+        refusals as :meth:`delete_rows`.
+
+        A filter criterion on a deleted column goes with it, and the filter
+        is applied again, as Excel does, so the rows only it hid show. That
+        holds for the sheet's filter and for each table's.
+        """
+        before = self.auto_filter
+        tables_before = {table.name: table.auto_filter for table in self.tables}
         delete_columns(self, at, count)
+        self._workbook.mark_values_changed()
+        after = self.auto_filter
+        if before is not None and after is not None and before.filtering and len(after.columns) < len(before.columns):
+            if after.filtering:
+                self.apply_auto_filter()
+            else:
+                self._set_filter_mode(False)
+                self._show_filtered_rows(RangeRef.parse(after.ref).normalized)
+        for table in self.tables:
+            earlier, now = tables_before.get(table.name), table.auto_filter
+            if earlier is None or now is None or not earlier.filtering or len(now.columns) >= len(earlier.columns):
+                continue
+            if now.filtering:
+                self.apply_table_filter(table.name)
+            else:
+                self._show_filtered_rows(self._table_filter_block(table))
 
     # ------------------------------------------------------------------
     # Column and row dimensions
@@ -685,6 +759,12 @@ class Worksheet:
                     f"{block.a1} overlaps the table {existing.name!r} at {existing.ref.a1}. "
                     f"Excel does not allow two tables to share a cell."
                 )
+        sheet_filter = self.auto_filter
+        if sheet_filter is not None and RangeRef.parse(sheet_filter.ref).normalized.intersects(block):
+            raise ValueError(
+                f"{block.a1} overlaps the sheet's autofilter at {sheet_filter.ref}; Excel refuses a "
+                "workbook where the two overlap. Take the filter off with clear_auto_filter() first."
+            )
 
         header_row = block.top
         headers = [
@@ -977,6 +1057,431 @@ class Worksheet:
 
 
 
+
+    # ------------------------------------------------------------------
+    # Autofilter
+    # ------------------------------------------------------------------
+
+    @property
+    def auto_filter(self) -> AutoFilter | None:
+        """The sheet's autofilter, or ``None`` if it has none.
+
+        A column filtered by colour, by icon or by markup this library does
+        not model reads with an :class:`OpaqueCriterion`, carried exactly as
+        found and written back unchanged.
+        """
+        element = self._root.child("autoFilter")
+        return None if element is None else read_auto_filter(element)
+
+    def set_auto_filter(
+        self,
+        reference: str | RangeRef,
+        columns: Sequence[FilterColumn] = (),
+        *,
+        apply: bool = True,
+        today: dt.date | None = None,
+    ) -> FilterOutcome:
+        """Filter a range, and hide the rows its criteria exclude.
+
+        What Excel's ``Range.AutoFilter`` does, down to what it stores: the
+        range stops at the last row holding data; a top ten or an average is
+        worked out from its column and a relative date period from
+        ``today``, the local date unless given; a column whose criterion did
+        not change keeps its markup exactly. Filtering a different range
+        takes the old filter off first and shows its rows, as Excel does.
+
+        The rows are hidden here because Excel does not re-apply a filter
+        when it opens a workbook: it trusts the hidden flags. ``apply=False``
+        records the criteria and touches no row. A filter with no criteria,
+        only the dropdown arrows, touches no row either, as in Excel.
+
+        Refused, with nothing changed: a column outside the range or given
+        twice, a range overlapping a table, and a top ten or an average over
+        a column holding an error, all of which Excel refuses too.
+        """
+        block = self._filter_block(reference)
+        entries = list(columns)
+        self._check_filter_columns(entries, block)
+        entries.sort(key=lambda entry: entry.column)
+        for table in self.tables:
+            if table.ref.intersects(block):
+                raise ValueError(
+                    f"{block.a1} overlaps the table {table.name!r} at {table.ref.a1}; Excel refuses a "
+                    "workbook where a sheet's filter and a table overlap. A table filters itself."
+                )
+        when = today or dt.date.today()
+        resolved = self._resolve_columns(block, entries, when, strict=True)
+        filters = AutoFilter(ref=block.a1, columns=tuple(resolved))
+
+        # Everything that can refuse has: from here on the sheet changes.
+        element = self._root.child("autoFilter")
+        previous = None if element is None else read_auto_filter(element)
+        if element is not None and previous is not None and previous.ref != block.a1:
+            self._take_filter_off(element, previous)
+            element, previous = None, None
+        if element is None:
+            element = Element.create("autoFilter", {"ref": block.a1})
+            insert_in_schema_order(self._root, element, WORKSHEET_CHILD_ORDER)
+        self._write_filter_columns(element, resolved)
+        self._set_filter_mode(filters.filtering)
+        self._put_builtin(FILTER_DATABASE, f"{quote_sheet_name(self._name)}!{block.absolute.a1}", hidden=True)
+
+        outcome = FilterOutcome()
+        if apply and filters.filtering:
+            outcome = self._apply_filter(filters, when)
+        elif apply and previous is not None and previous.filtering:
+            outcome = FilterOutcome(shown=self._show_filtered_rows(block))
+        self._invalidate()
+        return outcome
+
+    def apply_auto_filter(self, *, today: dt.date | None = None) -> FilterOutcome:
+        """Apply the sheet's filter again, as Excel's ``ApplyFilter`` does.
+
+        Every row of the range is decided afresh. A top ten, an average and
+        a relative date period are worked out again from the column and
+        ``today`` and stored; over a column holding an error Excel cannot
+        rank or average, so a top ten keeps every row and an average uses
+        what was stored.
+        """
+        element = self._root.child("autoFilter")
+        if element is None:
+            raise ValueError(f"{self._name!r} has no autofilter to apply.")
+        current = read_auto_filter(element)
+        block = RangeRef.parse(current.ref).normalized
+        when = today or dt.date.today()
+        refreshed = self._resolve_columns(block, current.columns, when, strict=False)
+        self._write_filter_columns(element, refreshed)
+        filters = AutoFilter(ref=current.ref, columns=tuple(refreshed))
+        self._set_filter_mode(filters.filtering)
+        outcome = self._apply_filter(filters, when) if filters.filtering else FilterOutcome()
+        self._invalidate()
+        return outcome
+
+    def clear_auto_filter(self, *, show_rows: bool = True) -> None:
+        """Take the filter off, and show the rows it was hiding.
+
+        As Excel does: every row of the range shows, rows a collapsed
+        outline was hiding included, and ``_xlnm._FilterDatabase`` stays
+        defined. ``show_rows=False`` leaves the rows as they are.
+        """
+        element = self._root.child("autoFilter")
+        if element is None:
+            return
+        previous = read_auto_filter(element)
+        if show_rows:
+            self._take_filter_off(element, previous)
+        else:
+            self._root.remove(element)
+        self._set_filter_mode(False)
+        self._invalidate()
+
+    def set_table_filter(
+        self,
+        name: str,
+        columns: Sequence[FilterColumn] = (),
+        *,
+        apply: bool = True,
+        today: dt.date | None = None,
+    ) -> FilterOutcome:
+        """Filter a table, and hide the rows its criteria exclude.
+
+        A table has a filter of its own, over its header and data rows with
+        the totals row left out, and a column counts from the table's first
+        column. Otherwise this is :meth:`set_auto_filter`: the same
+        criteria, worked out and stored the same way, the same refusals
+        before anything changes, and the same rows hidden. As in Excel it
+        turns the table's dropdowns on if they were off, sets no
+        ``filterMode`` and defines no ``_xlnm._FilterDatabase``. With no
+        columns it is Excel's Clear: the dropdowns stay and every row
+        shows.
+
+        A table with no header row is refused: the dropdowns sit on it, and
+        Excel turns the header row back on to filter, which this library
+        does not do.
+        """
+        return self._filter_table(self.table(name), columns, apply=apply, today=today, strict=True)
+
+    def apply_table_filter(self, name: str, *, today: dt.date | None = None) -> FilterOutcome:
+        """Apply a table's filter again, as :meth:`apply_auto_filter` does
+        for the sheet's."""
+        table = self.table(name)
+        current = table.auto_filter
+        if current is None:
+            raise ValueError(f"the table {table.name!r} has its dropdowns off, so no filter to apply.")
+        return self._filter_table(table, current.columns, apply=True, today=today, strict=False)
+
+    def clear_table_filter(self, name: str, *, show_rows: bool = True) -> None:
+        """Turn a table's dropdowns off, and show the rows its filter hid.
+
+        What unticking Filter Button does in Excel. To keep the dropdowns
+        and drop only the criteria, call :meth:`set_table_filter` with no
+        columns. ``show_rows=False`` leaves the rows as they are.
+        """
+        table = self.table(name)
+        root = table.document.root
+        element = root.child("autoFilter")
+        if element is None:
+            return
+        previous = read_auto_filter(element)
+        root.remove(element)
+        if show_rows and previous.filtering:
+            self._show_filtered_rows(self._table_filter_block(table))
+        self._invalidate()
+
+    def _filter_table(
+        self,
+        table: Table,
+        columns: Sequence[FilterColumn],
+        *,
+        apply: bool,
+        today: dt.date | None,
+        strict: bool,
+    ) -> FilterOutcome:
+        if table.header_row_count == 0:
+            raise ValueError(
+                f"the table {table.name!r} has no header row, and a table's dropdowns sit on it; Excel turns "
+                "the header row back on to filter, which this library does not do."
+            )
+        block = self._table_filter_block(table)
+        entries = list(columns)
+        self._check_filter_columns(entries, block)
+        entries.sort(key=lambda entry: entry.column)
+        when = today or dt.date.today()
+        resolved = self._resolve_columns(block, entries, when, strict=strict)
+
+        # Everything that can refuse has: from here on the table changes.
+        root = table.document.root
+        element = root.child("autoFilter")
+        previous = None if element is None else read_auto_filter(element)
+        if element is None:
+            element = Element.create("autoFilter", {"ref": block.a1})
+            insert_table_child(root, element)
+        elif element.get("ref") != block.a1:
+            element.set("ref", block.a1)
+        self._write_filter_columns(element, resolved)
+        filters = AutoFilter(ref=block.a1, columns=tuple(resolved))
+        outcome = FilterOutcome()
+        if apply and filters.filtering:
+            outcome = self._apply_filter(filters, when)
+        elif apply and previous is not None and previous.filtering:
+            outcome = FilterOutcome(shown=self._show_filtered_rows(block))
+        self._invalidate()
+        return outcome
+
+    @staticmethod
+    def _table_filter_block(table: Table) -> RangeRef:
+        """What a table's filter covers: its header and data rows."""
+        block = table.ref
+        bottom = max(block.top, block.bottom - table.totals_row_count)
+        return RangeRef(CellRef(block.top, block.left), CellRef(bottom, block.right))
+
+    def _resolve_columns(
+        self, block: RangeRef, entries: Sequence[FilterColumn], today: dt.date, *, strict: bool
+    ) -> list[FilterColumn]:
+        """Each column with what Excel works out and stores filled in: a top
+        ten's threshold, an average, a relative period's bounds."""
+        epoch = self._workbook.epoch_1904
+        return [
+            replace(
+                entry,
+                criterion=resolve(
+                    entry.criterion, self._filter_cells(block, entry.column),
+                    today=today, epoch_1904=epoch, strict=strict,
+                ),
+            )
+            for entry in entries
+        ]
+
+    def _filter_block(self, reference: str | RangeRef) -> RangeRef:
+        """The range a filter covers: as given, down to the last row that
+        holds a value in it, header row included."""
+        block = (RangeRef.parse(reference) if isinstance(reference, str) else reference).normalized
+        last = block.top
+        for number in sorted((n for n in self._rows if block.top < n <= block.bottom), reverse=True):
+            if any(
+                self._value_in(cell) for cell in self._rows[number].children_named("c")
+                if block.left <= self._column_of(cell) <= block.right
+            ):
+                last = number
+                break
+        return RangeRef(CellRef(block.top, block.left), CellRef(last, block.right))
+
+    @staticmethod
+    def _value_in(cell: Element) -> bool:
+        return cell.child("v") is not None or cell.child("is") is not None or cell.child("f") is not None
+
+    @staticmethod
+    def _column_of(cell: Element) -> int:
+        try:
+            return CellRef.parse(cell.get("r") or "").column
+        except ValueError:
+            return 0
+
+    @staticmethod
+    def _check_filter_columns(entries: Sequence[FilterColumn], block: RangeRef) -> None:
+        seen: set[int] = set()
+        for entry in entries:
+            if not isinstance(entry, FilterColumn):  # pyright: ignore[reportUnnecessaryIsInstance]
+                raise TypeError(f"{entry!r} is not a FilterColumn.")
+            if entry.column >= block.width:
+                raise ValueError(
+                    f"column {entry.column} is outside {block.a1}, which is {block.width} wide; "
+                    "a filter column counts from the range's left edge, starting at 0."
+                )
+            if entry.column in seen:
+                raise ValueError(f"column {entry.column} is given twice; a column has one criterion.")
+            seen.add(entry.column)
+
+    def _write_filter_columns(self, element: Element, entries: Sequence[FilterColumn]) -> None:
+        """Replace the filter's columns, keeping the markup of any that did
+        not change, and the sort state and extensions after them in place."""
+        existing: dict[int, Element] = {}
+        for column in list(element.children_named("filterColumn")):
+            existing.setdefault(read_filter_column(column).column, column)
+            element.remove(column)
+        epoch = self._workbook.epoch_1904
+        for entry in entries:
+            kept = existing.get(entry.column)
+            if kept is None or read_filter_column(kept) != entry:
+                kept = filter_column_element(entry, epoch_1904=epoch)
+            insert_in_schema_order(element, kept, AUTO_FILTER_CHILD_ORDER)
+
+    def _set_filter_mode(self, on: bool) -> None:
+        """``filterMode`` on ``sheetPr``, which Excel sets while a filter
+        hides rows by criteria."""
+        properties = self._root.child("sheetPr")
+        if on:
+            self._sheet_properties().set("filterMode", "1")
+        elif properties is not None and properties.unset("filterMode"):
+            self._tidy_sheet_properties(properties)
+
+    def _take_filter_off(self, element: Element, previous: AutoFilter) -> None:
+        """Remove a filter, showing its rows if it was filtering."""
+        self._root.remove(element)
+        if previous.filtering:
+            try:
+                block = RangeRef.parse(previous.ref).normalized
+            except ValueError:
+                return
+            self._show_filtered_rows(block)
+
+    def _apply_filter(self, filters: AutoFilter, today: dt.date) -> FilterOutcome:
+        """Hide the rows a criterion excludes and show the rows all keep."""
+        block = RangeRef.parse(filters.ref).normalized
+        rows = list(range(block.top + 1, block.bottom + 1))
+        epoch = self._workbook.epoch_1904
+        columns: list[list[bool | None]] = []
+        unevaluated: list[int] = []
+        for entry in filters.columns:
+            verdicts = keeps(entry.criterion, self._filter_cells(block, entry.column), today=today, epoch_1904=epoch)
+            if any(verdict is None for verdict in verdicts):
+                unevaluated.append(entry.column)
+            columns.append(verdicts)
+        decided = decide(columns)
+        hide = [row for row, verdict in zip(rows, decided, strict=True) if verdict is False]
+        show = [row for row, verdict in zip(rows, decided, strict=True) if verdict is True]
+        undecided = [row for row, verdict in zip(rows, decided, strict=True) if verdict is None]
+        self._hide_rows(hide)
+        opened = False
+        for number in show:
+            existing = self._rows.get(number)
+            if existing is not None and existing.unset("hidden"):
+                opened = True
+        if opened:
+            self._tidy_collapsed()
+        return FilterOutcome(tuple(hide), tuple(show), tuple(undecided), tuple(unevaluated))
+
+    def _show_filtered_rows(self, block: RangeRef) -> tuple[int, ...]:
+        """Show every row under a filter's header, as Excel's ShowAllData
+        does, and drop the collapsed mark of any outline group that leaves
+        fully open."""
+        shown: list[int] = []
+        for number in sorted(n for n in self._rows if block.top < n <= block.bottom):
+            element = self._rows[number]
+            if element.get("hidden") in ("1", "true"):
+                element.unset("hidden")
+                shown.append(number)
+        if shown:
+            self._tidy_collapsed()
+        return tuple(shown)
+
+    def _tidy_collapsed(self) -> None:
+        """Clear ``collapsed`` on a summary row whose detail rows all show."""
+        for number, element in self._rows.items():
+            if element.get("collapsed") not in ("1", "true"):
+                continue
+            detail = self._detail_rows(number)
+            if detail and not any(self.row_hidden(row) for row in detail):
+                element.unset("collapsed")
+
+    def _hide_rows(self, numbers: Sequence[int]) -> None:
+        """Hide rows, creating in one pass the elements of any that have
+        none, since a row with no element has nowhere to say it is hidden."""
+        missing = [number for number in numbers if number not in self._rows]
+        if missing:
+            self._ensure_rows(missing)
+        for number in numbers:
+            self._rows[number].set("hidden", "1")
+
+    def _ensure_rows(self, numbers: Sequence[int]) -> None:
+        """Create row elements for several rows at once, in order.
+
+        One at a time costs a scan of every row per row; a filter hiding the
+        empty rows of a long range would take minutes.
+        """
+        created = {number: Element.create("row", {"r": str(number)}) for number in numbers if number not in self._rows}
+        if not created:
+            return
+        merged = sorted({**self._rows, **created}.items())
+        self._data.clear()
+        for _, element in merged:
+            self._data.append(element)
+        self._rows = dict(merged)
+        self._highest_row = max(self._highest_row, *created)
+
+    def _filter_cells(self, block: RangeRef, offset: int) -> list[FilterCell]:
+        """One column of a filter's range, under the header, as the filter
+        sees it: the value, the text its format shows, and whether a
+        formula's cached result can be trusted."""
+        column = block.left + offset
+        styles = self._workbook.styles
+        shared = self._workbook.shared_strings
+        epoch = self._workbook.epoch_1904
+        stale = self._workbook.values_changed
+        codes: dict[str | None, str] = {}
+        cells: list[FilterCell] = []
+        for number in range(block.top + 1, block.bottom + 1):
+            element = self._find_cell(CellRef(number, column))
+            if element is None:
+                cells.append(FilterCell(None))
+                continue
+            value = read_value(element, shared_strings=shared, styles=None, epoch_1904=epoch)
+            if isinstance(value, (dt.datetime, dt.date, dt.time)):
+                try:
+                    value = datetime_to_serial(value, epoch_1904=epoch)
+                except ValueError:
+                    value = str(value)
+            style = element.get("s")
+            code = codes.get(style)
+            if code is None:
+                index = None if style is None else int(style) if style.isdigit() else None
+                code = "General" if styles is None else styles.display_format(index)
+                codes[style] = code
+            number_value = isinstance(value, (int, float)) and not isinstance(value, bool)
+            formula = element.child("f") is not None
+            cells.append(
+                FilterCell(
+                    value,  # type: ignore[arg-type]
+                    format_value(value, code, epoch_1904=epoch),
+                    is_date=number_value and parse_format(code).is_date,
+                    unknown=formula and (stale or not self._value_in_cache(element)),
+                )
+            )
+        return cells
+
+    @staticmethod
+    def _value_in_cache(cell: Element) -> bool:
+        return cell.child("v") is not None or cell.child("is") is not None
 
     # ------------------------------------------------------------------
     # Shapes
@@ -1745,6 +2250,18 @@ class Worksheet:
     def _level_of(element: Element) -> int:
         return _as_number(element.get("outlineLevel")) or 0
 
+    def _detail_rows(self, number: int) -> list[int]:
+        """The rows a summary row folds: the run beside it, on the side
+        :attr:`summary_below` puts the detail, deeper in the outline."""
+        level = self.row_outline_level(number)
+        step = -1 if self.summary_below else 1
+        detail: list[int] = []
+        row = number + step
+        while row in self._rows and self._level_of(self._rows[row]) > level:
+            detail.append(row)
+            row += step
+        return detail
+
     def _outline_flag(self, name: str) -> bool:
         properties = self._root.child("sheetPr")
         if properties is None:
@@ -1905,10 +2422,10 @@ class Worksheet:
         except KeyError:
             return None
 
-    def _put_builtin(self, name: str, refers_to: str) -> None:
+    def _put_builtin(self, name: str, refers_to: str, *, hidden: bool = False) -> None:
         """Define it, replacing whatever was there."""
         self._drop_builtin(name)
-        self._workbook.add_defined_name(name, refers_to, scope=self._name, builtin=True)
+        self._workbook.add_defined_name(name, refers_to, scope=self._name, builtin=True, hidden=hidden)
 
     def _drop_builtin(self, name: str) -> None:
         if self._builtin(name) is not None:
@@ -2212,6 +2729,7 @@ class Worksheet:
             element.unset("t")
             if anchor_style is not None:
                 element.set("s", str(anchor_style))
+        self._workbook.mark_values_changed()
 
         container = self._root.child("mergeCells")
         if container is None:
@@ -2274,8 +2792,16 @@ class Worksheet:
 
     @property
     def max_row(self) -> int:
-        """The highest row number that has a cell, or 0 for an empty sheet."""
-        return max(self._rows, default=0)
+        """The highest row number that has a cell, or 0 for an empty sheet.
+
+        A row that is only hidden, sized or styled has an element and no
+        cell, and does not count: rows a filter hid below the data would
+        otherwise move where the data ends.
+        """
+        for number in sorted(self._rows, reverse=True):
+            if next(self._rows[number].children_named("c"), None) is not None:
+                return number
+        return 0
 
     @property
     def max_column(self) -> int:
@@ -2381,11 +2907,15 @@ class Worksheet:
         if existing is not None:
             return existing
         created = Element.create("row", {"r": str(number)})
-        later = [n for n in self._rows if n > number]
-        if later:
-            self._data.insert_before(self._rows[min(later)], created)
-        else:
+        # A row past the last, which is how a sheet gets written, is an
+        # append; searching for its place each time made that quadratic.
+        if number > self._highest_row:
             self._data.append(created)
+            self._rows[number] = created
+            self._highest_row = number
+            return created
+        following = min(n for n in self._rows if n > number)
+        self._data.insert_before(self._rows[following], created)
         self._rows[number] = created
         return created
 
@@ -2397,9 +2927,14 @@ class Worksheet:
         if element is None:
             return
         row.remove(element)
-        if next(row.children_named("c"), None) is None:
+        # A row with nothing left to say goes. One that is hidden, sized,
+        # styled or in an outline keeps saying it: removing it would, say,
+        # bring back a row a filter had hidden.
+        if next(row.children_named("c"), None) is None and set(row.attributes) <= {"r", "spans"}:
             self._data.remove(row)
             del self._rows[reference.row]
+            if reference.row == self._highest_row:
+                self._highest_row = max(self._rows, default=0)
 
     @staticmethod
     def _drop_children(element: Element, name: str) -> None:
@@ -2476,15 +3011,17 @@ class Worksheet:
 
     def reindex_rows(self) -> None:
         """Rebuild the row lookup after the rows were renumbered."""
-        self._rows = {}
+        found: dict[int, Element] = {}
         for row in self._data.children_named("row"):
             raw = row.get("r")
             if raw is None:
                 continue
             try:
-                self._rows[int(raw)] = row
+                found[int(raw)] = row
             except ValueError:
                 continue
+        self._rows = found
+        self._highest_row = max(found, default=0)
 
     def invalidate(self) -> None:
         """Record that this sheet changed.
@@ -2547,6 +3084,11 @@ class Cell:
     @value.setter
     def value(self, value: CellValue) -> None:
         self._sheet.set_value(self._reference, value)
+
+    @property
+    def text(self) -> str:
+        """What Excel shows in the cell; see :meth:`Worksheet.get_text`."""
+        return self._sheet.get_text(self._reference)
 
     @property
     def formula(self) -> str | None:

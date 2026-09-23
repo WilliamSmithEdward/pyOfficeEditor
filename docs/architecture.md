@@ -67,6 +67,12 @@ Each layer knows the layer below it and not the layer above.
 |                 rather than permissions                   |
 |   _pagesetup    margins in inches, headers as one string  |
 |   _hyperlinks   links, whose address is in a relationship |
+|   _filters      autofilters, and which rows they hide:    |
+|                 Excel does not recompute one on open      |
+|   _numfmt       what a number format shows, rounding and  |
+|                 the fictional 1900 leap day included      |
+|   _collate      Windows word sort, the order and the      |
+|                 equality a filter compares text by        |
 |   _shapes       shapes, and the grid a form control needs |
 |   _conditional  cfRules, and the compatibility formula    |
 |                 that makes them fire                      |
@@ -114,7 +120,9 @@ Each layer knows the layer below it and not the layer above.
   something from the container, `opc.py` grows a method.
 - Inside `excel/`, the four private modules are pure: `_reference`,
   `_styles`, `_formulas` and `_values` know about elements and strings, not
-  about packages or files. `workbook.py` is the only one that does.
+  about packages or files. `workbook.py` is the only one that does. So are
+  `_numfmt`, `_collate` and `_filters`: the worksheet hands a filter its
+  cells and the date, and the filter decides rows without touching it.
 - `Worksheet` owns the part and does the work, addressed by `CellRef`.
   `Cell` and `Range` are views that delegate to it, so nothing is reachable
   only through a cell. That is why `Worksheet.get_value` and friends are
@@ -221,6 +229,9 @@ The Excel surface is exported from `pyofficeeditor.excel`:
 | `Styles`, `SharedStrings` | `excel/_styles.py`, `excel/_sharedstrings.py` | the shared parts |
 | `column_letter`, `column_index` | `excel/_reference.py` | bijective base-26 |
 | `MAX_ROW`, `MAX_COLUMN` | `excel/_reference.py` | Excel's real limits |
+| `AutoFilter`, `FilterColumn`, `ValueFilter`, `CustomFilter`, `Comparison`, `FilterOperator`, `Top10Filter`, `DynamicFilter`, `DateGroup`, `OpaqueCriterion`, `criteria` | `excel/_filters.py` | a filter's criteria, validated as Excel validates them |
+| `FilterOutcome` | `excel/_filters.py` | which rows applying a filter hid, showed and left alone |
+| `format_value` | `excel/_numfmt.py` | the text Excel shows for a value under a format code |
 
 `opc.py` also exports the path helpers (`normalize_part_name`,
 `rels_part_for`, `resolve_target`, `relative_target`) and the content-type
@@ -302,6 +313,12 @@ tests/
   test_excel_settings.py        protection, tab colour, view, visibility
   test_excel_pagesetup.py       margins, orientation, headers, print area
   test_excel_links.py           hyperlinks and outline grouping
+  test_excel_filters.py         autofilters on sheets and tables, and the
+                                rows they hide
+  test_excel_filter_semantics.py  which rows each criterion keeps, case
+                                by case against filter_semantics.json
+  test_excel_numfmt.py          what a number format shows, against
+                                number_formats.json
   test_excel_shapes.py          shapes, against what Excel said of them
   test_excel_controls.py        what a form control is wired to
   test_excel_shapes_write.py    adding, removing and rewiring shapes
@@ -309,8 +326,9 @@ tests/
                                 against what Excel wrote and read
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               twelve Excel-authored packages: three
-                                sourced, nine scripted; see its README
+  fixtures/excel/               thirteen Excel-authored packages: three
+                                sourced, ten scripted, and two measured
+                                corpora; see its README
 ```
 
 - **Always** run pytest with `-p no:randomly` to keep ordering reproducible.
@@ -318,14 +336,16 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against six committed
+- The suite needs no Office installation. It runs against thirteen committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as
   rules.
 - Richer Excel-authored fixtures come from
   `scripts/build_excel_fixtures.py`, which drives real Excel through
-  `pyvbaharness`. Tests needing them skip when they are absent.
+  `pyvbaharness`. Tests needing them skip when they are absent. The two
+  measured corpora come from `scripts/measure_number_formats.py` and
+  `scripts/measure_filters.py` the same way.
 
 ### 8.1 The fidelity gate
 
@@ -479,6 +499,19 @@ no such trap: they are points, and 24 stores as 24.
 **A dimension needs its companion flag.** A `width` without `customWidth="1"`
 and an `ht` without `customHeight="1"` are ignored, so the value looks like it
 never took.
+
+**A filter is stored twice, and Excel trusts the second copy.** The criteria
+live in `<autoFilter>`, and which rows they hide lives on each row's `hidden`
+flag. Excel does not recompute a filter when the workbook opens: it lights
+the dropdowns from the first and shows the rows the second allows. So setting
+a filter here decides every row, and that needs Excel's own rules. A value
+list compares the text a cell *shows*, which is why `_numfmt` renders number
+formats as Excel does, and compares it by Windows word sort, which `_collate`
+reproduces. Both are held to corpora measured from Excel,
+`number_formats.json` and `filter_semantics.json`, because the specification
+states neither. A row that hangs on something not modelled, a colour filter
+or a formula whose cached result an edit has made stale, is left as it was
+rather than guessed at, and `FilterOutcome` says which rows those were.
 
 **Text is not stored as XML stores it.** XML cannot carry most control
 characters, and an attribute turns a line break into a space. SpreadsheetML

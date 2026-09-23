@@ -69,7 +69,10 @@ class TestColumnNames:
         [
             (["A", "B"], ["A", "B"]),
             (["", ""], ["Column1", "Column2"]),
-            (["A", ""], ["A", "Column2"]),
+            # Measured: the smallest number free, not the column's position.
+            (["A", ""], ["A", "Column1"]),
+            (["", "Amount", ""], ["Column1", "Amount", "Column2"]),
+            (["Column1", "", ""], ["Column1", "Column2", "Column3"]),
             (["dup", "dup"], ["dup", "dup2"]),
             (["dup", "dup", "dup"], ["dup", "dup2", "dup3"]),
             (["DUP", "dup"], ["DUP", "dup2"]),

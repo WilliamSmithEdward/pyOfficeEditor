@@ -8,6 +8,7 @@
         sheet["A2"].value            # 'North'      a shared string, resolved
         sheet["F2"].value            # date(2026, 1, 15)   a number, until its
                                      #   number format is followed
+        sheet["F2"].text             # '2026-01-15'   what Excel shows
         sheet["D3"].formula          # 'B3*C3'      derived from its shared
                                      #   formula's master, which is D2
         sheet["B2"].value = 200
@@ -46,6 +47,20 @@ from pyofficeeditor.excel._conditional import (
     uniques,
 )
 from pyofficeeditor.excel._dxf import Dxf, DxfFill, DxfFont
+from pyofficeeditor.excel._filters import (
+    AutoFilter,
+    Comparison,
+    CustomFilter,
+    DateGroup,
+    DynamicFilter,
+    FilterColumn,
+    FilterOperator,
+    FilterOutcome,
+    OpaqueCriterion,
+    Top10Filter,
+    ValueFilter,
+    criteria,
+)
 from pyofficeeditor.excel._formats import (
     Alignment,
     Border,
@@ -57,6 +72,7 @@ from pyofficeeditor.excel._formats import (
     Protection,
     Side,
 )
+from pyofficeeditor.excel._numfmt import format_value
 from pyofficeeditor.excel._pagesetup import (
     HeaderFooter,
     HeaderFooterText,
@@ -96,6 +112,7 @@ __all__ = [
     "XL_OFF",
     "XL_ON",
     "Alignment",
+    "AutoFilter",
     "Border",
     "BorderStyle",
     "Cell",
@@ -106,21 +123,29 @@ __all__ = [
     "Cfvo",
     "Color",
     "ColorScale",
+    "Comparison",
     "ConditionalFormatting",
     "ConditionalRule",
+    "CustomFilter",
     "DataBar",
     "DataValidation",
+    "DateGroup",
     "DateOutOfRangeError",
     "Dxf",
     "DxfFill",
     "DxfFont",
+    "DynamicFilter",
     "ErrorStyle",
     "Fill",
+    "FilterColumn",
+    "FilterOperator",
+    "FilterOutcome",
     "Font",
     "FormControl",
     "HeaderFooter",
     "HeaderFooterText",
     "IconSet",
+    "OpaqueCriterion",
     "PageMargins",
     "PageSetup",
     "PrintOptions",
@@ -136,8 +161,10 @@ __all__ = [
     "Table",
     "TableColumn",
     "TableStyle",
+    "Top10Filter",
     "ValidationOperator",
     "ValidationType",
+    "ValueFilter",
     "Workbook",
     "Worksheet",
     "average",
@@ -147,10 +174,12 @@ __all__ = [
     "column_index",
     "column_letter",
     "contains_text",
+    "criteria",
     "duplicates",
     "during",
     "ends_with",
     "expression",
+    "format_value",
     "gradient",
     "hash_password",
     "icons",

@@ -143,6 +143,7 @@ class Workbook:
         self._shared_strings_part: str | None = None
         self._styles: Styles | None = None
         self._changed = False
+        self._values_changed = False
         self._load_sheet_index()
 
     # ------------------------------------------------------------------
@@ -805,6 +806,21 @@ class Workbook:
     @property
     def is_modified(self) -> bool:
         return self._changed
+
+    def mark_values_changed(self) -> None:
+        """Record that a cell's value or formula changed, or cells moved.
+
+        After that a formula's cached result may be out of date: Excel
+        recalculates on open, but anything reading the cache here, such as a
+        filter deciding which rows to hide, cannot trust it.
+        """
+        self._values_changed = True
+        self.mark_changed()
+
+    @property
+    def values_changed(self) -> bool:
+        """Whether any formula's cached result may be out of date."""
+        return self._values_changed
 
     def _flush(self) -> None:
         """Write the parts this class owns back into the package."""

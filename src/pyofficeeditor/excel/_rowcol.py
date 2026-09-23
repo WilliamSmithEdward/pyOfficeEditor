@@ -10,7 +10,8 @@ wrong rather than broken. In the worksheet:
   ``A5`` means the formula's own sheet and a qualified ``Data!A5`` does not
 - the ``ref`` of each shared-formula group
 - merged ranges, hyperlinks, the sheet's autofilter
-- each table's ``ref`` and its own autofilter
+- each table's ``ref`` and its own autofilter, and the columns an insertion
+  inside a table adds to it, which a table has to list
 - the sheet's ``dimension`` and its page breaks
 - defined names, at both scopes
 - every conditional formatting block, and the compatibility formula that
@@ -87,7 +88,7 @@ from pyofficeeditor.excel._formulas import (
     shift_range,
 )
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef
-from pyofficeeditor.excel._xstring import decode, escape
+from pyofficeeditor.excel._xstring import decode, encode_attribute, escape
 from pyofficeeditor.exceptions import PackageError
 
 if TYPE_CHECKING:
@@ -97,7 +98,9 @@ if TYPE_CHECKING:
 def insert_rows(sheet: Worksheet, at: int, count: int) -> None:
     """Insert blank rows, pushing everything at or below ``at`` down."""
     _check_bounds(at, count, MAX_ROW, "row")
-    highest = sheet.max_row
+    # Every row the sheet records moves, a hidden or sized one with no cell
+    # as much as one with data, so the last of those is what must fit.
+    highest = max(sheet.rows_by_number(), default=0)
     if highest + count > MAX_ROW:
         raise ValueError(
             f"inserting {count} rows at {at} would push row {highest} past {MAX_ROW}, "
@@ -460,9 +463,7 @@ def _delete_sheet_ranges(sheet: Worksheet, deletion: Deletion) -> None:
             root.remove(hyperlinks)
 
     sheet_filter = root.child("autoFilter")
-    if sheet_filter is not None and _delete_attribute(
-        sheet_filter, "ref", deletion, drop_if_gone=True
-    ):
+    if sheet_filter is not None and _move_filter(sheet_filter, shift=None, deletion=deletion):
         root.remove(sheet_filter)
 
     data = root.child("sheetData")
@@ -492,7 +493,7 @@ def _delete_tables(sheet: Worksheet, deletion: Deletion) -> None:
         root.set("ref", moved.a1)
         table_filter = root.child("autoFilter")
         if table_filter is not None:
-            _delete_attribute(table_filter, "ref", deletion, drop_if_gone=False)
+            _move_filter(table_filter, shift=None, deletion=deletion)
         _drop_deleted_table_columns(table, deletion, block)
 
 
@@ -767,17 +768,97 @@ def _shift_sheet_ranges(sheet: Worksheet, shift: Shift) -> None:
 
     sheet_filter = root.child("autoFilter")
     if sheet_filter is not None:
-        _shift_attribute(sheet_filter, "ref", shift)
+        _move_filter(sheet_filter, shift=shift, deletion=None)
 
 
 def _shift_tables(sheet: Worksheet, shift: Shift) -> None:
-    """A table's extent and its own filter, which are separate refs."""
+    """A table's extent and its own filter, which are separate refs, and
+    the columns an insertion inside a table adds to it."""
     for table in sheet.tables:
         root = table.document.root
+        try:
+            before = table.ref
+        except ValueError:
+            before = None
         _shift_attribute(root, "ref", shift)
         table_filter = root.child("autoFilter")
         if table_filter is not None:
-            _shift_attribute(table_filter, "ref", shift)
+            _move_filter(table_filter, shift=shift, deletion=None)
+        at = shift.columns_at
+        if before is not None and at is not None and before.left < at <= before.right:
+            _add_table_columns(sheet, table, before, at - before.left, shift.column_count)
+
+
+def _add_table_columns(sheet: Worksheet, table: Table, before: RangeRef, offset: int, count: int) -> None:
+    """Take columns inserted inside a table into it, as Excel does.
+
+    Each gets a ``<tableColumn>`` of its own, named ``ColumnN`` with the
+    smallest ``N`` free and numbered after the highest id, and its header
+    cell says the name. Measured, all of it; a table wider than its list of
+    columns is one Excel refuses to open.
+    """
+    from pyofficeeditor.excel._tables import unique_column_names
+
+    container = table.document.root.child("tableColumns")
+    if container is None:
+        return
+    entries = list(container.children_named("tableColumn"))
+    names = [decode(entry.get("name") or "") for entry in entries]
+    resolved = unique_column_names(names[:offset] + [""] * count + names[offset:])
+    identifiers = [int(raw) for raw in (entry.get("id") for entry in entries) if raw is not None and raw.isdigit()]
+    first_id = max(identifiers, default=0) + 1
+    anchor = entries[offset] if offset < len(entries) else None
+    for index in range(count):
+        name = resolved[offset + index]
+        created = Element.create("tableColumn", {"id": str(first_id + index), "name": encode_attribute(name)})
+        if anchor is None:
+            container.append(created)
+        else:
+            container.insert_before(anchor, created)
+        if table.header_row_count:
+            sheet.set_value(CellRef(before.top, before.left + offset + index), name)
+    container.set("count", str(len(entries) + count))
+
+
+def _move_filter(element: Element, *, shift: Shift | None, deletion: Deletion | None) -> bool:
+    """Move an ``<autoFilter>``: its range, and each filter column.
+
+    A filter column is an offset from the range's left edge, so columns
+    coming or going inside the range renumber it, as Excel renumbers it; a
+    column whose own column is deleted goes, criterion and all. Returns
+    whether the whole range was deleted.
+    """
+    raw = element.get("ref")
+    if raw is None:
+        return False
+    try:
+        before = RangeRef.parse(raw).normalized
+    except ValueError:
+        return False
+    if shift is not None:
+        after = shift_range(before, shift)
+        mover: Shift | Deletion = shift
+    else:
+        if deletion is None:
+            return False
+        moved = deletion.moved_range(before)
+        if moved is None:
+            return True
+        after, mover = moved, deletion
+    for entry in list(element.children_named("filterColumn")):
+        try:
+            offset = int(entry.get("colId") or "0")
+        except ValueError:
+            continue
+        landed = mover.moved(CellRef(before.top, before.left + offset))
+        if landed is None:
+            element.remove(entry)
+            continue
+        if landed.column - after.left != offset:
+            entry.set("colId", str(landed.column - after.left))
+    if after.a1 != before.a1:
+        element.set("ref", after.a1)
+    return False
 
 
 def _shift_breaks(sheet: Worksheet, shift: Shift) -> None:
@@ -1237,7 +1318,6 @@ CUSTOM_VIEW_ADDRESSES: tuple[tuple[str, str, str], ...] = (
     ("selection", "sqref", "sqref"),
     ("selection", "activeCell", "cell"),
     ("pane", "topLeftCell", "cell"),
-    ("autoFilter", "ref", "ref"),
 )
 
 
@@ -1265,6 +1345,10 @@ def _move_custom_views(
                     node.unset(attribute)
                 elif moved != raw:
                     node.set(attribute, moved)
+        # A view's filter renumbers its columns like the sheet's own.
+        for node in list(view.children_named("autoFilter")):
+            if _move_filter(node, shift=shift, deletion=deletion):
+                view.remove(node)
         for axis, is_row in (("rowBreaks", True), ("colBreaks", False)):
             breaks = view.child(axis)
             if breaks is not None:

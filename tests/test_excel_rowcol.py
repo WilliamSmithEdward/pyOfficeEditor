@@ -373,6 +373,33 @@ class TestInsertingRows:
         assert table.filter_ref is not None
         assert table.filter_ref.a1 == "A1:C5"
 
+    def test_a_column_inserted_inside_a_table_joins_it(self, live_structures_xlsx: Path) -> None:
+        """Measured: Excel names it ``ColumnN``, the smallest ``N`` free,
+        numbers it after the highest id, and writes the name in the header.
+        Left as it was, the table is wider than its columns and Excel
+        refuses the workbook."""
+        structures = Workbook.open(live_structures_xlsx)
+        sheet = structures["Tabled"]
+        sheet.insert_columns(2, 2)
+        table = structures.table("SalesTable")
+        assert table.ref.a1 == "A1:E5"
+        assert table.column_names == ["Region", "Column1", "Column2", "Units", "Revenue"]
+        assert [sheet["B1"].value, sheet["C1"].value] == ["Column1", "Column2"]
+        container = table.document.root.require("tableColumns")
+        assert container.get("count") == "5"
+        ids = [entry.get("id") for entry in container.children_named("tableColumn")]
+        assert ids == ["1", "4", "5", "2", "3"]
+
+    def test_a_column_inserted_at_a_tables_edge_moves_it(self, live_structures_xlsx: Path) -> None:
+        structures = Workbook.open(live_structures_xlsx)
+        sheet = structures["Tabled"]
+        sheet.insert_columns(1)
+        assert structures.table("SalesTable").ref.a1 == "B1:D5"
+        sheet.insert_columns(5)
+        table = structures.table("SalesTable")
+        assert table.ref.a1 == "B1:D5"
+        assert table.column_names == ["Region", "Units", "Revenue"]
+
     def test_it_survives_a_save(self, book: Workbook) -> None:
         sheet = book["Data"]
         sheet.insert_rows(3, 2)

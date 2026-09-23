@@ -44,6 +44,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel._filters import AutoFilter, read_auto_filter
 from pyofficeeditor.excel._names import MAX_NAME_LENGTH, check_name
 from pyofficeeditor.excel._reference import CellRef, RangeRef
 from pyofficeeditor.excel._xstring import decode, encode_attribute, replace_unrepresentable
@@ -274,6 +275,16 @@ class Table:
         return RangeRef(CellRef(top, block.left), CellRef(bottom, block.right))
 
     @property
+    def auto_filter(self) -> AutoFilter | None:
+        """The table's own filter, or ``None`` if its dropdowns are off.
+
+        Set and cleared through :meth:`Worksheet.set_table_filter`, which
+        also hides the rows it excludes.
+        """
+        element = self._root.child("autoFilter")
+        return None if element is None else read_auto_filter(element)
+
+    @property
     def filter_ref(self) -> RangeRef | None:
         """What the autofilter covers, which excludes the totals row.
 
@@ -385,21 +396,31 @@ def unique_column_names(wanted: list[str]) -> list[str]:
     """Column names with blanks filled and duplicates disambiguated.
 
     A table's column names have to be non-empty and distinct, and Excel
-    invents ``Column1`` and appends a digit rather than refusing the table,
+    invents ``ColumnN`` and appends a digit rather than refusing the table,
     so doing the same here keeps a caller from producing a file Excel then
-    silently rewrites. A character XML cannot hold becomes U+FFFD, as
-    Excel makes it.
+    silently rewrites. Measured: a blank gets the smallest ``N`` no column
+    uses, in order, so blanks either side of ``Amount`` are ``Column1`` and
+    ``Column2``; a column inserted inside a table is named the same way. A
+    character XML cannot hold becomes U+FFFD, as Excel makes it.
     """
     wanted = [replace_unrepresentable(raw) for raw in wanted]
+    taken = {raw.strip().casefold() for raw in wanted if raw.strip()}
     out: list[str] = []
     seen: set[str] = set()
-    for index, raw in enumerate(wanted, start=1):
-        name = raw.strip() or f"Column{index}"
-        candidate = name
-        suffix = 1
-        while candidate.casefold() in seen:
-            suffix += 1
-            candidate = f"{name}{suffix}"
+    counter = 0
+    for raw in wanted:
+        name = raw.strip()
+        if not name:
+            counter += 1
+            while f"column{counter}" in taken or f"column{counter}" in seen:
+                counter += 1
+            candidate = f"Column{counter}"
+        else:
+            candidate = name
+            suffix = 1
+            while candidate.casefold() in seen:
+                suffix += 1
+                candidate = f"{name}{suffix}"
         seen.add(candidate.casefold())
         out.append(candidate)
     return out

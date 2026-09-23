@@ -53,16 +53,22 @@ from pyofficeeditor.excel import (
     Border,
     CellError,
     DataValidation,
+    DateGroup,
     Dxf,
+    DynamicFilter,
+    FilterColumn,
     HeaderFooter,
     HeaderFooterText,
     PageMargins,
     PageSetup,
     PrintOptions,
     SheetProtection,
+    Top10Filter,
+    ValueFilter,
     Workbook,
     cell_is,
     contains_text,
+    criteria,
     duplicates,
     expression,
 )
@@ -1630,3 +1636,260 @@ def test_excel_runs_the_macro_a_shape_was_pointed_at(
     seen = probe(excel, _MACRO_PROBE, target, "macros")
     assert seen["control"].endswith("!Renamed")
     assert seen["drawing"] == "OnPlain", "a drawing shape carries a bare name"
+
+
+# --------------------------------------------------------------------------
+# Autofilters
+# --------------------------------------------------------------------------
+
+_FILTER_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim i As Long
+    Dim hidden As String
+    Dim shown As Long
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+
+    For i = 2 To 9
+        If ws.Rows(i).Hidden Then
+            hidden = hidden & i & ","
+        Else
+            shown = shown + 1
+        End If
+    Next i
+
+    Probe = "mode=" & CStr(ws.AutoFilterMode) & _
+            "|range=" & ws.AutoFilter.Range.Address(True, True, 1, False) & _
+            "|hidden=" & hidden & "|shown=" & CStr(shown) & _
+            "|header=" & CStr(ws.Rows(1).Hidden)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+End Function
+"""
+
+
+def test_excel_shows_a_filter_this_library_applied(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """The gate for autofilters, and it is about the rows rather than the
+    criteria.
+
+    Excel does not recompute a filter when a workbook opens: it reads the
+    criteria to light the dropdowns and takes which rows are out of view
+    from a flag on each row. So a file carrying criteria alone opens
+    claiming to be filtered with everything showing, and only Excel can
+    confirm this library wrote both halves and that they agree.
+    """
+    target = tmp_path / "filtered.xlsx"
+    shutil.copy(live_sample_xlsx, target)
+
+    with Workbook.open(target) as book:
+        sheet = book["Data"]
+        wanted = [
+            row
+            for row in range(2, 10)
+            if str(sheet[f"A{row}"].value or "") == "North"
+        ]
+        assert wanted, "the fixture should carry some North rows to keep"
+        sheet.set_auto_filter(
+            "A1:D9", [FilterColumn(0, ValueFilter(values=("North",)))]
+        )
+        book.save()
+
+    seen = probe(excel, _FILTER_PROBE, target, "filtered")
+
+    assert seen["mode"] == "True", "the filter is on"
+    assert seen["range"] == "$A$1:$D$9"
+    assert seen["header"] == "False", "the header row stays in view"
+    assert int(seen["shown"]) == len(wanted), (
+        "Excel shows a different number of rows than the criteria keep, which "
+        "is the criteria and the hidden flags disagreeing"
+    )
+
+    hidden = {int(one) for one in seen["hidden"].split(",") if one}
+    assert hidden == set(range(2, 10)) - set(wanted)
+
+
+def test_excel_shows_every_row_after_the_filter_is_cleared(
+    excel: object, live_sample_xlsx: Path, tmp_path: Path
+) -> None:
+    """Clearing has the same split to get right in reverse: dropping the
+    criteria alone would leave the excluded rows hidden with nothing left
+    to say why."""
+    target = tmp_path / "unfiltered.xlsx"
+    shutil.copy(live_sample_xlsx, target)
+
+    with Workbook.open(target) as book:
+        sheet = book["Data"]
+        sheet.set_auto_filter(
+            "A1:D9", [FilterColumn(0, ValueFilter(values=("North",)))]
+        )
+        sheet.clear_auto_filter()
+        book.save()
+
+    source = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim i As Long
+    Dim hidden As Long
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets("Data")
+    For i = 1 To 9
+        If ws.Rows(i).Hidden Then hidden = hidden + 1
+    Next i
+    Probe = "mode=" & CStr(ws.AutoFilterMode) & "|hidden=" & CStr(hidden)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+End Function
+"""
+    seen = probe(excel, source, target, "unfiltered")
+    assert seen["mode"] == "False", "the filter is gone"
+    assert seen["hidden"] == "0", "and nothing is left hidden by it"
+
+
+_HIDDEN_ROWS_VBA = r"""
+Private Function Hidden(ByVal ws As Worksheet) As String
+    Dim i As Long
+    Dim out As String
+    For i = 2 To 30
+        If ws.Rows(i).Hidden Then out = out & i & ","
+    Next i
+    Hidden = out
+End Function
+"""
+
+_REAPPLY_PROBE = _HIDDEN_ROWS_VBA + r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim out As String
+    Dim before As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For Each ws In wb.Worksheets
+        If ws.AutoFilterMode Then
+            before = Hidden(ws)
+            ws.AutoFilter.ApplyFilter
+            out = out & ws.Name & "=" & before & ";" & Hidden(ws) & ";" & CStr(ws.FilterMode) & "|"
+        End If
+    Next ws
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = Left(out, Len(out) - 1)
+End Function
+"""
+
+
+def test_excel_applies_each_filter_as_this_library_did(
+    excel: object, live_filters_xlsx: Path, tmp_path: Path
+) -> None:
+    """A different criterion on every sheet, applied here and saved; then
+    Excel opens the file and applies each filter again itself. The rows it
+    hides have to be the rows already hidden, sheet by sheet. That is the
+    evaluator held to Excel on criteria Excel's own dropdowns would write,
+    and the markup held to Excel, since a filter it could not read would
+    not re-apply."""
+    target = tmp_path / "reapplied.xlsx"
+    shutil.copy(live_filters_xlsx, target)
+    with Workbook.open(target) as book:
+        book["Values"].set_auto_filter("A1:C21", [FilterColumn(0, criteria("=r1*"))])
+        book["Compare"].set_auto_filter(
+            "A1:C21", [FilterColumn(0, criteria("<>r5")), FilterColumn(1, criteria(">=10", "<40"))]
+        )
+        book["Between"].set_auto_filter("A1:C21", [FilterColumn(1, Top10Filter(5))])
+        book["TopTen"].set_auto_filter("A1:C21", [FilterColumn(1, DynamicFilter("belowAverage"))])
+        book["Blanks"].set_auto_filter("A1:C21", [FilterColumn(0, criteria("="))])
+        # Measured from today, which is the day Excel measures it from too.
+        book["Dynamic"].set_auto_filter("A1:C21", [FilterColumn(2, DynamicFilter("thisMonth"))])
+        book["Numbers"].set_auto_filter("A1:C21", [FilterColumn(2, criteria(">=6/1/2026"))])
+        book["Dates"].set_auto_filter(
+            "A1:C21", [FilterColumn(2, ValueFilter(("1/5/2026",), date_groups=(DateGroup("month", 2026, 3),)))]
+        )
+        # And a column inserted into a filtered range, which renumbers it.
+        book["Compare"].insert_columns(2)
+        book.save()
+
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _REAPPLY_PROBE, proc="Probe", args=(str(target),), timeout=180, module_name="Probe_reapply"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+    seen = dict(part.split("=", 1) for part in str(result.value).split("|"))
+    assert len(seen) == 8
+    for name, reply in seen.items():
+        before, after, mode = reply.split(";")
+        assert before == after, f"{name}: this library hid {before}, Excel hides {after}"
+        assert before, f"{name}: the criterion should hide something"
+        assert mode == "True", name
+
+
+_TABLE_REAPPLY_PROBE = _HIDDEN_ROWS_VBA + r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim lo As ListObject
+    Dim out As String
+    Dim before As String
+
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For Each ws In wb.Worksheets
+        For Each lo In ws.ListObjects
+            before = Hidden(ws)
+            lo.AutoFilter.ApplyFilter
+            out = out & ws.Name & "=" & before & ";" & Hidden(ws) & ";" & CStr(ws.AutoFilterMode) & "|"
+        Next lo
+    Next ws
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Probe = Left(out, Len(out) - 1)
+End Function
+"""
+
+
+def test_excel_applies_each_table_filter_as_this_library_did(
+    excel: object, live_filters_xlsx: Path, tmp_path: Path
+) -> None:
+    """The same criteria as the gate above, each on a table made over the
+    sheet's data in place of the sheet's own filter. Excel applies each
+    table's filter again and has to hide the rows already hidden."""
+    target = tmp_path / "tables_reapplied.xlsx"
+    shutil.copy(live_filters_xlsx, target)
+    wanted = {
+        "Values": [FilterColumn(0, criteria("=r1*"))],
+        "Compare": [FilterColumn(0, criteria("<>r5")), FilterColumn(1, criteria(">=10", "<40"))],
+        "Between": [FilterColumn(1, Top10Filter(5))],
+        "TopTen": [FilterColumn(1, DynamicFilter("belowAverage"))],
+        "Blanks": [FilterColumn(0, criteria("="))],
+        "Dynamic": [FilterColumn(2, DynamicFilter("thisMonth"))],
+        "Numbers": [FilterColumn(2, criteria(">=6/1/2026"))],
+        "Dates": [FilterColumn(2, ValueFilter(("1/5/2026",), date_groups=(DateGroup("month", 2026, 3),)))],
+    }
+    with Workbook.open(target) as book:
+        for name, columns in wanted.items():
+            sheet = book[name]
+            sheet.clear_auto_filter()
+            sheet.add_table(f"Table{name}", "A1:C21")
+            sheet.set_table_filter(f"Table{name}", columns)
+        # A column inserted into a filtered table, which renumbers it.
+        book["Compare"].insert_columns(2)
+        book.save()
+
+    result = excel.run_vba(  # type: ignore[attr-defined]
+        _TABLE_REAPPLY_PROBE, proc="Probe", args=(str(target),), timeout=180, module_name="Probe_tables"
+    )
+    assert result.outcome == "passed", f"Excel refused the workbook: {result!r}"
+    seen = dict(part.split("=", 1) for part in str(result.value).split("|"))
+    assert len(seen) == 8
+    for name, reply in seen.items():
+        before, after, sheet_filter = reply.split(";")
+        assert before == after, f"{name}: this library hid {before}, Excel hides {after}"
+        assert before, f"{name}: the criterion should hide something"
+        assert sheet_filter == "False", f"{name}: the sheet's own filter is off"
