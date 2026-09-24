@@ -679,6 +679,34 @@ def test_price_takes_accrued_interest_from_the_rate(book: Workbook) -> None:
     assert sheet.evaluate(f"PRICE({args})") == 99.24148797292862
 
 
+def test_yield_stops_up_to_1e_10_short_of_the_root(book: Workbook) -> None:
+    sheet = book["Data"]
+    at_price = "YIELD(A1,B1,C1,PRICE(A1,B1,C1,D1,E1,F1,G1),E1,F1,G1)"
+    # One Newton step from the start lands 1e-10 below the root, 0.15; the
+    # next step would be under 1e-10, so that is the answer.
+    _bond(book, [40000.0, 41533.0, 0.141, 0.15, 100.0, 2.0, 4.0])
+    assert sheet.evaluate(at_price) == 0.14999999990009072
+    # On a zero-coupon bond the start is one Halley step from 0, a cubic in
+    # the root away from it, so near 0 it is the answer itself.
+    _bond(book, [40000.0, 47300.0, 0.0, 0.00010000000000000026, 100.0, 2.0, 0.0])
+    assert sheet.evaluate(at_price) == 9.999996673483998e-05
+    # The start's years count 30/360 as YEARFRAC does: from 28 February,
+    # the month's last day, to 31 May is 91 days, not 90.
+    args = _bond(book, [44985.0, 47999.0, 0.045, 91.5, 100.0, 1.0, 0.0])
+    assert sheet.evaluate(f"YIELD({args})") == 0.058221415821190996
+
+
+def test_yield_with_one_coupon_left(book: Workbook) -> None:
+    sheet = book["Data"]
+    # Actual/360: the period is the calendar's 182 days, not 360 / 2.
+    args = _bond(book, [36505.0, 36596.0, 0.0, 91.36144230982995, 100.0, 2.0, 2.0])
+    assert sheet.evaluate(f"YIELD({args})") == 0.3782145934550592
+    # 30/360 from 28 April to 28 May is 30 days to redemption, not the 32
+    # left of a period that began on 28 February.
+    args = _bond(book, [38835.0, 38865.0, 0.0, 105.93784568694602, 92.60490729347165, 4.0, 0.0])
+    assert sheet.evaluate(f"YIELD({args})") == -1.5102748190150097
+
+
 # ----------------------------------------------------------------------
 # Special functions
 # ----------------------------------------------------------------------

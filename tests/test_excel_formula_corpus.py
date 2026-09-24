@@ -86,12 +86,6 @@ NEAR: dict[str, int] = {
     "GEOMEAN": 1,
 }  # fmt: skip
 
-#: YIELD, which Excel solves by iteration and stops short of the root, a
-#: few hundred units in the last place away. The engine converges fully;
-#: the two agree to this fraction of the result.
-ITERATIVE: dict[str, float] = {"YIELD": 1e-12}
-
-
 def _groups() -> list[str]:
     if not FIXTURE.exists():
         return []
@@ -138,22 +132,19 @@ def _scalar(value: object) -> Scalar:
     return float(value)
 
 
-def _same(got: object, want: object, units: int = 0, relative: float = 0.0) -> bool:
+def _same(got: object, want: object, units: int = 0) -> bool:
     if isinstance(want, float) and isinstance(got, float):
-        difference = abs(got - want)
-        return got == want or difference <= units * math.ulp(want) or difference <= relative * abs(want)
+        return got == want or abs(got - want) <= units * math.ulp(want)
     if isinstance(want, CellError) and isinstance(got, CellError):
         return got.code == want.code
     return type(got) is type(want) and got == want
 
 
-def _tolerance(formula: str) -> tuple[int, float]:
-    """The units in the last place and the fraction a formula may be off
-    by: the most any function it calls may be."""
+def _tolerance(formula: str) -> int:
+    """The units in the last place a formula may be off by: the most any
+    function it calls may be."""
     called = {node.function for node in walk(parse(formula)) if isinstance(node, Call)}
-    return max((NEAR.get(name, 0) for name in called), default=0), max(
-        (ITERATIVE.get(name, 0.0) for name in called), default=0.0
-    )
+    return max((NEAR.get(name, 0) for name in called), default=0)
 
 
 @pytest.mark.parametrize("sheet", _groups())
@@ -177,7 +168,7 @@ def test_every_formula_gives_what_excel_cached(calculated: tuple[Workbook, Engin
             if _same(got, want):
                 still_known.append(name)
             continue
-        if not _same(got, want, *_tolerance(formula)):
+        if not _same(got, want, _tolerance(formula)):
             wrong.append(f"{name} ={formula}: Excel {want!r}, engine {got!r}")
     assert not wrong, "\n".join(wrong)
     assert not still_known, f"these now match Excel, so take them off KNOWN: {still_known}"

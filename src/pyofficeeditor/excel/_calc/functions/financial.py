@@ -10,17 +10,14 @@ the exception, being within one unit of exact, so it is computed exactly
 and rounded once.
 
 RATE, IRR, XIRR and YIELD solve by iteration, and Excel stops short of
-the root. RATE, IRR and XIRR follow Excel's own iterations step by step,
-so they stop where it does, to the bit. YIELD converges fully, so it
-agrees with Excel to a few hundred units in the last place and not to the
-bit.
+the root. Each follows Excel's own iteration step by step, so it stops
+where Excel does, to the bit.
 """
 
 from __future__ import annotations
 
 import itertools
 import math
-from collections.abc import Callable
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 
 from pyofficeeditor.excel._calc import dates, precise, special
@@ -369,41 +366,6 @@ def XNPV(context: Context, rate: Scalar, values: Value, when: Value) -> Value:
     if r <= -1:
         return NUM
     return checked(_xnpv(r, amounts, days))
-
-
-def _newton(
-    function_: Callable[[float], float], slope: Callable[[float], float], guess: float, *, limit: int = 100
-) -> float:
-    """A root by Newton's method, run until it stops moving; ``#NUM!``
-    when it does not settle or leaves the range a rate can have."""
-    x = guess
-    best, best_error = x, math.inf
-    previous = math.inf
-    for _ in range(limit):
-        try:
-            value = function_(x)
-            gradient = slope(x)
-        except (OverflowError, ZeroDivisionError):
-            raise ExcelError(NUM) from None
-        if abs(value) < best_error:
-            best, best_error = x, abs(value)
-        if value == 0:
-            return x
-        if gradient == 0 or not math.isfinite(gradient) or not math.isfinite(value):
-            raise ExcelError(NUM)
-        step = value / gradient
-        new = x - step
-        if not math.isfinite(new) or new <= -1:
-            raise ExcelError(NUM)
-        if new == x or abs(step) <= abs(new) * 1e-15:
-            return new
-        if abs(step) >= abs(previous) and abs(step) < 1e-10 * max(1.0, abs(x)):
-            # The steps have stopped shrinking: rounding, not the root, is
-            # moving it now.
-            return best
-        previous = step
-        x = new
-    raise ExcelError(NUM)
 
 
 @function("XIRR", R, R, V, minimum=2)
@@ -1050,23 +1012,95 @@ def COUPNUM(context: Context, settlement: Scalar, maturity: Scalar, frequency: S
 def _price(
     context: Context, settlement: int, maturity: int, rate: float, yld: float, redemption: float, frequency: int, kind: int
 ) -> float:
-    """A bond's price per 100 of face value at a yield."""
+    """A bond's price per 100 of face value at a yield, each step as the x87
+    rounds it, which YIELD's iteration shows where PRICE alone does not."""
     period = _period_days(context, settlement, maturity, frequency, kind)
-    remaining = _to_coupon(context, settlement, maturity, frequency, kind) / period
+    remaining = precise.divide(_to_coupon(context, settlement, maturity, frequency, kind), period)
     count = _coupon_count(context, settlement, maturity, frequency)
     accrued = _days_before(context, settlement, maturity, frequency, kind)
-    coupon = 100 * rate / frequency
+    coupon = precise.divide(precise.multiply(100.0, rate), frequency)
     if count == 1:
-        return (redemption + coupon) / (1 + remaining * yld / frequency) - coupon * (accrued / period)
+        discount = precise.add(1.0, precise.divide(precise.multiply(remaining, yld), frequency))
+        return precise.subtract(precise.divide(precise.add(redemption, coupon), discount), precise.multiply(coupon, precise.divide(accrued, period)))
     # Measured, 1,078 of 1,078 bonds: the coupons summed first, then the
     # redemption, then the accrued interest taken off, formed from the rate
     # as A/E * rate * 100 / frequency rather than from the coupon.
-    growth = 1 + yld / frequency
+    growth = precise.add(1.0, precise.divide(yld, frequency))
     price = 0.0
     for index in range(count):
-        price += coupon / _power(growth, index + remaining)
-    price += redemption / _power(growth, count - 1 + remaining)
-    return price - accrued / period * rate * 100 / frequency
+        price = precise.add(price, precise.divide(coupon, _power(growth, precise.add(float(index), remaining))))
+    price = precise.add(price, precise.divide(redemption, _power(growth, precise.add(float(count - 1), remaining))))
+    interest = precise.multiply(precise.multiply(precise.divide(accrued, period), rate), 100.0)
+    return precise.subtract(price, precise.divide(interest, frequency))
+
+
+def _price_slope(
+    context: Context, settlement: int, maturity: int, rate: float, yld: float, redemption: float, frequency: int, kind: int
+) -> float:
+    """The slope of :func:`_price` in the yield, from its own terms: each
+    payment's time t, in periods, times the payment over the growth to the
+    power t + 1, summed and divided by the frequency."""
+    period = _period_days(context, settlement, maturity, frequency, kind)
+    remaining = precise.divide(_to_coupon(context, settlement, maturity, frequency, kind), period)
+    count = _coupon_count(context, settlement, maturity, frequency)
+    coupon = precise.divide(precise.multiply(100.0, rate), frequency)
+    growth = precise.add(1.0, precise.divide(yld, frequency))
+    total = 0.0
+    for index in range(count):
+        time = precise.add(float(index), remaining)
+        total = precise.add(total, precise.divide(precise.multiply(time, coupon), _power(growth, precise.add(time, 1.0))))
+    time = precise.add(float(count - 1), remaining)
+    total = precise.add(total, precise.divide(precise.multiply(time, redemption), _power(growth, precise.add(time, 1.0))))
+    return -precise.divide(total, frequency)
+
+
+def _yield_start(context: Context, settlement: int, maturity: int, rate: float, price: float, kind: int) -> float:
+    """YIELD's first estimate: the coupons over the term and the discount,
+    over the mean of par and price less a quarter of the discount, which on
+    a zero-coupon bond is one Halley step from 0. Par stands in for the
+    redemption. The term is whole years, then the days from settlement moved
+    into the last of them, 29 February to 1 March, over the basis' year, on
+    actual/actual the maturity's."""
+    epoch = context.epoch_1904
+    y1, m1, d1 = dates.calendar(settlement, epoch_1904=epoch)
+    y2, m2, d2 = dates.calendar(maturity, epoch_1904=epoch)
+    whole = y2 - y1
+    later = (m1, d1) > (m2, d2)
+    if whole and later:
+        whole -= 1
+    anchor = settlement
+    if whole:
+        year = y2 - 1 if later else y2
+        month, day = (3, 1) if (m1, d1) == (2, 29) and dates.days_in_month(year, 2) == 28 else (m1, d1)
+        anchor = dates.serial(year, month, day, epoch_1904=epoch)
+    stub = float(days_between(anchor, maturity, kind, epoch_1904=epoch))
+    length = 365.0 if kind == 3 else (366.0 if dates.days_in_month(y2, 2) == 29 else 365.0) if kind == 1 else 360.0
+    years = precise.add(float(whole), precise.divide(stub, length))
+    discount = precise.subtract(100.0, price)
+    # Measured to the bit on 562 starts: (100 r Y + B) / (100 Y - B Y / 2 -
+    # B / 4), B the discount, and no other arrangement.
+    top = precise.add(precise.multiply(100.0, precise.multiply(rate, years)), discount)
+    mean = precise.subtract(precise.multiply(100.0, years), precise.divide(precise.multiply(discount, years), 2.0))
+    return precise.divide(top, precise.subtract(mean, precise.divide(discount, 4.0)))
+
+
+def _yield_one_coupon(
+    context: Context, settlement: int, maturity: int, rate: float, price: float, redemption: float, frequency: int, kind: int
+) -> float:
+    """YIELD with one coupon left, in closed form. Measured: on every
+    actual basis the period is the calendar's, and the days to redemption
+    are counted by the basis, not as what is left of the period."""
+    if kind in (0, 4):
+        period = _period_days(context, settlement, maturity, frequency, kind)
+    else:
+        previous, following = _coupons(context, settlement, maturity, frequency)
+        period = float(following - previous)
+    accrued = _days_before(context, settlement, maturity, frequency, kind)
+    remaining = float(days_between(settlement, maturity, kind, epoch_1904=context.epoch_1904))
+    per_coupon = precise.divide(rate, frequency)
+    paid = precise.add(precise.divide(price, 100.0), precise.multiply(precise.divide(accrued, period), per_coupon))
+    gain = precise.subtract(precise.add(precise.divide(redemption, 100.0), per_coupon), paid)
+    return precise.multiply(precise.divide(gain, paid), precise.divide(precise.multiply(float(frequency), period), remaining))
 
 
 def _bond(
@@ -1121,22 +1155,28 @@ def YIELD(
     target = context.number(pr)
     if target <= 0:
         return NUM
-    count = _coupon_count(context, first, last, times)
-    if count == 1:
-        period = _period_days(context, first, last, times, kind)
-        accrued = _days_before(context, first, last, times, kind)
-        remaining = _to_coupon(context, first, last, times, kind)
-        paid = target / 100 + accrued / period * coupon_rate / times
-        return checked((value / 100 + coupon_rate / times - paid) / paid * (times * period / remaining))
+    if _coupon_count(context, first, last, times) == 1:
+        return checked(_yield_one_coupon(context, first, last, coupon_rate, target, value, times, kind))
+    # Measured: Newton's method from _yield_start with PRICE's own slope,
+    # stopping when a step would be under 1e-10 and answering with the
+    # yield it would have stepped from, so up to 1e-10 short of the root;
+    # 1,494 of 1,496 probes to the bit, the other two a unit in the last
+    # place away, one of them where ^ itself is.
+    y = _yield_start(context, first, last, coupon_rate, target, kind)
+    try:
+        for _ in range(_YIELD_STEPS):
+            gap = precise.subtract(_price(context, first, last, coupon_rate, y, value, times, kind), target)
+            step = precise.divide(gap, _price_slope(context, first, last, coupon_rate, y, value, times, kind))
+            if abs(step) < _YIELD_CLOSE:
+                return checked(y)
+            y = precise.subtract(y, step)
+    except ZeroDivisionError:
+        return NUM
+    return NUM
 
-    def gap(y: float) -> float:
-        return _price(context, first, last, coupon_rate, y, value, times, kind) - target
 
-    def slope(y: float) -> float:
-        step = max(abs(y), 1e-4) * 1e-7
-        return (gap(y + step) - gap(y - step)) / (2 * step)
-
-    return checked(_newton(gap, slope, coupon_rate or 0.05))
+_YIELD_STEPS = 100
+_YIELD_CLOSE = 1e-10
 
 
 def _duration(

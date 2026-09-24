@@ -85,7 +85,15 @@ anything trailing the file is swept into the oldest release's notes. -->
   the redemption, then takes off the accrued interest, formed from the
   rate as `A/E*rate*100/f`; DURATION times each coupon as PRICE does,
   `index+DSC/E`, but the redemption as `DSC/E+N-1`, which rounds another
-  way, and MDURATION divides it by `1+y/f`. Where
+  way, and MDURATION divides it by `1+y/f`. YIELD starts from the
+  textbook estimate with a quarter of the discount taken off its
+  denominator, `(100*r*Y+B)/(100*Y-B*Y/2-B/4)`, where `B=100-price` and
+  Y is the years to maturity, then takes Newton steps on PRICE with its
+  exact slope. Once a step would be under 1e-10 it answers with the yield
+  it would step from, up to 1e-10 short of the root, as Excel does. With
+  one coupon left it is the documented closed form, with the period on
+  every actual basis the calendar's and the days to redemption counted
+  by the basis. Where
   Excel's own approximation is not yet reproduced, as for
   the error and incomplete gamma and beta functions and GAMMALN from 0.7
   to 3, the engine gives the double nearest the exact value, and the
@@ -580,8 +588,7 @@ such function with the most it may differ by: SINH, TANH and ASIN below 1
 and the functions built on them, the PMT family, the error and gamma
 functions, most of the statistical distributions and the tests and
 intervals built on them, LINEST past three points and TREND with it, and
-GEOMEAN. YIELD converges further than Excel's iteration goes, and agrees
-with it to a relative 1e-12. When IRR's secant fails
+GEOMEAN. When IRR's secant fails
 from the guess and again from 0.1, Excel finds the root a third way not
 yet reproduced; the engine halves down to it, within 1e-11 of Excel's
 answer.
