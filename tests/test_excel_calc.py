@@ -707,6 +707,23 @@ def test_yield_with_one_coupon_left(book: Workbook) -> None:
     assert sheet.evaluate(f"YIELD({args})") == -1.5102748190150097
 
 
+def test_below_1_the_hyperbolic_functions_take_e_to_the_x_less_1_by_kahans_trick(book: Workbook) -> None:
+    sheet = book["Data"]
+    # a = e^x - 1 and b = e^-x - 1, each (u - 1) x / ln u with u = EXP(x):
+    # SINH is (a - b)/2, TANH (a - b)/(a + b + 2).
+    assert sheet.evaluate("SINH(0.7)") == 0.7585837018395336
+    assert sheet.evaluate("SINH(-0.01)") == -0.010000166667500001
+    assert sheet.evaluate("TANH(0.001)") == 0.0009999996666668002
+    assert sheet.evaluate("TANH(0.4)") == 0.3799489622552249
+
+
+def test_weibull_takes_its_distribution_as_1_less_e_to_the_minus_t_below_1(book: Workbook) -> None:
+    sheet = book["Data"]
+    # -(e^-t - 1) by Kahan's trick, not 1 - EXP(-t), up to t = 1.
+    assert sheet.evaluate("WEIBULL.DIST(0.1,1,1,TRUE)") == 0.09516258196404045
+    assert sheet.evaluate("WEIBULL.DIST(0.85,1,1,TRUE)") == 0.5725850680512734
+
+
 # ----------------------------------------------------------------------
 # Special functions
 # ----------------------------------------------------------------------

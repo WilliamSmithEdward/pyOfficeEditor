@@ -60,9 +60,9 @@ KNOWN: dict[str, str] = {}
 #: place of Excel's result rather than to the bit: the most any formula
 #: calling one is off by. Every other function is exact.
 NEAR: dict[str, int] = {
-    # Built from other functions, as Excel builds them, but not narrowed to
-    # the bit below 1. SIN, COS, TAN, ATAN, EXP, LN, SQRT and ^ are exact.
-    "SINH": 1, "TANH": 1, "ASIN": 1, "COTH": 2, "CSCH": 1,
+    # Built from ATAN and SQRT, as Excel builds it, but Excel's own is not
+    # odd below 0.35, which no odd formula follows.
+    "ASIN": 1,
     # Computed exactly here; Excel, more precisely than doubles but not
     # exactly.
     "PMT": 1, "IPMT": 1, "PPMT": 1, "CUMIPMT": 2, "CUMPRINC": 4,

@@ -312,22 +312,18 @@ def binary_power(t: Fraction) -> Fraction:
 
 
 def exp_less_one(value: float) -> float:
-    """``e^x - 1`` as F2XM1 gives it for a small argument: ``2^t - 1``
-    with ``t = x * log2 e`` in a register, rounded to 64 bits and then to
-    a double, so without the cancellation ``EXP(x) - 1`` suffers."""
-    t = register(Fraction(value) * _L2E_64)
-    with localcontext() as context:
-        context.prec = _WIDE
-        y = Decimal(t.numerator) / Decimal(t.denominator) * _LN2
-        if abs(y) >= Decimal("1e-5"):
-            less_one = y.exp() - 1
-        else:
-            # The series, where exp(y) - 1 would cancel away its digits.
-            less_one = term = y
-            for k in range(2, 12):
-                term = term * y / k
-                less_one += term
-    return extended(Fraction(less_one))
+    """``e^x - 1`` as Excel computes it. Below 1 in size it uses Kahan's
+    trick: with ``u`` EXP's double, ``(u - 1) * x / ln u``, where the
+    logarithm undoes the error ``u`` was rounded with. From 1 up it is
+    ``u - 1``. Each step is rounded as the x87 rounds it. Measured through
+    SINH, TANH, COTH and CSCH below 1, 1500 of 1500 each, and through
+    WEIBULL.DIST's distribution, 900 of 900."""
+    u = exp(value)
+    if abs(value) >= 1.0:
+        return subtract(u, 1.0)
+    if u == 1.0:
+        return value
+    return divide(multiply(subtract(u, 1.0), value), ln(u))
 
 
 def sine_cosine(value: float) -> tuple[Fraction, Fraction]:
