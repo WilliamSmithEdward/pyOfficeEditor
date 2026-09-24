@@ -641,6 +641,44 @@ def test_irr_needs_a_residual_under_its_tolerance(book: Workbook) -> None:
     assert book["Data"].evaluate(f"IRR({_flows(book, [-977338919173.8009, 1099511627776.0])},0.05)") == 0.12500546760736642
 
 
+def _bond(book: Workbook, values: list[float]) -> str:
+    """The arguments in row 1, where no formula literal cuts them to 15
+    digits."""
+    sheet = book["Data"]
+    for column, value in enumerate(values, start=1):
+        sheet.cell(1, column).value = value
+    return ",".join(f"{column_letter(column)}1" for column in range(1, len(values) + 1))
+
+
+def test_duration_times_coupons_as_price_does_and_the_redemption_its_own_way(book: Workbook) -> None:
+    sheet = book["Data"]
+    # A coupon's time is index + DSC/E; the redemption's is DSC/E + N - 1,
+    # which rounds another way.
+    args = _bond(book, [44468.0, 44647.0, 0.035429952036797184, 0.16067767704236355, 4.0, 2.0])
+    assert sheet.evaluate(f"DURATION({args})") == 0.492182006415991
+    # Settled on a coupon date: each coupon weighs its time times its
+    # present value, not its time times the coupon over the power.
+    args = _bond(book, [49383.0, 50844.0, 0.13249040076812385, 0.030546357927438164, 2.0, 1.0])
+    assert sheet.evaluate(f"DURATION({args})") == 3.3581234390639882
+
+
+def test_mduration_divides_by_the_growth(book: Workbook) -> None:
+    args = _bond(book, [41018.0, 41334.0, 0.10018741153059099, 0.11925232538933145, 4.0, 0.0])
+    assert book["Data"].evaluate(f"MDURATION({args})") == 0.806202009349328
+
+
+def test_price_takes_accrued_interest_from_the_rate(book: Workbook) -> None:
+    sheet = book["Data"]
+    # A/E * rate * 100 / frequency with coupons to come, not coupon * A/E.
+    args = _bond(book, [45098.0, 45403.0, 0.13431405895368478, 0.18167305658967808, 100.0, 2.0, 2.0])
+    assert sheet.evaluate(f"PRICE({args})") == 96.42924034785027
+    args = _bond(book, [40129.0, 48923.0, 0.015269366925158684, 0.08153059843154511, 98.78907894617276, 2.0, 0.0])
+    assert sheet.evaluate(f"PRICE({args})") == 30.415592647768403
+    # With one coupon left it is coupon * (A/E).
+    args = _bond(book, [44139.0, 44198.0, 0.0858656433341273, 0.015639045918274874, 98.14162125781019, 1.0, 3.0])
+    assert sheet.evaluate(f"PRICE({args})") == 99.24148797292862
+
+
 # ----------------------------------------------------------------------
 # Special functions
 # ----------------------------------------------------------------------

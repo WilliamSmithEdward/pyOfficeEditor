@@ -78,7 +78,14 @@ anything trailing the file is swept into the oldest release's notes. -->
   as Excel does. XIRR is not Newton's method but halving: from the guess
   it doubles outward until the root is bracketed, then halves until the
   bracket is narrower than 1e-8 of `0.5+|r|` and XNPV is under 1e-8 of
-  the discounted amounts' sizes, the documented 0.000001 percent. Where
+  the discounted amounts' sizes, the documented 0.000001 percent. PRICE,
+  DURATION and MDURATION count the days to the next coupon as what is
+  left of the period, E - A, on actual/360 and actual/365 too, where
+  COUPDAYSNC counts days on the calendar. PRICE adds the coupons, then
+  the redemption, then takes off the accrued interest, formed from the
+  rate as `A/E*rate*100/f`; DURATION times each coupon as PRICE does,
+  `index+DSC/E`, but the redemption as `DSC/E+N-1`, which rounds another
+  way, and MDURATION divides it by `1+y/f`. Where
   Excel's own approximation is not yet reproduced, as for
   the error and incomplete gamma and beta functions and GAMMALN from 0.7
   to 3, the engine gives the double nearest the exact value, and the
