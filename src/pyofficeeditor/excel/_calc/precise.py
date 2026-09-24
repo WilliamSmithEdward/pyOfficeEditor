@@ -326,6 +326,35 @@ def exp_less_one(value: float) -> float:
     return divide(multiply(subtract(u, 1.0), value), ln(u))
 
 
+#: ``ln(1 + x)`` switches from its series to LN at this size of x.
+_LN_ONE_PLUS_SERIES = 0.375
+
+
+def ln_one_plus(value: float) -> float:
+    """``ln(1 + x)`` as Excel computes it. Below 0.375 in size it is
+    ``2 atanh(s)`` with ``s = x / (2 + x)`` and ``z = s^2``: the terms
+    ``s (z^k (1/(2k+1)))`` added in order, largest first, until one no
+    longer changes their sum, then ``2 (s + sum)``. From 0.375 up it is LN
+    of ``1 + x`` rounded. Each step is rounded as the x87 rounds it.
+    Measured through PMT, which is built on it: 1128 rates pinned to one
+    double, 745 of them chosen where the sum lands within 0.01 of a unit
+    of a midpoint, and the switch at 0.375 one unit either side."""
+    if abs(value) >= _LN_ONE_PLUS_SERIES:
+        return ln(add(1.0, value))
+    s = divide(value, add(2.0, value))
+    z = multiply(s, s)
+    power = 1.0
+    total = 0.0
+    order = 1
+    while True:
+        order += 2
+        power = multiply(power, z)
+        grown = add(total, multiply(s, multiply(power, 1.0 / order)))
+        if grown == total:
+            return multiply(2.0, add(s, total))
+        total = grown
+
+
 def sine_cosine(value: float) -> tuple[Fraction, Fraction]:
     """The sine and cosine of a double to fifty digits, its argument reduced
     as the x87 reduces it, with pi to 64 bits."""
@@ -388,6 +417,7 @@ __all__ = [
     "exp_less_one",
     "extended",
     "ln",
+    "ln_one_plus",
     "log10",
     "multiply",
     "reduced",

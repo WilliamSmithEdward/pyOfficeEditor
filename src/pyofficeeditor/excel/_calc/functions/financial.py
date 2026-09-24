@@ -6,8 +6,10 @@ the ``^`` operator does (see :func:`~.evaluator.power`), so a whole number
 of periods is multiplied out square by square, and they are plain double
 arithmetic: FV, PV, NPER, NPV and the rest give Excel's bits even where
 those are a hundred units in the last place from the exact value. PMT is
-the exception, being within one unit of exact, so it is computed exactly
-and rounded once.
+the exception: it forms ``(1 + rate)^-n`` through Excel's own accurate
+logarithm and exponential (see :func:`payment`). IPMT, PPMT, CUMIPMT and
+CUMPRINC are computed exactly and rounded once, within a few units in
+the last place of Excel's.
 
 RATE, IRR, XIRR and YIELD solve by iteration, and Excel stops short of
 the root. Each follows Excel's own iteration step by step, so it stops
@@ -138,13 +140,25 @@ def _exact_interest(rate: float, period: float, periods: float, present: float, 
 
 
 def payment(rate: float, periods: float, present: float, future: float, due: int) -> float:
-    """The periodic payment, from the exact formula rounded once.
-
-    Measured: PMT, IPMT, PPMT, CUMIPMT and CUMPRINC are all within a few
-    units in the last place of the exact values, which no double formula
-    reaches, so these five are computed exactly."""
-    with localcontext(special.CONTEXT):
-        return checked(float(_exact_payment(rate, periods, present, future, due)))
+    """PMT as Excel computes it. With ``w = 1 - (1 + r)^-n`` formed as
+    ``-(e^-x - 1)``, ``x = n ln(1 + r)``, each through Excel's own
+    accurate routine, the payment is ``-((pv + fv)/w - fv) r``, and at the
+    start of each period ``r`` is replaced by ``1/(1/r + 1)``. Measured:
+    15,553 of 15,555 payments to the bit, the structure pinned by twelve
+    present or future values sharing each rate and term. The two misses
+    are one loan whose logarithm, inside e^x - 1, lies too near a
+    midpoint for anything but the x87's own FYL2X to decide."""
+    if periods == 0 or rate <= -1:
+        raise ExcelError(NUM)
+    if rate == 0:
+        return checked(-precise.divide(precise.add(present, future), periods))
+    left = -precise.exp_less_one(-precise.multiply(periods, precise.ln_one_plus(rate)))
+    if left == 0 or math.isinf(left):
+        raise ExcelError(NUM)
+    owed = precise.subtract(precise.divide(precise.add(present, future), left), future)
+    if due:
+        return checked(-precise.multiply(owed, precise.divide(1.0, precise.add(precise.divide(1.0, rate), 1.0))))
+    return checked(-precise.multiply(owed, rate))
 
 
 @function("FV", V, V, V, V, V, minimum=3)

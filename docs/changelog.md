@@ -64,7 +64,11 @@ anything trailing the file is swept into the oldest release's notes. -->
   is Kahan's `(u-1)*x/LN(u)` with `u=EXP(x)`, where the logarithm undoes
   u's rounding: SINH is `(a-b)/2` and TANH `(a-b)/(a+b+2)` on
   `a=e^x-1` and `b=e^-x-1`, COTH and CSCH their reciprocals, and
-  WEIBULL.DIST's distribution is `-(e^-t-1)`. Where the corpus
+  WEIBULL.DIST's distribution is `-(e^-t-1)`. PMT forms `w=1-(1+r)^-n`
+  as `-(e^-x-1)` with `x=n*ln(1+r)`, where Excel's own ln(1+r) below
+  0.375 in size sums `2*atanh(r/(2+r))` as a series and above takes LN;
+  the payment is `-((pv+fv)/w-fv)*r`, with `1/(1/r+1)` for r when
+  payments fall at the start of each period. Where the corpus
   pinned an algorithm down the engine uses it: GAMMALN from 8 up is
   Stirling's series to ten terms, and below 8 is reduced into [2, 3)
   by the logarithm of a product; the normal density multiplies
@@ -589,7 +593,7 @@ odd-period bond functions, `BAHTTEXT`, `EUROCONVERT`, `INFO` and
 Where Excel's own approximation is not yet reproduced, a result may be a
 few units in the last place from Excel's, and the corpus test names each
 such function with the most it may differ by: ASIN below 0.35, where
-Excel's is not odd, the PMT family, the error and gamma
+Excel's is not odd, IPMT, PPMT, CUMIPMT and CUMPRINC, the error and gamma
 functions, most of the statistical distributions and the tests and
 intervals built on them, LINEST past three points and TREND with it, and
 GEOMEAN. When IRR's secant fails

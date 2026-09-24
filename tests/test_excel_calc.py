@@ -707,6 +707,27 @@ def test_yield_with_one_coupon_left(book: Workbook) -> None:
     assert sheet.evaluate(f"YIELD({args})") == -1.5102748190150097
 
 
+def test_pmt_divides_by_1_less_the_discount_and_multiplies_by_the_rate(book: Workbook) -> None:
+    sheet = book["Data"]
+    # w = 1 - (1 + r)^-n, and -((pv + fv)/w - fv) r: the exact payment,
+    # rounded once, is a unit or two away in each of these.
+    assert sheet.evaluate("PMT(0.01,12,1000,0,0)") == -88.84878867834168
+    assert sheet.evaluate("PMT(-0.02,60,1000,0,0)") == -8.471904731198892
+    assert sheet.evaluate("PMT(1E-20,12,1000)") == -83.33333333333334
+    # At the start of each period r becomes 1/(1/r + 1).
+    assert sheet.evaluate("PMT(0.01,360,0,5000,1)") == -1.4164651943319049
+    assert sheet.evaluate("PMT(0.3,30,250000,5000,1)") == -57714.77666967648
+
+
+def test_pmt_errors(book: Workbook) -> None:
+    sheet = book["Data"]
+    assert sheet.evaluate("PMT(0.05,0,1000)") == CellError("#NUM!")
+    assert sheet.evaluate("PMT(-1,12,1000)") == CellError("#NUM!")
+    # (1 + r)^-n overflows.
+    assert sheet.evaluate("PMT(-0.05,1000000,1000)") == CellError("#NUM!")
+    assert sheet.evaluate("PMT(0,7,0.1,0.2,1)") == -0.042857142857142864
+
+
 def test_below_1_the_hyperbolic_functions_take_e_to_the_x_less_1_by_kahans_trick(book: Workbook) -> None:
     sheet = book["Data"]
     # a = e^x - 1 and b = e^-x - 1, each (u - 1) x / ln u with u = EXP(x):

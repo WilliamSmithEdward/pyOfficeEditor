@@ -65,7 +65,7 @@ NEAR: dict[str, int] = {
     "ASIN": 1,
     # Computed exactly here; Excel, more precisely than doubles but not
     # exactly.
-    "PMT": 1, "IPMT": 1, "PPMT": 1, "CUMIPMT": 2, "CUMPRINC": 4,
+    "IPMT": 1, "PPMT": 1, "CUMIPMT": 2, "CUMPRINC": 4,
     # ERF, ERFC and the normal distribution take Excel's own rounding of the
     # argument, which is most of its error in the tail; the rest of the
     # distributions are the nearest double to the exact value. Excel's own
