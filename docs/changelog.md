@@ -11,7 +11,8 @@ package and writing it back unchanged reproduces the input exactly.
 workflow extracts one section by reading to the next "## [" heading, so
 anything trailing the file is swept into the oldest release's notes. -->
 
-[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/WilliamSmithEdward/pyOfficeEditor/compare/v0.1.1...v0.2.0
@@ -19,6 +20,10 @@ anything trailing the file is swept into the oldest release's notes. -->
 [0.1.0]: https://github.com/WilliamSmithEdward/pyOfficeEditor/releases/tag/v0.1.0
 
 ## [Unreleased]
+
+Nothing yet.
+
+## [0.3.0] - 2026-09-23
 
 ### Added
 

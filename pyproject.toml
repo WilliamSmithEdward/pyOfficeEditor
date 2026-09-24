@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyOfficeEditor"
-version = "0.2.2"
+version = "0.3.0"
 description = "Edit the document surface of Excel, Word, PowerPoint and Access in pure Python, no dependencies."
 readme = "README.md"
 license = { text = "MIT" }
