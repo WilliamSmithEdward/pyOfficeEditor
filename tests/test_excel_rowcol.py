@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from pyofficeeditor._xml import Element
-from pyofficeeditor.excel import RangeRef, Workbook, Worksheet
+from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel import DataValidation, RangeRef, Workbook, Worksheet, expression
 from pyofficeeditor.excel._formulas import Shift, shift_formula, shift_range
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW
 from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
@@ -418,6 +418,253 @@ class TestInsertingRows:
         sheet = book["Data"]
         sheet.insert_rows(100, 1)
         assert sheet["A2"].value == "North", "nothing moved"
+
+
+def _bold(sheet: Worksheet, reference: str) -> str:
+    """Make a cell bold and give back the style index that took."""
+    cell = sheet[reference]
+    cell.format = cell.format.with_font(bold=True)
+    element = next(
+        node for row in sheet.document.root.require("sheetData").children_named("row")
+        for node in row.children_named("c") if node.get("r") == reference
+    )
+    return element.get("s") or "0"
+
+
+def _duplicate_of_the_default(book: Workbook) -> str:
+    """Add a second cell format identical to the default, as Excel makes one
+    for a merge, and give back its index."""
+    table = book.package.xml("xl/styles.xml").root.require("cellXfs")
+    first = next(table.children_named("xf"))
+    table.append(XmlDocument.parse(first.to_xml().encode("utf-8")).root)
+    count = sum(1 for _ in table.children_named("xf"))
+    table.set("count", str(count))
+    return str(count - 1)
+
+
+def _row_attributes(sheet: Worksheet, number: int) -> dict[str, str]:
+    row = sheet.rows_by_number().get(number)
+    return {} if row is None else {name: value for name, value in row.attributes.items() if name != "r"}
+
+
+def _cells(sheet: Worksheet, number: int) -> list[tuple[str, str]]:
+    row = sheet.rows_by_number().get(number)
+    return [] if row is None else [(c.get("r") or "", c.get("s") or "") for c in row.children_named("c")]
+
+
+def _cols(sheet: Worksheet) -> list[dict[str, str]]:
+    container = sheet.document.root.child("cols")
+    return [] if container is None else [dict(entry.attributes) for entry in container.children_named("col")]
+
+
+SPARKLINES = (
+    '<ext uri="{05C60535-1F16-4fd2-B633-F4F36F0B64E0}" '
+    'xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main">'
+    '<x14:sparklineGroups xmlns:xm="http://schemas.microsoft.com/office/excel/2006/main">'
+    '<x14:sparklineGroup displayEmptyCellsAs="gap"><x14:colorSeries rgb="FF376092"/><x14:sparklines>'
+    "<x14:sparkline><xm:f>Data!B20:C20</xm:f><xm:sqref>H20</xm:sqref></x14:sparkline>"
+    "</x14:sparklines></x14:sparklineGroup></x14:sparklineGroups></ext>"
+)
+
+
+def _sparklines(sheet: Worksheet) -> list[tuple[str, str]]:
+    extensions = sheet.document.root.require("extLst")
+    return [
+        (line.require("f").text, line.require("sqref").text)
+        for line in extensions.descendants("sparkline")
+    ]
+
+
+class TestANewRowIsFormattedLikeTheRowAbove:
+    """Excel's Insert, measured case by case against Excel's own files."""
+
+    def test_its_height(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.set_row_height(20, 30)
+        sheet.insert_rows(21, 2)
+        assert (sheet.row_height(21), sheet.row_height(22), sheet.row_height(23)) == (30, 30, None)
+
+    def test_its_style_and_each_cells_style_but_no_value(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet["H20"].value = "bold"
+        bold = _bold(sheet, "H20")
+        sheet["I20"].value = 5
+        row = sheet.rows_by_number()[20]
+        row.set("s", bold)
+        row.set("customFormat", "1")
+        italic = sheet["J20"]
+        italic.format = italic.format.with_font(italic=True)
+        sheet.insert_rows(21)
+        assert _row_attributes(sheet, 21) == {"s": bold, "customFormat": "1"}
+        # H20 is styled as its row is, so the row says it; I20 is not, and
+        # comes across as a Normal cell; J20's italic comes across as it is.
+        assert [ref for ref, _ in _cells(sheet, 21)] == ["I21", "J21"]
+        assert sheet["J21"].format.font.italic and sheet["J21"].value is None
+        assert sheet["I21"].value is None
+
+    def test_the_dimension_covers_the_new_cells_and_no_more(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet["H20"].value = "last"
+        _bold(sheet, "H20")
+        assert sheet.dimension is not None and sheet.dimension.a1 == "A1:H20"
+        sheet.insert_rows(21, 2)
+        assert sheet.dimension is not None and sheet.dimension.a1 == "A1:H22"
+
+    def test_a_duplicate_of_the_default_format_is_the_default(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        duplicate = _duplicate_of_the_default(book)
+        sheet["H20"].value = "in a merge"
+        next(
+            node for node in sheet.rows_by_number()[20].children_named("c") if node.get("r") == "H20"
+        ).set("s", duplicate)
+        sheet.insert_rows(21)
+        assert _cells(sheet, 21) == []
+
+    def test_never_hidden(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.set_row_height(20, 25)
+        sheet.set_row_hidden(20, True)
+        sheet.insert_rows(21)
+        assert (sheet.row_hidden(21), sheet.row_height(21)) == (False, 25)
+
+    def test_its_outline_level_and_a_collapsed_group_opens(self, book: Workbook) -> None:
+        """A visible row in a collapsed group: Excel clears the summary's
+        folded mark, measured with the summary below and above."""
+        sheet = book["Data"]
+        sheet.group_rows(20, 22, collapsed=True)
+        assert _row_attributes(sheet, 23).get("collapsed") == "1"
+        sheet.insert_rows(21)
+        assert (sheet.row_outline_level(21), sheet.row_hidden(21)) == (1, False)
+        assert "collapsed" not in _row_attributes(sheet, 24)
+
+    def test_the_summary_above_opens_too(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.summary_below = False
+        sheet.group_rows(20, 22, collapsed=True)
+        assert _row_attributes(sheet, 19).get("collapsed") == "1"
+        sheet.insert_rows(23)
+        assert sheet.row_outline_level(23) == 1
+        assert "collapsed" not in _row_attributes(sheet, 19)
+
+    def test_nothing_at_row_one(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.set_row_height(1, 30)
+        sheet.insert_rows(1)
+        assert (sheet.row_height(1), sheet.row_height(2)) == (None, 30)
+
+    def test_a_conditional_format_and_a_validation_ending_above_grow(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.add_conditional_format("H18:H20", expression("=H18>1"))
+        sheet.add_conditional_format("J18:J19", expression("=J18>1"))
+        sheet.add_data_validation("I20", DataValidation.whole_number(1, 9))
+        sheet.insert_rows(21, 2)
+        assert [block.sqref for block in sheet.conditional_formats] == ["H18:H22", "J18:J19"]
+        assert [rule.sqref for rule in sheet.data_validations] == ["I20:I22"]
+
+    def test_a_sparkline_above_is_copied_down(self, book: Workbook) -> None:
+        """Its data read as far further down as the new row is."""
+        sheet = book["Data"]
+        root = sheet.document.root
+        extensions = root.child("extLst")
+        if extensions is None:
+            extensions = Element.create("extLst")
+            insert_in_schema_order(root, extensions, WORKSHEET_CHILD_ORDER)
+        extensions.append(XmlDocument.parse(SPARKLINES.encode("utf-8")).root)
+        sheet.insert_rows(21, 2)
+        assert _sparklines(sheet) == [
+            ("Data!B20:C20", "H20"),
+            ("Data!B21:C21", "H21"),
+            ("Data!B22:C22", "H22"),
+        ]
+
+    def test_copy_format_false_inserts_plain_rows(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.set_row_height(20, 30)
+        _bold(sheet, "H20")
+        sheet.add_conditional_format("H18:H20", expression("=H18>1"))
+        sheet.insert_rows(21, copy_format=False)
+        assert (sheet.row_height(21), _cells(sheet, 21)) == (None, [])
+        assert [block.sqref for block in sheet.conditional_formats] == ["H18:H20"]
+
+
+class TestANewColumnIsFormattedLikeTheColumnToItsLeft:
+    def test_its_width_by_stretching_the_entry(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.set_column_width(8, 20)
+        sheet.insert_columns(9, 2)
+        assert [sheet.column_width(n) for n in (8, 9, 10, 11)] == [20, 20, 20, None]
+        assert [(entry["min"], entry["max"]) for entry in _cols(sheet) if int(entry["min"]) >= 8] == [("8", "10")]
+
+    def test_inside_a_range_it_is_one_entry_still(self, book: Workbook) -> None:
+        """As Excel writes D:E at one width, and D:F after a column goes in
+        at E."""
+        sheet = book["Data"]
+        sheet.set_column_width(8, 20)
+        next(e for e in sheet.document.root.require("cols").children_named("col") if e.get("min") == "8").set("max", "9")
+        sheet.insert_columns(9)
+        assert [(entry["min"], entry["max"]) for entry in _cols(sheet) if int(entry["min"]) >= 8] == [("8", "10")]
+        assert sheet.column_width(9) == 20
+
+    def test_never_hidden_but_its_width_is_taken(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.set_column_width(8, 20)
+        sheet.set_column_hidden(8, True)
+        sheet.insert_columns(9)
+        assert (sheet.column_hidden(9), sheet.column_width(9)) == (False, 20)
+        assert sheet.column_hidden(8)
+
+    def test_a_hidden_range_split_around_a_visible_column(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        for number in (8, 9):
+            sheet.set_column_width(number, 14)
+            sheet.set_column_hidden(number, True)
+        sheet.insert_columns(9)
+        assert [sheet.column_hidden(n) for n in (8, 9, 10)] == [True, False, True]
+        assert sheet.column_width(9) == 14
+
+    def test_a_hidden_column_at_width_zero_gives_the_standard_width(self, book: Workbook) -> None:
+        """Excel stores a hidden column of the standard width at width 0."""
+        sheet = book["Data"]
+        sheet.set_column_hidden(8, True)
+        container = sheet.document.root.require("cols")
+        next(container.children_named("col")).set("width", "0")
+        sheet.insert_columns(9)
+        assert sheet.column_width(9) is None
+
+    def test_each_cells_style_but_no_value(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet["H20"].value = "bold"
+        _bold(sheet, "H20")
+        sheet["H21"].value = "plain"
+        sheet.insert_columns(9)
+        assert sheet["I20"].format.font.bold and sheet["I20"].value is None
+        assert [ref for ref, _ in _cells(sheet, 21)] == ["H21"]
+
+    def test_its_outline_level_and_a_collapsed_group_opens(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.group_columns(8, 10, collapsed=True)
+        sheet.insert_columns(9)
+        assert (sheet.column_outline_level(9), sheet.column_hidden(9)) == (1, False)
+        assert all(entry.get("collapsed") is None for entry in _cols(sheet))
+
+    def test_a_conditional_format_ending_to_the_left_grows(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.add_conditional_format("H18:H20", expression("=H18>1"))
+        sheet.insert_columns(9)
+        assert [block.sqref for block in sheet.conditional_formats] == ["H18:I20"]
+
+    def test_nothing_at_column_a(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.set_column_width(1, 20)
+        sheet.insert_columns(1)
+        assert (sheet.column_width(1), sheet.column_width(2)) == (None, 20)
+
+    def test_copy_format_false_inserts_plain_columns_even_inside_a_range(self, book: Workbook) -> None:
+        sheet = book["Data"]
+        sheet.set_column_width(8, 20)
+        sheet.set_column_width(9, 20)
+        sheet.insert_columns(9, copy_format=False)
+        assert [sheet.column_width(n) for n in (8, 9, 10)] == [20, None, 20]
 
 
 class TestInsertingColumns:

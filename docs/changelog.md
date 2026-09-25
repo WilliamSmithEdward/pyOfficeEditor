@@ -43,6 +43,22 @@ anything trailing the file is swept into the oldest release's notes. -->
   `Shape.Type` 7, and `remove_shape` and `update_shape` refuse it too. A
   Forms control inside a group now reads as a control.
 
+### Changed
+
+- **An inserted row is formatted like the row above it, and an inserted
+  column like the column to its left, as Excel's Insert does.** Measured
+  against Excel, the new row takes the height, row style and outline level
+  of the one above, and each of its cells' styles, empty; a new column
+  takes the width, style and outline level of its neighbour the same way.
+  A conditional format, a data validation or a protected range that ends
+  on the row above grows over the new rows, and a sparkline there is copied
+  down, reading its data that much further down. Nothing is hidden, no value
+  comes across, and a row inserted at row 1 or a column at A takes nothing.
+  A visible row or column that lands in a collapsed group opens it, as Excel
+  clears the group's folded mark. `insert_rows` and `insert_columns` used to
+  insert plain rows and columns, and `copy_format=False` still does, even
+  inside a run of columns sharing one width.
+
 ### Fixed
 
 - **Removing a chart left the chart behind.** Its part, its relationship

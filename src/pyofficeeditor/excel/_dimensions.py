@@ -46,9 +46,13 @@ otherwise a width fixed by the Normal font, measured per font in
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from pyofficeeditor._xml import Element
 from pyofficeeditor.excel._reference import MAX_COLUMN, CellRef
+
+if TYPE_CHECKING:
+    from pyofficeeditor.excel.worksheet import Worksheet
 
 #: The width Excel stores for a column at the standard width, by the
 #: Normal style's font, measured on Excel 16 at 100% display scaling. It is
@@ -100,6 +104,19 @@ def standard_width(format_properties: Element | None, font_name: str | None, fon
     if font_name is None or font_size is None:
         return FALLBACK_STANDARD_WIDTH
     return STANDARD_WIDTHS.get((font_name, font_size), FALLBACK_STANDARD_WIDTH)
+
+
+def sheet_standard_width(sheet: Worksheet) -> float:
+    """What a column at a sheet's standard width stores, which an entry
+    made for one has to carry: by the sheet's own default, else the
+    workbook's Normal font."""
+    styles = sheet.workbook.styles
+    font = None if styles is None else styles.cell_format(None).font
+    return standard_width(
+        sheet.document.root.child("sheetFormatPr"),
+        None if font is None else font.name,
+        None if font is None else font.size,
+    )
 
 #: Every attribute a ``<col>`` entry can carry besides ``min`` and ``max``.
 #: Splitting a span copies all of them to each piece, so a column that was
@@ -274,5 +291,6 @@ __all__ = [
     "format_width",
     "isolate_column",
     "says_nothing",
+    "sheet_standard_width",
     "standard_width",
 ]

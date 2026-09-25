@@ -558,8 +558,15 @@ class TestConditionalFormattingMoves:
 
     def test_columns_too(self, book: Workbook) -> None:
         sheet = self.formatted(book)
-        sheet.insert_columns(3, 1)
+        sheet.insert_columns(3, 1, copy_format=False)
         assert self.sqrefs(sheet) == ["B2:B9", "E2:E5", "G2:G9"]
+
+    def test_a_column_formatted_like_its_left_joins_the_block(self, book: Workbook) -> None:
+        """Measured: Excel's Insert grows a block that ends on the column to
+        the left over the new one, which is formatted like it."""
+        sheet = self.formatted(book)
+        sheet.insert_columns(3, 1)
+        assert self.sqrefs(sheet) == ["B2:C9", "E2:E5", "G2:G9"]
 
     def test_a_deleted_column_takes_its_block(self, book: Workbook) -> None:
         sheet = self.formatted(book)

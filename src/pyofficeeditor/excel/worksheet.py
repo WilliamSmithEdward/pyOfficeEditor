@@ -71,7 +71,7 @@ from pyofficeeditor.excel._dimensions import (
     format_width,
     isolate_column,
     says_nothing,
-    standard_width,
+    sheet_standard_width,
 )
 from pyofficeeditor.excel._dxf import Dxf
 from pyofficeeditor.excel._filters import (
@@ -764,8 +764,8 @@ class Worksheet:
     # Inserting rows and columns
     # ------------------------------------------------------------------
 
-    def insert_rows(self, at: int, count: int = 1) -> None:
-        """Insert blank rows, pushing everything at or below ``at`` down.
+    def insert_rows(self, at: int, count: int = 1, *, copy_format: bool = True) -> None:
+        """Insert empty rows, pushing everything at or below ``at`` down.
 
         Everything that records a cell address moves with the data: the
         cells themselves, every formula in the workbook that reads from this
@@ -773,19 +773,24 @@ class Worksheet:
         sheet's filter and dimension, its page breaks, and the workbook's
         defined names.
 
-        The insertion is refused when the sheet carries something that
-        addresses cells and this library cannot move, such as conditional
-        formatting or data validation. Moving everything else and leaving
-        those behind produces a workbook that opens cleanly and points at
-        the wrong cells, which is worse than not doing it.
+        The new rows are formatted like the row above them, as Excel's
+        Insert does: its height, style and outline level, each cell's style,
+        and the conditional formats, data validations and sparklines it
+        carries. Never its values, and never hidden. ``copy_format=False``
+        inserts plain rows instead.
+
+        Refused, as Excel refuses it, when it would cut through a pivot
+        table.
         """
-        insert_rows(self, at, count)
+        insert_rows(self, at, count, copy_format=copy_format)
         self._workbook.mark_values_changed()
 
-    def insert_columns(self, at: int, count: int = 1) -> None:
-        """Insert blank columns, pushing everything at or right of ``at``
-        over.  The same shifting and the same refusal as :meth:`insert_rows`."""
-        insert_columns(self, at, count)
+    def insert_columns(self, at: int, count: int = 1, *, copy_format: bool = True) -> None:
+        """Insert empty columns, pushing everything at or right of ``at``
+        over, formatted like the column to their left unless
+        ``copy_format`` is false. The same shifting, copying and refusal as
+        :meth:`insert_rows`."""
+        insert_columns(self, at, count, copy_format=copy_format)
         self._workbook.mark_values_changed()
 
     def delete_rows(self, at: int, count: int = 1) -> None:
@@ -991,13 +996,7 @@ class Worksheet:
     def _standard_width(self) -> float:
         """The width a column at this sheet's standard width stores, which
         an entry made for one has to carry."""
-        styles = self._workbook.styles
-        font = None if styles is None else styles.cell_format(None).font
-        return standard_width(
-            self._root.child("sheetFormatPr"),
-            None if font is None else font.name,
-            None if font is None else font.size,
-        )
+        return sheet_standard_width(self)
 
     # ------------------------------------------------------------------
     # Frozen panes

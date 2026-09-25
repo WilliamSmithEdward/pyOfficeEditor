@@ -2631,6 +2631,7 @@ Public Function Build(ByVal Picture As String, ByVal Embedded As String, ByVal T
     Set wb = Workbooks.Add(xlWBATWorksheet)
     Set ws = wb.Worksheets(1)
     ws.Range("A1").Value = 1
+    ws.Rows(5).RowHeight = 30
     Set s = ws.Shapes.AddShape(1, 20, 70, 60, 40)
     s.Name = "TwoCell"
     Set s = ws.Shapes.AddShape(1, 100, 70, 60, 40)
@@ -2737,6 +2738,145 @@ def test_drawn_objects_follow_rows_and_columns_as_excel_moves_them(
             book.save()
         expected = probe(excel, _PLACEMENTS_PROBE, excels, f"placements_excel{index}")
         seen = probe(excel, _PLACEMENTS_PROBE, ours, f"placements_library{index}")
+        assert seen == expected, name
+
+
+_FORMATS_BUILD = r"""
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Add(xlWBATWorksheet)
+    Set ws = wb.Worksheets(1)
+    ws.Range("A1:A3").Value = 4
+    ws.Rows(3).RowHeight = 30
+    ws.Range("B3").Font.Bold = True
+    ws.Range("C3").Interior.Color = RGB(255, 255, 0)
+    ws.Range("D3").NumberFormat = "0.00"
+    ws.Range("E1:E3").FormatConditions.Add Type:=xlCellValue, Operator:=xlGreater, Formula1:="=3"
+    ws.Range("E1:E3").FormatConditions(1).Interior.Color = RGB(255, 0, 0)
+    ws.Range("F1:F3").Validation.Add Type:=xlValidateWholeNumber, AlertStyle:=xlValidAlertStop, _
+        Operator:=xlBetween, Formula1:="1", Formula2:="9"
+    ws.Range("G3").SparklineGroups.Add Type:=xlSparkLine, SourceData:="A1:A3"
+    ws.Rows(5).Interior.Color = RGB(0, 255, 0)
+    ws.Rows(7).RowHeight = 22
+    ws.Rows(7).Hidden = True
+    ws.Rows("10:12").Group
+    ws.Columns("I").ColumnWidth = 20
+    ws.Columns("J").Font.Bold = True
+    ws.Columns("K:L").ColumnWidth = 12
+    ws.Columns("M").ColumnWidth = 15
+    ws.Columns("M").Hidden = True
+    ws.Columns("P:R").Group
+    ws.Outline.ShowLevels RowLevels:=1, ColumnLevels:=1
+    wb.SaveAs Target, 51
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Build = "built"
+End Function
+"""
+
+_FORMATS_EDIT = r"""
+Public Function Edit(ByVal Source As String, ByVal Target As String, ByVal What As String, ByVal Rows As Boolean) As String
+    Dim wb As Workbook
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Source)
+    If Rows Then
+        wb.Worksheets(1).Range(What).EntireRow.Insert
+    Else
+        wb.Worksheets(1).Range(What).EntireColumn.Insert
+    End If
+    wb.SaveAs Target, 51
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Edit = "edited"
+End Function
+"""
+
+_FORMATS_PROBE = r"""
+Private Function Show(ByVal Value As Variant) As String
+    If IsNull(Value) Then
+        Show = "mixed"
+    Else
+        Show = CStr(Value)
+    End If
+End Function
+
+Private Function Rule(ByVal Cell As Range) As String
+    On Error GoTo NoRule
+    Rule = CStr(Cell.Validation.Type)
+    Exit Function
+NoRule:
+    Rule = "none"
+End Function
+
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim r As Long
+    Dim c As Long
+    Dim out As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets(1)
+    For r = 1 To 15
+        out = out & "row" & r & "=" & Show(ws.Rows(r).RowHeight) & ";" & Show(ws.Rows(r).Hidden) & ";" & _
+              Show(ws.Rows(r).OutlineLevel)
+        For c = 1 To 8
+            With ws.Cells(r, c)
+                out = out & ";" & Show(.Font.Bold) & "/" & Show(.Interior.Color) & "/" & .NumberFormat & "/" & _
+                      CStr(.FormatConditions.Count) & "/" & Rule(ws.Cells(r, c)) & "/" & CStr(.SparklineGroups.Count)
+            End With
+        Next c
+        out = out & "|"
+    Next r
+    For c = 9 To 20
+        out = out & "column" & c & "=" & Show(ws.Columns(c).ColumnWidth) & ";" & Show(ws.Columns(c).Hidden) & _
+              ";" & Show(ws.Columns(c).OutlineLevel) & ";" & Show(ws.Cells(1, c).Font.Bold) & "|"
+    Next c
+    Probe = Left(out, Len(out) - 1)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+End Function
+"""
+
+
+def test_an_inserted_row_or_column_is_formatted_as_excel_formats_it(excel: object, tmp_path: Path) -> None:
+    """Excel's Insert formats a new row like the row above and a new column
+    like the one to its left: height, width, styles, outline level, and the
+    conditional formats, validations and sparklines ending there, but never
+    hidden. Excel inserts on one copy and the library on another, and Excel
+    has to read the two the same."""
+    source = tmp_path / "formats.xlsx"
+    built = excel.run_vba(  # type: ignore[attr-defined]
+        _FORMATS_BUILD, proc="Build", args=(str(source),), timeout=180, module_name="Build_formats"
+    )
+    assert built.outcome == "passed", f"Excel could not author the workbook: {built!r}"
+
+    edits: dict[str, tuple[str, bool, Callable[[Worksheet], None]]] = {
+        "below_formats": ("A4", True, lambda sheet: sheet.insert_rows(4)),
+        "below_row_style": ("A6", True, lambda sheet: sheet.insert_rows(6)),
+        "below_hidden_row": ("A8", True, lambda sheet: sheet.insert_rows(8)),
+        "inside_collapsed_group": ("A11", True, lambda sheet: sheet.insert_rows(11)),
+        "right_of_wide_column": ("J1", False, lambda sheet: sheet.insert_columns(10)),
+        "right_of_bold_column": ("K1", False, lambda sheet: sheet.insert_columns(11)),
+        "right_of_hidden_column": ("N1", False, lambda sheet: sheet.insert_columns(14)),
+        "inside_collapsed_columns": ("Q1", False, lambda sheet: sheet.insert_columns(17)),
+    }
+    for index, (name, (what, rows, library_edit)) in enumerate(edits.items()):
+        excels = tmp_path / f"excel_{name}.xlsx"
+        done = excel.run_vba(  # type: ignore[attr-defined]
+            _FORMATS_EDIT, proc="Edit", args=(str(source), str(excels), what, rows),
+            timeout=180, module_name=f"Edit_formats{index}",
+        )
+        assert done.outcome == "passed", f"{name}: {done!r}"
+        ours = tmp_path / f"library_{name}.xlsx"
+        shutil.copy(source, ours)
+        with Workbook.open(ours) as book:
+            library_edit(book[0])
+            book.save()
+        expected = probe(excel, _FORMATS_PROBE, excels, f"formats_excel{index}")
+        seen = probe(excel, _FORMATS_PROBE, ours, f"formats_library{index}")
         assert seen == expected, name
 
 

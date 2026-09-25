@@ -217,10 +217,15 @@ class TestInsertingRows:
         assert (after.left, after.width, after.height) == (before.left, before.width, before.height)
 
     def test_a_row_inside_stretches_a_shape_that_sizes_with_its_cells(self, shapes: Workbook) -> None:
+        """The new row takes the 30 points of row 3 above it, as Excel's
+        Insert gives it, and the shape stretches by that; a plain row is the
+        default 14.5."""
         sheet = shapes["Shapes"]
         sheet.insert_rows(4)
         box = sheet.shape("Box")
-        assert (box.top, box.height) == (50.0, 60.0 + 14.5)
+        assert (box.top, box.height) == (50.0, 60.0 + 30.0)
+        sheet.insert_rows(4, copy_format=False)
+        assert sheet.shape("Box").height == 60.0 + 30.0 + 14.5
 
     def test_columns_move_the_transform_too(self, shapes: Workbook) -> None:
         sheet = shapes["Shapes"]

@@ -42,8 +42,10 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > included. Validation, protected ranges, sorts, scenarios and comments move
 > with it, and shapes, pictures and form controls move, size or stay by the
 > placement Excel gives each. A deletion that takes all of one takes it too,
-> except an ActiveX control or an embedded object, which it refuses. Word,
-> PowerPoint and Access follow, in that order.
+> except an ActiveX control or an embedded object, which it refuses. A new
+> row is formatted like the row above it and a new column like the one to
+> its left, as Excel's Insert formats them. Word, PowerPoint and Access
+> follow, in that order.
 
 ```python
 import datetime as dt
@@ -86,7 +88,7 @@ with Workbook.open("orders.xlsx") as book:
     )
     sheet.add_conditional_format("C2:C20", gradient())   # three-colour scale
 
-    sheet.insert_rows(3, 2)                      # every reference follows
+    sheet.insert_rows(3, 2)                      # formatted like row 2; references follow
     sheet.delete_columns(5, 1)                   # SUM(E2:E9) -> #REF!
 
     summary = book.add_sheet("Summary", index=0)

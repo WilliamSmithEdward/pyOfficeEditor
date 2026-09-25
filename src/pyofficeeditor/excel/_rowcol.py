@@ -36,6 +36,10 @@ moves only, or stays put, by the placement it records, and a note's box
 follows its cell. :mod:`~pyofficeeditor.excel._placement` has the rules,
 each measured against Excel.
 
+An inserted row is formatted like the row above it, and an inserted column
+like the column to its left, as Excel's Insert formats them unless told
+not to; :mod:`~pyofficeeditor.excel._insertformat` has what that takes.
+
 And in every chart in the workbook, since a chart on any sheet, or on a
 chart sheet, may read from this one: each ``<c:f>`` a series or a title
 reads from, moved as a cell's formula is, measured.
@@ -95,12 +99,21 @@ from pyofficeeditor.excel._conditional import (
     ConditionalFormatting,
     ConditionalRule,
 )
+from pyofficeeditor.excel._dimensions import sheet_standard_width
 from pyofficeeditor.excel._formulas import (
     Deletion,
     Shift,
     delete_in_formula,
     shift_formula,
     shift_range,
+)
+from pyofficeeditor.excel._insertformat import (
+    copy_column_format,
+    copy_row_format,
+    copy_sparklines,
+    grow_ranges,
+    place_column_entries,
+    widen_dimension,
 )
 from pyofficeeditor.excel._pivots import (
     RT_PIVOT_CACHE,
@@ -122,8 +135,10 @@ if TYPE_CHECKING:
     from pyofficeeditor.excel.worksheet import Worksheet
     from pyofficeeditor.opc import OpcPackage
 
-def insert_rows(sheet: Worksheet, at: int, count: int) -> None:
-    """Insert blank rows, pushing everything at or below ``at`` down."""
+def insert_rows(sheet: Worksheet, at: int, count: int, *, copy_format: bool = True) -> None:
+    """Insert empty rows, pushing everything at or below ``at`` down, and
+    format them like the row above, as Excel does, unless ``copy_format``
+    is false."""
     _check_bounds(at, count, MAX_ROW, "row")
     # Every row the sheet records moves, a hidden or sized one with no cell
     # as much as one with data, so the last of those is what must fit.
@@ -137,11 +152,17 @@ def insert_rows(sheet: Worksheet, at: int, count: int) -> None:
     _check_pivot_tables(sheet, shift=shift)
     before = _drawn_grid(sheet)
     _shift_cells(sheet, shift)
+    # Before anything drawn moves, which measures the new rows' heights.
+    made = copy_row_format(sheet, at, count) if copy_format else None
     _shift_everything_else(sheet, shift, before)
+    if copy_format:
+        _formatted_like_before(sheet, at, count, made, is_row=True)
 
 
-def insert_columns(sheet: Worksheet, at: int, count: int) -> None:
-    """Insert blank columns, pushing everything at or right of ``at`` over."""
+def insert_columns(sheet: Worksheet, at: int, count: int, *, copy_format: bool = True) -> None:
+    """Insert empty columns, pushing everything at or right of ``at`` over,
+    and format them like the column to their left, as Excel does, unless
+    ``copy_format`` is false."""
     _check_bounds(at, count, MAX_COLUMN, "column")
     highest = sheet.max_column
     if highest + count > MAX_COLUMN:
@@ -153,8 +174,25 @@ def insert_columns(sheet: Worksheet, at: int, count: int) -> None:
     _check_pivot_tables(sheet, shift=shift)
     before = _drawn_grid(sheet)
     _shift_cells(sheet, shift)
-    _shift_column_entries(sheet, shift)
+    standard = sheet_standard_width(sheet)
+    source = place_column_entries(sheet.document.root, at, count, copy_format=copy_format, standard=standard)
+    made = copy_column_format(sheet, at, count, source, standard=standard) if copy_format else None
     _shift_everything_else(sheet, shift, before)
+    if copy_format:
+        _formatted_like_before(sheet, at, count, made, is_row=False)
+
+
+def _formatted_like_before(sheet: Worksheet, at: int, count: int, made: RangeRef | None, *, is_row: bool) -> None:
+    """The rest of what an inserted row or column takes from the one before
+    it, once everything else has moved: the ranges that grow over it, the
+    sparklines copied into it, and the ``dimension`` covering the cells it
+    was given."""
+    root = sheet.document.root
+    grow_ranges(root, at, count, is_row=is_row)
+    copy_sparklines(root, at, count, is_row=is_row)
+    if made is not None:
+        widen_dimension(root, made)
+    sheet.invalidate()
 
 
 def delete_rows(sheet: Worksheet, at: int, count: int) -> None:
@@ -845,26 +883,6 @@ def _widen_span(row: Element, column_count: int) -> None:
     except ValueError:
         return
     row.set("spans", f"{low}:{min(MAX_COLUMN, high + column_count)}")
-
-
-def _shift_column_entries(sheet: Worksheet, shift: Shift) -> None:
-    """Move the ``<col>`` entries for the columns that shifted."""
-    if shift.columns_at is None or not shift.column_count:
-        return
-    container = sheet.document.root.child("cols")
-    if container is None:
-        return
-    for entry in container.children_named("col"):
-        for name in ("min", "max"):
-            raw = entry.get(name)
-            if raw is None:
-                continue
-            try:
-                value = int(raw)
-            except ValueError:
-                continue
-            if value >= shift.columns_at:
-                entry.set(name, str(min(MAX_COLUMN, value + shift.column_count)))
 
 
 def _shift_everything_else(sheet: Worksheet, shift: Shift, before: SheetGrid | None) -> None:
