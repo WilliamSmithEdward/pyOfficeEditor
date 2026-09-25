@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from pyofficeeditor._xml import Element
-from pyofficeeditor.excel import RangeRef, Workbook
+from pyofficeeditor.excel import RangeRef, Workbook, Worksheet
 from pyofficeeditor.excel._formulas import Shift, shift_formula, shift_range
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW
 from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
@@ -530,21 +530,21 @@ class TestNothingIsRefused:
     def test_an_inline_control_anchor(self, book: Workbook) -> None:
         """Zero-based, so row 9 is the tenth row and lands on the twelfth."""
         sheet = book["Data"]
-        holder = Element.create("controls")
-        anchor = Element.create("anchor")
-        for end, row in (("from", "9"), ("to", "10")):
-            node = Element.create(end)
-            node.append(_indexed("xdr:col", "4"))
-            node.append(_indexed("xdr:row", row))
-            anchor.append(node)
-        holder.append(anchor)
-        insert_in_schema_order(sheet.document.root, holder, WORKSHEET_CHILD_ORDER)
+        attributes = {"moveWithCells": "1", "sizeWithCells": "1"}
+        anchor = _control_record(sheet, attributes)
         sheet.insert_rows(3, 2)
-        ends = sheet.document.root.require("controls").require("anchor")
-        rows = [
-            ends.require(end).require("xdr:row").text for end in ("from", "to")
-        ]
+        rows = [anchor.require(end).require("xdr:row").text for end in ("from", "to")]
         assert rows == ["11", "12"]
+
+    def test_a_free_floating_control_anchor_stays(self, book: Workbook) -> None:
+        """Neither attribute is how Excel records "don't move or size with
+        cells", measured, and such a control keeps its place: over rows of
+        one height, the same rows."""
+        sheet = book["Data"]
+        anchor = _control_record(sheet, {})
+        sheet.insert_rows(3, 2)
+        rows = [anchor.require(end).require("xdr:row").text for end in ("from", "to")]
+        assert rows == ["9", "10"]
 
     def test_an_extension_sqref(self, book: Workbook) -> None:
         """Everything newer than the 2006 schema addresses cells through an
@@ -580,6 +580,27 @@ def _indexed(name: str, value: str) -> Element:
     node = Element.create(name)
     node.set_text(value)
     return node
+
+
+def _control_record(sheet: Worksheet, placement: dict[str, str]) -> Element:
+    """Record a control on the sheet as Excel does, anchored over rows 10
+    and 11 (zero-based 9 and 10), and return its ``<anchor>``."""
+    anchor = Element.create("anchor", placement)
+    for end, row in (("from", "9"), ("to", "10")):
+        node = Element.create(end)
+        node.append(_indexed("xdr:col", "4"))
+        node.append(_indexed("xdr:colOff", "0"))
+        node.append(_indexed("xdr:row", row))
+        node.append(_indexed("xdr:rowOff", "0"))
+        anchor.append(node)
+    settings = Element.create("controlPr")
+    settings.append(anchor)
+    control = Element.create("control", {"shapeId": "1025", "name": "Go"})
+    control.append(settings)
+    holder = Element.create("controls")
+    holder.append(control)
+    insert_in_schema_order(sheet.document.root, holder, WORKSHEET_CHILD_ORDER)
+    return anchor
 
 
 class TestRefusals:

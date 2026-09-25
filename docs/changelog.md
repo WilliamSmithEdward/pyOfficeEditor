@@ -83,6 +83,34 @@ anything trailing the file is swept into the oldest release's notes. -->
   and its VML. `remove_shape` now refuses it, as it refuses an ActiveX
   control.
 
+- **A shape's position went stale when rows or columns moved.** Inserting
+  or deleting them moved a shape's anchor but not its own transform, which
+  is where a shape's box is read from, so `top` and `left` kept their old
+  values. The transform now moves with the anchor, by the distance the
+  anchor moved on the sheet's own grid; a group's members stay in the
+  group's own coordinates, as Excel leaves them.
+
+- **Every drawn object moved as if it sized with its cells.** Excel gives
+  each one a placement, and measured, each takes an edit its own way. A
+  picture as Excel inserts one moves without sizing, so a row inserted or
+  deleted inside it stretched or shrank it where Excel keeps its size, and
+  an object set not to move went with the cells where Excel leaves it. Each
+  now moves by the placement its drawing anchor, its record on the sheet
+  and its VML all state. An edge whose row is deleted lands on the boundary
+  at offset zero, and a bottom or right edge lying on the line where rows
+  or columns go in stays, both as Excel has them.
+
+- **A deletion that took all of a control's rows made Excel refuse the
+  file.** The control's anchors turned upside down. A shape, chart, group
+  or Forms control that moves and sizes with its cells now goes when all
+  of its rows or columns do, parts and all, as Excel deletes it. A deletion
+  that would take an ActiveX control or an embedded object whole is
+  refused, having changed nothing.
+
+- **A note's box stretched when a row went in at its cell.** Measured,
+  the box follows the cell it annotates, by as many rows or columns as the
+  cell moves, and keeps its size whatever the rows inside it do.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added

@@ -45,7 +45,7 @@ import os
 import re
 import shutil
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -68,6 +68,7 @@ from pyofficeeditor.excel import (
     Top10Filter,
     ValueFilter,
     Workbook,
+    Worksheet,
     cell_is,
     contains_text,
     criteria,
@@ -2618,6 +2619,125 @@ def test_the_library_reads_an_ole_object_as_excel_does(excel: object, tmp_path: 
         with pytest.raises(ValueError, match="OLE object removal"):
             sheet.remove_shape("Tucked")
     assert read == seen == {"Shown": "7;False", "Tucked": "7;True", "Box": "1;False"}
+
+
+_PLACEMENTS_BUILD = r"""
+Public Function Build(ByVal Picture As String, ByVal Embedded As String, ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim s As Shape
+    Dim o As OLEObject
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Add(xlWBATWorksheet)
+    Set ws = wb.Worksheets(1)
+    ws.Range("A1").Value = 1
+    Set s = ws.Shapes.AddShape(1, 20, 70, 60, 40)
+    s.Name = "TwoCell"
+    Set s = ws.Shapes.AddShape(1, 100, 70, 60, 40)
+    s.Name = "OneCell"
+    s.Placement = xlMove
+    Set s = ws.Shapes.AddShape(1, 180, 70, 60, 40)
+    s.Name = "Absolute"
+    s.Placement = xlFreeFloating
+    Set s = ws.Shapes.AddPicture(Picture, False, True, 260, 70, 60, 40)
+    s.Name = "Picture"
+    ws.ChartObjects.Add(340, 70, 60, 40).Name = "Chart"
+    ws.Shapes.AddShape(1, 420, 70, 25, 40).Name = "G1"
+    ws.Shapes.AddShape(1, 450, 70, 25, 40).Name = "G2"
+    ws.Shapes.Range(Array("G1", "G2")).Group.Name = "Group"
+    ws.Buttons.Add(500, 70, 60, 40).Name = "Button"
+    ws.Buttons.Add(580, 70, 60, 40).Name = "MovingButton"
+    ws.Shapes("MovingButton").Placement = xlMove
+    ws.Buttons.Add(660, 70, 60, 40).Name = "FreeButton"
+    ws.Shapes("FreeButton").Placement = xlFreeFloating
+    ws.Range("F6").AddComment "a note"
+    Set o = ws.OLEObjects.Add(Filename:=Embedded, Link:=False, Left:=740, Top:=70, Width:=60, Height:=40)
+    o.Name = "Embedded"
+    wb.SaveAs Target, 52
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Build = "built"
+End Function
+"""
+
+_PLACEMENTS_EDIT = r"""
+Public Function Edit(ByVal Source As String, ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Source)
+    Set ws = wb.Worksheets(1)
+    {statement}
+    wb.SaveAs Target, 52
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Edit = "edited"
+End Function
+"""
+
+_PLACEMENTS_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim s As Shape
+    Dim out As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For Each s In wb.Worksheets(1).Shapes
+        out = out & s.Name & "=" & CStr(s.Left) & "," & CStr(s.Top) & "," & _
+              CStr(s.Width) & "," & CStr(s.Height) & "|"
+    Next s
+    Probe = out & "notes=" & CStr(wb.Worksheets(1).Comments.Count)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+End Function
+"""
+
+
+def test_drawn_objects_follow_rows_and_columns_as_excel_moves_them(
+    excel: object, live_pictures_xlsx: Path, tmp_path: Path
+) -> None:
+    """Each placement Excel gives an object takes an edit its own way:
+    move and size with the cells, move without sizing, or stay put, and a
+    note's box follows its cell. Excel makes each edit on its own copy, the
+    library on another, and Excel has to see the two the same, shape by
+    shape: where each is, and which ones a deletion took."""
+    picture = tmp_path / "picture.png"
+    with zipfile.ZipFile(live_pictures_xlsx) as archive:
+        picture.write_bytes(archive.read("xl/media/image1.png"))
+    embedded = tmp_path / "embedded.txt"
+    embedded.write_text("embedded by Excel\n", encoding="utf-8")
+    source = tmp_path / "placements.xlsm"
+    built = excel.run_vba(  # type: ignore[attr-defined]
+        _PLACEMENTS_BUILD, proc="Build", args=(str(picture), str(embedded), str(source)),
+        timeout=180, module_name="Build_placements",
+    )
+    assert built.outcome == "passed", f"Excel could not author the workbook: {built!r}"
+
+    edits: dict[str, tuple[str, Callable[[Worksheet], None]]] = {
+        "insert_rows_above": ('ws.Rows("1:2").Insert', lambda sheet: sheet.insert_rows(1, 2)),
+        "insert_row_inside": ('ws.Rows("6:6").Insert', lambda sheet: sheet.insert_rows(6)),
+        "delete_row_inside": ('ws.Rows("6:6").Delete', lambda sheet: sheet.delete_rows(6)),
+        "delete_top_row": ('ws.Rows("5:5").Delete', lambda sheet: sheet.delete_rows(5)),
+        "delete_bottom_rows": ('ws.Rows("7:9").Delete', lambda sheet: sheet.delete_rows(7, 3)),
+        "delete_every_row": ('ws.Rows("4:9").Delete', lambda sheet: sheet.delete_rows(4, 6)),
+        "insert_column_inside": ('ws.Columns("B:B").Insert', lambda sheet: sheet.insert_columns(2)),
+        "delete_every_column": ('ws.Columns("A:B").Delete', lambda sheet: sheet.delete_columns(1, 2)),
+    }
+    for index, (name, (statement, library_edit)) in enumerate(edits.items()):
+        excels = tmp_path / f"excel_{name}.xlsm"
+        done = excel.run_vba(  # type: ignore[attr-defined]
+            _PLACEMENTS_EDIT.replace("{statement}", statement), proc="Edit",
+            args=(str(source), str(excels)), timeout=180, module_name=f"Edit_placements{index}",
+        )
+        assert done.outcome == "passed", f"{name}: {done!r}"
+        ours = tmp_path / f"library_{name}.xlsm"
+        shutil.copy(source, ours)
+        with Workbook.open(ours) as book:
+            library_edit(book[0])
+            book.save()
+        expected = probe(excel, _PLACEMENTS_PROBE, excels, f"placements_excel{index}")
+        seen = probe(excel, _PLACEMENTS_PROBE, ours, f"placements_library{index}")
+        assert seen == expected, name
 
 
 _HEADER_PICTURE_BUILD = r"""

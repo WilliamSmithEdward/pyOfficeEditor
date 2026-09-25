@@ -39,9 +39,11 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > recalculation would write them.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
-> included. Nothing about a sheet makes that refuse any more: validation,
-> protected ranges, sorts, scenarios, shapes, form controls and comments all
-> move with it. Word, PowerPoint and Access follow, in that order.
+> included. Validation, protected ranges, sorts, scenarios and comments move
+> with it, and shapes, pictures and form controls move, size or stay by the
+> placement Excel gives each. A deletion that takes all of one takes it too,
+> except an ActiveX control or an embedded object, which it refuses. Word,
+> PowerPoint and Access follow, in that order.
 
 ```python
 import datetime as dt
@@ -193,6 +195,8 @@ data descriptors.
 |   _rowcol     inserting and deleting rows and columns, |
 |               and moving everything that records a     |
 |               cell address                             |
+|   _placement  how a shape, a control or a note follows |
+|               rows and columns, by its placement       |
 |   _tokens     a formula, broken into editable pieces   |
 |   _formulas   shifting and breaking references, for    |
 |               shared formulas, a renamed sheet, and    |

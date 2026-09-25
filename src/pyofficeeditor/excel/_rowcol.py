@@ -25,10 +25,16 @@ wrong rather than broken. In the worksheet:
 
 And in parts the worksheet only points at:
 
-- a drawing's ``<xdr:from>``/``<xdr:to>``, holding **zero-based** indices
+- a drawing's ``<xdr:from>``/``<xdr:to>``, holding **zero-based** indices,
+  and each shape's own transform with them
 - a VML ``<x:Anchor>``, and the ``<x:Row>``/``<x:Column>`` beside it that
   names a comment's own cell
 - each comment's ``ref`` in the comments part
+
+A drawn object does not simply move with its cells: it moves and sizes,
+moves only, or stays put, by the placement it records, and a note's box
+follows its cell. :mod:`~pyofficeeditor.excel._placement` has the rules,
+each measured against Excel.
 
 And in every chart in the workbook, since a chart on any sheet, or on a
 chart sheet, may read from this one: each ``<c:f>`` a series or a title
@@ -49,7 +55,9 @@ Two of those entries were wrong in opposite directions. A background
 all. Comments and legacy drawings were never on the list, so a sheet with a
 comment shifted its cells and left the comment where it was.
 
-Deletion is not insertion run backwards. Three things only it has to do:
+Deletion is not insertion run backwards. Three things only it has to do
+here, and a fourth the worksheet does around it, taking out a shape, chart,
+group or control whose rows are all deleted, as Excel does:
 
 - A reference to something that is gone becomes ``#REF!``, while a *range*
   only partly deleted shrinks instead. Both ends of a range are therefore
@@ -66,23 +74,20 @@ Deletion is not insertion run backwards. Three things only it has to do:
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from pyofficeeditor._xml import Element
+from pyofficeeditor._xml import Element, local_name
 from pyofficeeditor.excel._addresses import (
     collapse_index,
     delete_cell,
     delete_index,
     delete_ref,
     delete_sqref,
-    delete_vml_anchor,
     shift_cell,
     shift_index,
     shift_ref,
     shift_sqref,
-    shift_vml_anchor,
 )
 from pyofficeeditor.excel._comments import RT_COMMENTS, RT_THREADED_COMMENTS, note_shapes
 from pyofficeeditor.excel._conditional import (
@@ -106,7 +111,9 @@ from pyofficeeditor.excel._pivots import (
     read_pivot_tables,
     worksheet_source,
 )
+from pyofficeeditor.excel._placement import AxisEdit, move_drawing, move_record_anchors, move_vml
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef
+from pyofficeeditor.excel._shapes import SheetGrid
 from pyofficeeditor.excel._xstring import decode, encode_attribute, escape
 from pyofficeeditor.exceptions import PackageError
 
@@ -128,8 +135,9 @@ def insert_rows(sheet: Worksheet, at: int, count: int) -> None:
         )
     shift = Shift.rows(at, count)
     _check_pivot_tables(sheet, shift=shift)
+    before = _drawn_grid(sheet)
     _shift_cells(sheet, shift)
-    _shift_everything_else(sheet, shift)
+    _shift_everything_else(sheet, shift, before)
 
 
 def insert_columns(sheet: Worksheet, at: int, count: int) -> None:
@@ -143,9 +151,10 @@ def insert_columns(sheet: Worksheet, at: int, count: int) -> None:
         )
     shift = Shift.columns(at, count)
     _check_pivot_tables(sheet, shift=shift)
+    before = _drawn_grid(sheet)
     _shift_cells(sheet, shift)
     _shift_column_entries(sheet, shift)
-    _shift_everything_else(sheet, shift)
+    _shift_everything_else(sheet, shift, before)
 
 
 def delete_rows(sheet: Worksheet, at: int, count: int) -> None:
@@ -154,6 +163,7 @@ def delete_rows(sheet: Worksheet, at: int, count: int) -> None:
     deletion = Deletion.rows(at, count)
     _check_table_headers(sheet, deletion)
     _check_pivot_tables(sheet, deletion=deletion)
+    before = _drawn_grid(sheet)
     _expand_orphaned_shared_formulas(sheet, deletion)
     _delete_formulas(sheet, deletion)
     _remove_rows(sheet, at, count)
@@ -162,7 +172,7 @@ def delete_rows(sheet: Worksheet, at: int, count: int) -> None:
     _delete_sheet_addresses(sheet, deletion)
     _move_custom_views(sheet, shift=None, deletion=deletion)
     _move_extensions(sheet, shift=None, deletion=deletion)
-    _move_related_parts(sheet, shift=None, deletion=deletion)
+    _move_related_parts(sheet, shift=None, deletion=deletion, before=before)
     _move_charts(sheet, shift=None, deletion=deletion)
     _move_pivot_tables(sheet, shift=None, deletion=deletion)
     _move_pivot_caches(sheet, shift=None, deletion=deletion)
@@ -178,6 +188,7 @@ def delete_columns(sheet: Worksheet, at: int, count: int) -> None:
     deletion = Deletion.columns(at, count)
     _check_table_headers(sheet, deletion)
     _check_pivot_tables(sheet, deletion=deletion)
+    before = _drawn_grid(sheet)
     _expand_orphaned_shared_formulas(sheet, deletion)
     _delete_formulas(sheet, deletion)
     _remove_columns(sheet, at, count)
@@ -187,7 +198,7 @@ def delete_columns(sheet: Worksheet, at: int, count: int) -> None:
     _delete_sheet_addresses(sheet, deletion)
     _move_custom_views(sheet, shift=None, deletion=deletion)
     _move_extensions(sheet, shift=None, deletion=deletion)
-    _move_related_parts(sheet, shift=None, deletion=deletion)
+    _move_related_parts(sheet, shift=None, deletion=deletion, before=before)
     _move_charts(sheet, shift=None, deletion=deletion)
     _move_pivot_tables(sheet, shift=None, deletion=deletion)
     _move_pivot_caches(sheet, shift=None, deletion=deletion)
@@ -856,9 +867,10 @@ def _shift_column_entries(sheet: Worksheet, shift: Shift) -> None:
                 entry.set(name, str(min(MAX_COLUMN, value + shift.column_count)))
 
 
-def _shift_everything_else(sheet: Worksheet, shift: Shift) -> None:
+def _shift_everything_else(sheet: Worksheet, shift: Shift, before: SheetGrid | None) -> None:
     """Move every other stored address: formulas anywhere in the workbook,
-    ranges on this sheet, and the workbook's defined names."""
+    ranges on this sheet, and the workbook's defined names. ``before`` is
+    the sheet's grid ahead of the shift, for what is drawn on it."""
     for other in sheet.workbook.sheets:
         _shift_formulas(other, shift, target_sheet=sheet.name)
 
@@ -868,7 +880,7 @@ def _shift_everything_else(sheet: Worksheet, shift: Shift) -> None:
     _shift_sheet_addresses(sheet, shift)
     _move_custom_views(sheet, shift=shift, deletion=None)
     _move_extensions(sheet, shift=shift, deletion=None)
-    _move_related_parts(sheet, shift=shift, deletion=None)
+    _move_related_parts(sheet, shift=shift, deletion=None, before=before)
     _move_charts(sheet, shift=shift, deletion=None)
     _move_pivot_tables(sheet, shift=shift, deletion=None)
     _move_pivot_caches(sheet, shift=shift, deletion=None)
@@ -1190,7 +1202,6 @@ def _shift_sheet_addresses(sheet: Worksheet, shift: Shift) -> None:
             if raw is not None:
                 element.set(attribute, shift_cell(raw, shift))
 
-    _shift_inline_anchors(root, shift)
     _move_validation_formulas(sheet, shift=shift, deletion=None)
 
 
@@ -1226,7 +1237,6 @@ def _delete_sheet_addresses(sheet: Worksheet, deletion: Deletion) -> None:
                 continue
             element.set(attribute, moved)
 
-    _delete_inline_anchors(root, deletion)
     _move_validation_formulas(sheet, shift=None, deletion=deletion)
 
 
@@ -1262,57 +1272,6 @@ def _drop_if_empty(root: Element, container: str | None, entry: str) -> None:
         holder.set("count", str(remaining))
 
 
-def _anchor_ends(root: Element) -> Iterator[Element]:
-    """Every ``<from>``/``<to>`` that carries a cell index.
-
-    The element wrapping them differs by feature and none of the names is
-    worth enumerating: a drawing uses ``<xdr:twoCellAnchor>`` or
-    ``<xdr:oneCellAnchor>``, a form control a bare ``<anchor>`` nested inside
-    ``mc:AlternateContent``. Looking for the wrapper by name missed every
-    drawing, so the ends are found directly and a ``<from>`` with no ``col``
-    or ``row`` child is simply skipped.
-    """
-    for name in ("from", "to"):
-        for end in root.descendants(name):
-            if _anchor_index(end, "col") is not None or _anchor_index(end, "row") is not None:
-                yield end
-
-
-def _anchor_index(end: Element, axis: str) -> Element | None:
-    for child in end.children:
-        if isinstance(child, Element) and (
-            child.name == axis or child.name.endswith(f":{axis}")
-        ):
-            return child
-    return None
-
-
-def _shift_inline_anchors(root: Element, shift: Shift) -> None:
-    for end in _anchor_ends(root):
-        for axis, is_row in (("col", False), ("row", True)):
-            node = _anchor_index(end, axis)
-            if node is None or not node.text:
-                continue
-            try:
-                value = int(node.text)
-            except ValueError:
-                continue
-            node.set_text(str(shift_index(value, shift, is_row=is_row)))
-
-
-def _delete_inline_anchors(root: Element, deletion: Deletion) -> None:
-    for end in _anchor_ends(root):
-        for axis, is_row in (("col", False), ("row", True)):
-            node = _anchor_index(end, axis)
-            if node is None or not node.text:
-                continue
-            try:
-                value = int(node.text)
-            except ValueError:
-                continue
-            node.set_text(str(collapse_index(value, deletion, is_row=is_row)))
-
-
 #: Relationship types of the sheet's own parts that record cell addresses.
 RT_DRAWING = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"
 RT_VML = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing"
@@ -1339,8 +1298,29 @@ def related_parts(sheet: Worksheet, relationship_type: str) -> list[str]:
     return found
 
 
-def _move_related_parts(sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | None) -> None:
-    """Move the addresses in a sheet's drawing, VML and comment parts.
+def _drawn_grid(sheet: Worksheet) -> SheetGrid | None:
+    """The sheet's grid ahead of an edit, when something is drawn on it:
+    what it takes to know how far an inserted or a deleted row moves a
+    shape. ``None`` for a sheet with no drawing, no VML and no record of a
+    control or an embedded object."""
+    root = sheet.document.root
+    records = any(
+        local_name(child.name) in ("controls", "oleObjects")
+        or next(child.descendants("controls"), None) is not None
+        or next(child.descendants("oleObjects"), None) is not None
+        for child in root.elements()
+        if local_name(child.name) != "sheetData"
+    )
+    if records or related_parts(sheet, RT_DRAWING) or related_parts(sheet, RT_VML):
+        return SheetGrid.of(root)
+    return None
+
+
+def _move_related_parts(
+    sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | None, before: SheetGrid | None
+) -> None:
+    """Move the addresses in a sheet's drawing, VML and comment parts, and
+    the anchors of the controls and embedded objects the sheet records.
 
     Three kinds live outside the worksheet, and none of them is reachable
     from the sheet's own XML:
@@ -1353,13 +1333,24 @@ def _move_related_parts(sheet: Worksheet, *, shift: Shift | None, deletion: Dele
       a comment and a form control say which cell they sit on
     - a comment part addresses its cell with an ordinary ``ref``
 
+    Every drawn object moves by the placement it records, as
+    :mod:`~pyofficeeditor.excel._placement` sets out, and a shape's own
+    transform moves with its anchor. ``before`` is the sheet's grid ahead of
+    the edit, which the grid after it is measured against.
+
     Comments and legacy drawings were on neither the shifted list nor the
     refused one before this, so inserting a row on a sheet with a comment
     moved the cells and left the comment behind.
     """
-    for name in related_parts(sheet, RT_DRAWING):
-        document = sheet.workbook.package.xml(name)
-        _move_anchor_ends(document.root, shift=shift, deletion=deletion)
+    edit = (
+        None
+        if before is None
+        else AxisEdit.of(shift, deletion, before, SheetGrid.of(sheet.document.root))
+    )
+    if edit is not None:
+        for name in related_parts(sheet, RT_DRAWING):
+            move_drawing(sheet.workbook.package.xml(name).root, edit)
+        move_record_anchors(sheet.document.root, edit)
 
     for name in related_parts(sheet, RT_COMMENTS):
         document = sheet.workbook.package.xml(name)
@@ -1369,33 +1360,9 @@ def _move_related_parts(sheet: Worksheet, *, shift: Shift | None, deletion: Dele
         document = sheet.workbook.package.xml(name)
         _move_threads(document.root, shift=shift, deletion=deletion)
 
-    for name in related_parts(sheet, RT_VML):
-        _move_vml(sheet, name, shift=shift, deletion=deletion)
-
-
-def _move_anchor_ends(
-    root: Element, *, shift: Shift | None, deletion: Deletion | None
-) -> bool:
-    """Move every ``<from>``/``<to>`` in a drawing part."""
-    changed = False
-    for end in _anchor_ends(root):
-        for axis, is_row in (("col", False), ("row", True)):
-            node = _anchor_index(end, axis)
-            if node is None or not node.text:
-                continue
-            try:
-                value = int(node.text)
-            except ValueError:
-                continue
-            moved = (
-                shift_index(value, shift, is_row=is_row)
-                if shift is not None
-                else collapse_index(value, deletion, is_row=is_row)  # type: ignore[arg-type]
-            )
-            if moved != value:
-                node.set_text(str(moved))
-                changed = True
-    return changed
+    if edit is not None:
+        for name in related_parts(sheet, RT_VML):
+            _move_vml(sheet, name, shift=shift, deletion=deletion, edit=edit)
 
 
 def _move_comments(root: Element, *, shift: Shift | None, deletion: Deletion | None) -> bool:
@@ -1445,9 +1412,14 @@ def _move_threads(root: Element, *, shift: Shift | None, deletion: Deletion | No
 
 
 def _move_vml(
-    sheet: Worksheet, name: str, *, shift: Shift | None, deletion: Deletion | None
+    sheet: Worksheet,
+    name: str,
+    *,
+    shift: Shift | None,
+    deletion: Deletion | None,
+    edit: AxisEdit,
 ) -> None:
-    """Move every ``<x:Anchor>`` in a VML part.
+    """Move every ``<x:Anchor>`` in a VML part, and each note's own cell.
 
     VML is not XML this library parses: it is an HTML-ish dialect with
     unquoted attributes and unclosed tags, and the ``<xml>`` root would be
@@ -1470,16 +1442,9 @@ def _move_vml(
             if deletion.covers_row(cell.row) or deletion.covers_column(cell.column):
                 text = text.replace(box, "", 1)
 
-    def move(match: re.Match[str]) -> str:
-        body = match.group(1)
-        moved = (
-            shift_vml_anchor(body, shift)
-            if shift is not None
-            else delete_vml_anchor(body, deletion)  # type: ignore[arg-type]
-        )
-        return match.group(0).replace(body, moved, 1)
-
-    rewritten = re.sub(r"<x:Anchor>(.*?)</x:Anchor>", move, text, flags=re.S)
+    # The anchors first: a note's box moves by as far as its cell does, which
+    # is read from the cell before it moves.
+    rewritten = move_vml(text, edit)
     rewritten = _move_vml_owner(rewritten, shift=shift, deletion=deletion)
     if rewritten != original:
         package.write(name, rewritten.encode("utf-8"))

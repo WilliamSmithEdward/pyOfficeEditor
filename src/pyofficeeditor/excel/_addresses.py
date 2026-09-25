@@ -28,19 +28,16 @@ A VML anchor
     offset, top row, top offset, right column, right offset, bottom row,
     bottom offset. Zero-based again, and this is how a comment and a form
     control say which cell they sit on.
+
+The two anchors do not simply move with their cells: how each moves turns
+on the placement of the object it places, which
+:mod:`~pyofficeeditor.excel._placement` works out.
 """
 
 from __future__ import annotations
 
-import re
-from collections.abc import Callable
-
 from pyofficeeditor.excel._formulas import Deletion, Shift, shift_range
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef
-
-#: The eight numbers in a VML ``x:Anchor``, in order. Only the four at even
-#: positions are cell indices; the odd ones are pixel offsets inside a cell.
-_VML_AXES = ("column", "row", "column", "row")
 
 
 def shift_sqref(raw: str, shift: Shift) -> str:
@@ -145,60 +142,14 @@ def delete_index(value: int, deletion: Deletion, *, is_row: bool) -> int | None:
 
 
 def collapse_index(value: int, deletion: Deletion, *, is_row: bool) -> int:
-    """Where an anchor lands when its own row or column is deleted.
-
-    An anchor end inside the deletion collapses onto the edge of what
-    remains rather than vanishing, so a shape straddling deleted rows
-    shrinks instead of disappearing. That is what Excel does with a shape
-    whose ``moveWithCells`` is set.
-    """
+    """Where a zero-based index lands when its own row or column is
+    deleted: on the edge of what remains, rather than nowhere."""
     at = deletion.rows_at if is_row else deletion.columns_at
     count = deletion.row_count if is_row else deletion.column_count
     if at is None or not count:
         return value
     survivor = delete_index(value, deletion, is_row=is_row)
     return max(at - 1, 0) if survivor is None else survivor
-
-
-def shift_vml_anchor(raw: str, shift: Shift) -> str:
-    """Move the four cell indices in a VML ``x:Anchor``.
-
-    The text carries its own whitespace, which Excel writes with a newline
-    in the middle, so the numbers are replaced in place rather than the
-    string rebuilt.
-    """
-    return _rewrite_vml(raw, lambda value, is_row: shift_index(value, shift, is_row=is_row))
-
-
-def delete_vml_anchor(raw: str, deletion: Deletion) -> str:
-    """The same for a deletion, collapsing ends whose cell is gone."""
-    return _rewrite_vml(
-        raw, lambda value, is_row: collapse_index(value, deletion, is_row=is_row)
-    )
-
-
-def _rewrite_vml(raw: str, move: Callable[[int, bool], int]) -> str:
-    numbers = re.findall(r"-?\d+", raw)
-    if len(numbers) < 8:
-        return raw
-    moved = list(numbers)
-    for slot, axis in enumerate(_VML_AXES):
-        position = slot * 2
-        try:
-            value = int(numbers[position])
-        except ValueError:
-            continue
-        moved[position] = str(move(value, axis == "row"))
-
-    index = 0
-
-    def swap(match: re.Match[str]) -> str:
-        nonlocal index
-        replacement = moved[index] if index < len(moved) else match.group(0)
-        index += 1
-        return replacement
-
-    return re.sub(r"-?\d+", swap, raw)
 
 
 def parse_sqref(raw: str) -> tuple[RangeRef, ...]:
@@ -218,11 +169,9 @@ __all__ = [
     "delete_index",
     "delete_ref",
     "delete_sqref",
-    "delete_vml_anchor",
     "parse_sqref",
     "shift_cell",
     "shift_index",
     "shift_ref",
     "shift_sqref",
-    "shift_vml_anchor",
 ]

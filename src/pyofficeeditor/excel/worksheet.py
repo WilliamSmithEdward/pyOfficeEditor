@@ -94,7 +94,7 @@ from pyofficeeditor.excel._formats import (
     Fill,
     Font,
 )
-from pyofficeeditor.excel._formulas import quote_sheet_name, shared_formula_for
+from pyofficeeditor.excel._formulas import Deletion, quote_sheet_name, shared_formula_for
 from pyofficeeditor.excel._hyperlinks import RT_HYPERLINK, Hyperlink
 from pyofficeeditor.excel._names import FILTER_DATABASE, PRINT_AREA, PRINT_TITLES, DefinedName
 from pyofficeeditor.excel._numfmt import format_value
@@ -107,6 +107,7 @@ from pyofficeeditor.excel._pagesetup import (
 )
 from pyofficeeditor.excel._pictures import RT_IMAGE, image_info, picture_anchor
 from pyofficeeditor.excel._pivots import PivotTable, read_pivot_tables
+from pyofficeeditor.excel._placement import swallowed_nodes
 from pyofficeeditor.excel._protection import SheetProtection
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef, column_letter
 from pyofficeeditor.excel._richtext import TextRun, completed, read_runs, rich_entry, shown
@@ -795,17 +796,26 @@ class Worksheet:
         overlapped shrinks instead. Merges, tables, hyperlinks and defined
         names shrink or go the same way.
 
+        A shape, chart, group or Forms control that moves and sizes with
+        its cells goes with them when all of its rows do, as Excel deletes
+        it, parts and all. One that moves without sizing, a picture as Excel
+        inserts one, lands on the boundary at its own size, and one that
+        does not move stays where it is.
+
         Refused, like an insertion, when the sheet carries something that
         addresses cells and this library cannot move. Also refused when it
         would remove a table's header row, since a table's column names come
-        from there.
+        from there, and when it would take an ActiveX control or an embedded
+        object whole, whose binary part this does not take apart.
         """
+        swallowed = self._swallowed_by(Deletion.rows(at, count))
         delete_rows(self, at, count)
+        self._remove_swallowed(swallowed)
         self._workbook.mark_values_changed()
 
     def delete_columns(self, at: int, count: int = 1) -> None:
         """Delete columns, closing the gap.  The same repointing and the same
-        refusals as :meth:`delete_rows`.
+        refusals as :meth:`delete_rows`, and the same shapes go.
 
         A filter criterion on a deleted column goes with it, and the filter
         is applied again, as Excel does, so the rows only it hid show. That
@@ -813,7 +823,9 @@ class Worksheet:
         """
         before = self.auto_filter
         tables_before = {table.name: table.auto_filter for table in self.tables}
+        swallowed = self._swallowed_by(Deletion.columns(at, count))
         delete_columns(self, at, count)
+        self._remove_swallowed(swallowed)
         self._workbook.mark_values_changed()
         after = self.auto_filter
         if before is not None and after is not None and before.filtering and len(after.columns) < len(before.columns):
@@ -2600,6 +2612,54 @@ class Worksheet:
             part, node, _ = located
             self._drop_drawing_node(part, node)
         self._remove_control_records([member for member in members if member.kind == "formControl"])
+        self._invalidate()
+
+    def _swallowed_by(self, deletion: Deletion) -> list[tuple[str, Element, list[Shape]]]:
+        """What a deletion takes whole: each drawing node whose object moves
+        and sizes with its cells and lies inside the deleted rows or columns,
+        with the shapes it holds.
+
+        Raises ``ValueError``, having changed nothing, when one of them is
+        or holds an ActiveX control or an embedded object: Excel deletes
+        those too, and their binary parts are not something this takes
+        apart.
+        """
+        package = self._workbook.package
+        nodes = [
+            (part, node)
+            for part in related_parts(self, RT_DRAWING)
+            for node in swallowed_nodes(package.xml(part).root, deletion)
+        ]
+        if not nodes:
+            return []
+        listed = {shape.shape_id: shape for shape in self.shapes}
+        found: list[tuple[str, Element, list[Shape]]] = []
+        for part, node in nodes:
+            naming = next(node.descendants("cNvPr"), None)
+            number = "" if naming is None else (naming.get("id") or "")
+            shape = listed.get(int(number)) if number.isdigit() else None
+            members = [] if shape is None else list(_members(shape))
+            refused = next((member for member in members if member.kind in ("activeX", "oleObject")), None)
+            if refused is not None:
+                what = "an ActiveX control" if refused.kind == "activeX" else "an OLE object"
+                raise ValueError(
+                    f"this deletion takes all of {refused.name!r}, {what}, which Excel deletes with its "
+                    "cells and this does not take apart; move or remove it in Excel first."
+                )
+            found.append((part, node, members))
+        return found
+
+    def _remove_swallowed(self, swallowed: list[tuple[str, Element, list[Shape]]]) -> None:
+        """Take out what :meth:`_swallowed_by` found, once the deletion that
+        swallowed it has gone through: each node with the parts only it used,
+        and each Forms control's record, part and VML shape."""
+        if not swallowed:
+            return
+        for part, node, _ in swallowed:
+            self._drop_drawing_node(part, node)
+        self._remove_control_records(
+            [member for _, _, members in swallowed for member in members if member.kind == "formControl"]
+        )
         self._invalidate()
 
     def _drop_drawing_node(self, part: str, node: Element) -> None:
