@@ -27,7 +27,9 @@ from pathlib import Path
 
 import pytest
 
-from pyofficeeditor.excel import FormControl, Workbook
+from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor.excel import FormControl, Workbook, Worksheet
+from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
 from pyofficeeditor.excel._shapes import (
     CONTROL_KINDS,
     FIRST_CONTROL_ID,
@@ -37,16 +39,24 @@ from pyofficeeditor.excel._shapes import (
     XL_ON,
     Shape,
     SheetGrid,
+    VmlControl,
+    anchor_holding,
     check_control_kind,
     control_properties,
     control_range,
     control_vml,
     corner_markup,
+    css_points,
+    find_shape_element,
     new_anchor,
     qualified_macro,
     set_vml_macro,
+    vml_controls,
     vml_id,
 )
+
+#: The relationship Excel names an ActiveX control's part by.
+RT_ACTIVEX = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/control"
 
 
 @pytest.fixture
@@ -62,6 +72,16 @@ def bare(tmp_path: Path, live_sample_xlsx: Path) -> Workbook:
     """A workbook whose sheet has no drawing, no VML and no controls."""
     target = tmp_path / "sample.xlsx"
     shutil.copy(live_sample_xlsx, target)
+    return Workbook.open(target)
+
+
+@pytest.fixture
+def default_named(tmp_path: Path, live_refused_xlsx: Path) -> Workbook:
+    """Excel's workbook with a button still called "Button 1" beside a
+    note. Excel writes that button's VML as ``id="_x0000_s1025"`` with no
+    ``o:spid``: the id is what finds it."""
+    target = tmp_path / "refused.xlsx"
+    shutil.copy(live_refused_xlsx, target)
     return Workbook.open(target)
 
 
@@ -94,6 +114,67 @@ def dangling(path: Path) -> list[str]:
                 if resolved not in names:
                     missing.append(f"{entry} -> {target}")
     return missing
+
+
+def unreached(path: Path) -> list[str]:
+    """Parts no relationship points at: left behind by a removal that took
+    the relationship and not the part, or the part and not what it used."""
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        reached: set[str] = set()
+        for entry in names:
+            if not entry.endswith(".rels"):
+                continue
+            base = entry.rsplit("_rels/", 1)[0]
+            for target in re.findall(r'Target="([^"]+)"', archive.read(entry).decode("utf-8")):
+                resolved = target.lstrip("/") if target.startswith("/") else f"{base}{target}"
+                while "/../" in resolved:
+                    head, _, tail = resolved.partition("/../")
+                    resolved = f"{head.rsplit('/', 1)[0]}/{tail}"
+                reached.add(resolved)
+    return sorted(
+        name for name in names
+        if name not in reached and not name.endswith(".rels") and name != "[Content_Types].xml"
+    )
+
+
+def drawing_of(sheet: Worksheet) -> tuple[str, XmlDocument]:
+    """A sheet's drawing part, for a test that rearranges it by hand."""
+    found: tuple[str, XmlDocument] = getattr(sheet, "_drawing_part")()
+    return found
+
+
+def detached(element: Element) -> Element:
+    """An element taken out of wherever it is, to be put somewhere else."""
+    parent = element.parent
+    assert parent is not None
+    parent.remove(element)
+    return element
+
+
+def group_into_pair(book: Workbook, sheet: Worksheet, name: str) -> None:
+    """Move a shape into ``shapes.xlsm``'s group ``Pair``: its own element
+    goes inside the group and its anchor goes."""
+    part, drawing = drawing_of(sheet)
+    holder = anchor_holding(drawing.root, name)
+    group = find_shape_element(drawing.root, "Pair")
+    body = find_shape_element(drawing.root, name)
+    assert holder is not None and group is not None and body is not None
+    group.append(detached(body))
+    drawing.root.remove(holder)
+    book.package.write(part, drawing.to_bytes())
+
+
+def retype_as_activex(book: Workbook, sheet: Worksheet) -> None:
+    """Point a sheet's first control record at an ActiveX part, as Excel's
+    record for an ActiveX control does."""
+    control = next(sheet.document.root.descendants("control"))
+    relationships = book.package.xml(f"{sheet.part_name.rpartition('/')[0]}/_rels/{sheet.part_name.rpartition('/')[2]}.rels")
+    entry = next(
+        node for node in relationships.root.children_named("Relationship")
+        if node.get("Id") == control.get("r:id")
+    )
+    entry.set("Type", RT_ACTIVEX)
 
 
 class TestAddingADrawingShape:
@@ -298,6 +379,208 @@ class TestAddingAFormControl:
 
 
 class TestRemoving:
+    def test_activex_is_read_without_treating_its_part_as_a_form_control(
+        self, tmp_path: Path, live_shapes_xlsm: Path
+    ) -> None:
+        target = tmp_path / "shapes.xlsm"
+        shutil.copy(live_shapes_xlsm, target)
+        book = Workbook.open(target)
+        sheet = book["Shapes"]
+        retype_as_activex(book, sheet)
+        assert sheet.shape("Go").kind == "activeX"
+        with pytest.raises(ValueError, match="ActiveX control removal"):
+            sheet.remove_shape("Go")
+
+        # With no drawing twin its record still names and places it.
+        part, drawing = drawing_of(sheet)
+        holder = anchor_holding(drawing.root, "Go")
+        assert holder is not None
+        drawing.root.remove(holder)
+        book.package.write(part, drawing.to_bytes())
+        orphan = sheet.shape("Go")
+        assert (orphan.kind, orphan.cells) == ("activeX", "B19:C21")
+        assert [shape.name for shape in sheet.shapes].count("Go") == 1
+
+    def test_an_activex_fallback_record_does_not_hide_the_full_one(
+        self, tmp_path: Path, live_shapes_xlsm: Path
+    ) -> None:
+        # Excel writes an ActiveX record twice: in full in an mc:Choice and
+        # bare in the mc:Fallback, which comes after it.
+        target = tmp_path / "shapes.xlsm"
+        shutil.copy(live_shapes_xlsm, target)
+        book = Workbook.open(target)
+        sheet = book["Shapes"]
+        retype_as_activex(book, sheet)
+        record = next(sheet.document.root.descendants("control"))
+        properties = record.child("controlPr")
+        assert properties is not None
+        properties.set("altText", "Runs the report")
+        choice = record.parent
+        assert choice is not None and choice.parent is not None
+        fallback = XmlDocument.parse(
+            f'<mc:Fallback><control shapeId="{record.get("shapeId")}" r:id="{record.get("r:id")}"'
+            f' name="Go"/></mc:Fallback>'.encode()
+        ).root
+        choice.parent.append(fallback)
+        go = sheet.shape("Go")
+        assert (go.alt_text, go.macro) == ("Runs the report", "[1]!Clicked")
+
+    def test_an_activex_control_in_a_group_stops_the_group_going(
+        self, tmp_path: Path, live_shapes_xlsm: Path
+    ) -> None:
+        target = tmp_path / "shapes.xlsm"
+        shutil.copy(live_shapes_xlsm, target)
+        book = Workbook.open(target)
+        sheet = book["Shapes"]
+        retype_as_activex(book, sheet)
+        group_into_pair(book, sheet, "Go")
+        # Listed once, inside its group.
+        assert [shape.name for shape in sheet.shapes].count("Go") == 0
+        with pytest.raises(ValueError, match="ActiveX"):
+            sheet.remove_shape("Pair")
+        assert "Pair" in {shape.name for shape in sheet.shapes}
+
+    def test_a_chart_takes_its_part_and_relationship(
+        self, bare: Workbook, tmp_path: Path
+    ) -> None:
+        sheet = bare["Data"]
+        chart = sheet.add_chart("column", "A1:C6", left=250, top=20)
+        part = chart.part_name
+        sheet.remove_shape(chart.name)
+        bare.save()
+        saved = tmp_path / "sample.xlsx"
+        assert part not in parts_of(saved)
+        assert dangling(saved) == []
+        assert sheet.charts == []
+
+    def test_an_excel_chart_takes_its_style_and_colour_parts(
+        self, tmp_path: Path, live_chart_kinds_xlsx: Path
+    ) -> None:
+        target = tmp_path / "chartkinds.xlsx"
+        shutil.copy(live_chart_kinds_xlsx, target)
+        book = Workbook.open(target)
+        sheet = book["Data"]
+        chart = sheet.charts[0]
+        owned = [one.target_part for one in book.package.relationships(chart.part_name)]
+        assert owned, "Excel gives every chart a style part and a colour part"
+        sheet.remove_shape(chart.name)
+        book.save()
+        parts = parts_of(target)
+        types = parts["[Content_Types].xml"].decode()
+        for part in (chart.part_name, *owned):
+            assert part not in parts
+            assert f'PartName="/{part}"' not in types
+        assert unreached(target) == unreached(live_chart_kinds_xlsx)
+
+    def test_a_part_already_gone_does_not_stop_the_removal(
+        self, tmp_path: Path, live_shapes_xlsm: Path
+    ) -> None:
+        target = tmp_path / "shapes.xlsm"
+        shutil.copy(live_shapes_xlsm, target)
+        book = Workbook.open(target)
+        sheet = book["Shapes"]
+        chart = sheet.add_chart("column", "A1:C6", left=10, top=10)
+        group_into_pair(book, sheet, chart.name)
+        group_into_pair(book, sheet, "Go")
+        book.package.remove_part(chart.part_name)
+        sheet.remove_shape("Pair")
+        assert "Pair" not in {shape.name for shape in sheet.shapes}
+        # The control in the group went too, record and all.
+        assert 'shapeId="1025"' not in sheet.document.to_text()
+
+    def test_a_hyperlink_goes_with_its_shape(self, book: Workbook, tmp_path: Path) -> None:
+        sheet = book["Controls"]
+        part, drawing = drawing_of(sheet)
+        body = find_shape_element(drawing.root, "Plain")
+        assert body is not None
+        naming = next(body.descendants("cNvPr"))
+        link = book.package.relationships(part).add(
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+            "https://example.com/",
+            external=True,
+        )
+        naming.append(XmlDocument.parse(f'<a:hlinkClick r:id="{link.id}"/>'.encode()).root)
+        sheet.remove_shape("Plain")
+        book.save()
+        # The link was the drawing's only relationship, so its .rels goes too.
+        rels = parts_of(tmp_path / "controls.xlsm").get("xl/drawings/_rels/drawing1.xml.rels", b"")
+        assert b"example.com" not in rels
+
+    def test_a_group_takes_its_child_picture_part(
+        self, tmp_path: Path, live_shapes_xlsm: Path
+    ) -> None:
+        target = tmp_path / "shapes.xlsm"
+        shutil.copy(live_shapes_xlsm, target)
+        book = Workbook.open(target)
+        sheet = book["Shapes"]
+        gif = (
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00"
+            b",\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
+        )
+        picture = sheet.add_picture("Grouped picture", gif, left=10, top=10)
+        image = picture.image
+        group_into_pair(book, sheet, picture.name)
+        assert any(child.image == image for child in sheet.shape("Pair").children)
+
+        sheet.remove_shape("Pair")
+        book.save()
+        assert image not in parts_of(target)
+        assert dangling(target) == dangling(live_shapes_xlsm)
+
+    def test_a_group_takes_its_child_form_control_parts(
+        self, tmp_path: Path, live_shapes_xlsm: Path
+    ) -> None:
+        target = tmp_path / "shapes.xlsm"
+        shutil.copy(live_shapes_xlsm, target)
+        book = Workbook.open(target)
+        sheet = book["Shapes"]
+        control = sheet.shape("Go")
+        assert control.control is not None
+        control_part = control.control.part_name
+        group_into_pair(book, sheet, "Go")
+        member = next(child for child in sheet.shape("Pair").children if child.name == "Go")
+        # Still a control in a group: the drawing twin's hidden="1" is
+        # Excel's, and the VML says it shows.
+        assert (member.kind, member.hidden, member.macro) == ("formControl", False, "[1]!Clicked")
+
+        sheet.remove_shape("Pair")
+        book.save()
+        parts = parts_of(target)
+        assert control_part not in parts
+        assert f'shapeId="{control.shape_id}"' not in parts["xl/worksheets/sheet1.xml"].decode()
+        assert f"_x0000_s{control.shape_id}" not in parts["xl/drawings/vmlDrawing1.vml"].decode()
+
+    def test_a_group_takes_its_child_chart_part(
+        self, tmp_path: Path, live_shapes_xlsm: Path
+    ) -> None:
+        target = tmp_path / "shapes.xlsm"
+        shutil.copy(live_shapes_xlsm, target)
+        book = Workbook.open(target)
+        sheet = book["Shapes"]
+        chart = sheet.add_chart("column", "A1:C6", left=10, top=10)
+        group_into_pair(book, sheet, chart.name)
+
+        sheet.remove_shape("Pair")
+        book.save()
+        assert chart.part_name not in parts_of(target)
+        assert dangling(target) == dangling(live_shapes_xlsm)
+
+    def test_a_group_member_is_not_reached_by_its_name(
+        self, tmp_path: Path, live_shapes_xlsm: Path
+    ) -> None:
+        # The sheet lists groups, not members, so a member's name is neither
+        # something to remove nor something a new shape may take.
+        target = tmp_path / "shapes.xlsm"
+        shutil.copy(live_shapes_xlsm, target)
+        sheet = Workbook.open(target)["Shapes"]
+        with pytest.raises(KeyError):
+            sheet.remove_shape("GroupB")
+        with pytest.raises(ValueError, match="inside a group"):
+            sheet.add_shape("GroupB", left=10, top=10, width=40, height=20)
+        with pytest.raises(ValueError, match="inside a group"):
+            sheet.update_shape("Box", new_name="GroupA")
+        assert [child.name for child in sheet.shape("Pair").children] == ["GroupA", "GroupB"]
+
     def test_a_drawing_shape_goes(self, book: Workbook) -> None:
         sheet = book["Controls"]
         assert sheet.shape("Plain") is not None
@@ -358,9 +641,437 @@ class TestRemoving:
         book.save()
         assert dangling(tmp_path / "controls.xlsm") == []
 
+    def test_the_last_control_takes_the_wrapper_around_the_records(
+        self, book: Workbook, tmp_path: Path
+    ) -> None:
+        # Excel refuses a sheet that keeps an empty mc:AlternateContent; the
+        # live gate measures it.
+        sheet = book["Controls"]
+        for name in [shape.name for shape in sheet.shapes if shape.kind == "formControl"]:
+            sheet.remove_shape(name)
+        book.save()
+        text = parts_of(tmp_path / "controls.xlsm")["xl/worksheets/sheet1.xml"].decode()
+        assert "controls>" not in text
+        assert "AlternateContent" not in text
+
     def test_an_unknown_name_says_what_is_there(self, book: Workbook) -> None:
         with pytest.raises(KeyError, match="no shape named"):
             book["Controls"].remove_shape("Nonesuch")
+
+
+class TestUpdating:
+    def test_move_resize_rename_and_text_keep_the_shape(
+        self, book: Workbook, tmp_path: Path
+    ) -> None:
+        sheet = book["Controls"]
+        before = sheet.shape("Plain")
+        after = sheet.update_shape(
+            "Plain", new_name="Moved", left=100, top=50, width=120,
+            height=45, text="New text", alt_text="Useful description", hidden=True,
+        )
+        assert (after.name, after.left, after.top, after.width, after.height) == (
+            "Moved", 100, 50, 120, 45,
+        )
+        assert (after.text, after.alt_text, after.hidden) == (
+            "New text", "Useful description", True,
+        )
+        assert after.shape_id == before.shape_id
+        assert all(shape.name != "Plain" for shape in sheet.shapes)
+        book.save()
+        reopened = Workbook.open(tmp_path / "controls.xlsm")["Controls"].shape("Moved")
+        assert (reopened.left, reopened.top, reopened.width, reopened.height) == (
+            100, 50, 120, 45,
+        )
+        assert (reopened.text, reopened.alt_text, reopened.hidden) == (
+            "New text", "Useful description", True,
+        )
+
+    def test_control_updates_all_its_parts(self, book: Workbook, tmp_path: Path) -> None:
+        sheet = book["Controls"]
+        before = sheet.shape("Go")
+        after = sheet.update_shape(
+            "Go", new_name="Moved", left=110, top=35, width=125, height=40,
+            text="Now run", alt_text="Run the macro", hidden=True,
+            linked_cell="$D$6", list_range="$H$1:$H$9",
+        )
+        assert after.shape_id == before.shape_id
+        assert (after.name, after.left, after.top, after.width, after.height) == (
+            "Moved", 110, 35, 125, 40,
+        )
+        assert (after.text, after.alt_text, after.hidden) == (
+            "Now run", "Run the macro", True,
+        )
+        assert after.control is not None
+        assert (after.control.linked_cell, after.control.list_range) == (
+            "$D$6", "$H$1:$H$9",
+        )
+        book.save()
+        reopened = Workbook.open(tmp_path / "controls.xlsm")["Controls"].shape("Moved")
+        assert (reopened.left, reopened.top, reopened.width, reopened.height) == (
+            110, 35, 125, 40,
+        )
+        assert reopened.control is not None
+        assert reopened.control.linked_cell == "$D$6"
+        assert (reopened.text, reopened.alt_text, reopened.hidden) == (
+            "Now run", "Run the macro", True,
+        )
+        vml = parts_of(tmp_path / "controls.xlsm")["xl/drawings/vmlDrawing1.vml"].decode()
+        assert "z-index:1;visibility:hidden;mso-wrap-style:tight" in vml
+        assert dangling(tmp_path / "controls.xlsm") == []
+
+    def test_control_wiring_and_visibility_can_be_cleared(self, book: Workbook) -> None:
+        sheet = book["Controls"]
+        sheet.update_shape("Go", hidden=True, linked_cell="$D$6", list_range="$H$1:$H$9")
+        cleared = sheet.update_shape("Go", hidden=False, linked_cell="", list_range="")
+        assert cleared.hidden is False
+        assert cleared.control is not None
+        assert (cleared.control.linked_cell, cleared.control.list_range) == ("", "")
+
+    def test_a_caption_keeps_how_it_is_drawn(self, book: Workbook, tmp_path: Path) -> None:
+        sheet = book["Controls"]
+        sheet.update_shape("Go", text="Run it")
+        book.save()
+        parts = parts_of(tmp_path / "controls.xlsm")
+        vml = parts["xl/drawings/vmlDrawing1.vml"].decode()
+        assert re.search(r'<font face="Aptos Narrow" size="220"\s+color="#000000">Run it</font>', vml)
+        drawing = parts["xl/drawings/drawing1.xml"].decode()
+        run = re.search(r'<a:t>Run it</a:t>', drawing)
+        assert run is not None
+        body = drawing[drawing.rfind("<xdr:txBody>", 0, run.start()) : run.start()]
+        assert 'anchor="ctr"' in body and 'algn="ctr"' in body and 'sz="1100"' in body
+
+    def test_a_control_with_no_caption_refuses_text_and_changes_nothing(
+        self, book: Workbook
+    ) -> None:
+        sheet = book["Controls"]
+        with pytest.raises(ValueError, match="shows no text"):
+            sheet.update_shape("Pick", new_name="Chooser", text="x")
+        assert "Pick" in {shape.name for shape in sheet.shapes}
+        assert "Chooser" not in {shape.name for shape in sheet.shapes}
+
+    def test_a_control_made_here_takes_new_text(self, bare: Workbook) -> None:
+        sheet = bare["Data"]
+        sheet.add_form_control("Run", left=10, top=10, width=80, height=24, text="Old")
+        assert sheet.shape("Run").text == "Old"
+        assert sheet.update_shape("Run", new_name="Go", text="New").text == "New"
+
+    def test_a_line_can_be_renamed(self, book: Workbook) -> None:
+        sheet = book["Controls"]
+        sheet.add_shape("Rule", kind="line", left=10, top=300, width=120, height=0)
+        assert sheet.update_shape("Rule", new_name="Divider", alt_text="a rule").name == "Divider"
+
+    def test_a_side_that_is_not_a_number_is_refused(self, book: Workbook) -> None:
+        sheet = book["Controls"]
+        for bad in (float("nan"), float("inf"), -1.0):
+            with pytest.raises(ValueError, match="points"):
+                sheet.update_shape("Go", left=bad)
+            with pytest.raises(ValueError, match="points"):
+                sheet.update_shape("Plain", width=bad)
+        assert sheet.shape("Go").cells == "E2:G4"
+
+    def test_a_side_left_out_keeps_where_the_anchor_is(self, book: Workbook) -> None:
+        # Rows put in above move the anchor, and a width change must not
+        # move the shape back to where it was.
+        sheet = book["Controls"]
+        before = sheet.shape("Plain").cells
+        sheet.insert_rows(1, 5)
+        moved = sheet.shape("Plain").cells
+        assert moved != before
+        after = sheet.update_shape("Plain", width=sheet.shape("Plain").width + 10)
+        assert after.cells.split(":")[0] == moved.split(":")[0]
+
+    def test_a_chart_moves_by_its_anchor_alone(self, bare: Workbook, tmp_path: Path) -> None:
+        sheet = bare["Data"]
+        chart = sheet.add_chart("column", "A1:C6", left=250, top=20)
+        sheet.update_shape(chart.name, left=300, top=40)
+        bare.save()
+        drawing = parts_of(tmp_path / "sample.xlsx")["xl/drawings/drawing1.xml"].decode()
+        assert '<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>' in drawing
+        assert sheet.shape(chart.name).left == pytest.approx(300, abs=0.01)
+
+    def test_new_text_drops_a_link_to_a_cell(self, book: Workbook) -> None:
+        sheet = book["Controls"]
+        _, drawing = drawing_of(sheet)
+        body = find_shape_element(drawing.root, "Plain")
+        assert body is not None
+        body.set("textlink", "$A$1")
+        sheet.update_shape("Plain", text="Fresh words")
+        assert body.get("textlink") == ""
+
+    def test_a_new_link_goes_in_its_slot(self, book: Workbook, tmp_path: Path) -> None:
+        sheet = book["Controls"]
+        sheet.update_shape("Part", linked_cell="$D$10")
+        book.save()
+        vml = parts_of(tmp_path / "controls.xlsm")["xl/drawings/vmlDrawing1.vml"].decode()
+        block = re.search(r'o:spid="_x0000_s1028".*?</v:shape>', vml, re.DOTALL)
+        assert block is not None
+        assert block.group(0).index("<x:FmlaLink>") < block.group(0).index("<x:NoThreeD/>")
+
+    def test_both_copies_of_an_alternate_content_shape_change(
+        self, book: Workbook
+    ) -> None:
+        # A shape newer Excel draws, with a picture copy for older Excel in
+        # the mc:Fallback: both carry the name, and a move reaches both.
+        sheet = book["Controls"]
+        _, drawing = drawing_of(sheet)
+        holder = anchor_holding(drawing.root, "Plain")
+        assert holder is not None
+        markup = holder.to_xml()
+        wrapper = XmlDocument.parse(
+            (
+                "<mc:AlternateContent><mc:Choice Requires=\"a14\">"
+                f"{markup}</mc:Choice><mc:Fallback>{markup}</mc:Fallback></mc:AlternateContent>"
+            ).encode()
+        ).root
+        drawing.root.insert_before(holder, wrapper)
+        drawing.root.remove(holder)
+        sheet.update_shape("Plain", new_name="Both", alt_text="twice", left=200, top=30)
+        copies = [(node.get("name"), node.get("descr")) for node in wrapper.descendants("cNvPr")]
+        assert copies == [("Both", "twice"), ("Both", "twice")]
+        corners = [node.to_xml() for node in wrapper.descendants("from")]
+        assert len(corners) == 2 and corners[0] == corners[1]
+
+    def test_lengths_in_the_vml_never_use_an_exponent(self) -> None:
+        assert css_points(1_500_000) == "1500000pt"
+        assert css_points(12.75) == "12.75pt"
+        assert css_points(0) == "0pt"
+
+
+class TestReadingTheVml:
+    def test_hidden_is_read_from_the_style_by_the_writers_rule(self) -> None:
+        vml = (
+            '<v:shape id="A" o:spid="_x0000_s1025" style=\'position:absolute;Visibility:Hidden;'
+            "mso-wrap-style:tight'><v:textbox><div><font face=\"X\">One<br>\r\n Two &amp; three"
+            '</font></div></v:textbox></v:shape>'
+            '<v:shape id="_x0000_s1026" style=\'visibility:hidden\'></v:shape>'
+        )
+        facts = vml_controls(vml)
+        assert facts[1025].hidden is True
+        assert facts[1025].caption == "One\nTwo & three"
+        # With no o:spid, the id is the spid, as Excel writes a shape still
+        # called by its default name.
+        assert facts[1026] == VmlControl(hidden=True, caption=None)
+
+    def test_an_spid_wins_over_an_id_that_looks_like_one(self) -> None:
+        vml = '<v:shape id="_x0000_s1030" o:spid="_x0000_s1025"></v:shape>'
+        assert set(vml_controls(vml)) == {1025}
+
+    def test_a_self_closed_shape_does_not_swallow_the_next(self) -> None:
+        vml = (
+            '<v:shape id="_x0000_s1025"/>'
+            "<v:shape id=\"_x0000_s1026\" style='visibility:hidden'></v:shape>"
+        )
+        assert vml_controls(vml) == {1026: VmlControl(hidden=True, caption=None)}
+
+
+class TestADefaultNamedControl:
+    """Excel writes the VML of a control still called by its default name
+    as ``<v:shape id="_x0000_s1025">``, and gives it an ``o:spid`` only once
+    it is renamed. Every edit has to find it the first way too."""
+
+    def test_its_caption_and_visibility_are_read(self, default_named: Workbook) -> None:
+        shape = default_named["R"].shape("Button 1")
+        assert (shape.kind, shape.text, shape.hidden) == ("formControl", "Button 1", False)
+
+    def test_it_takes_alt_text(self, default_named: Workbook) -> None:
+        sheet = default_named["R"]
+        assert sheet.update_shape("Button 1", alt_text="described").alt_text == "described"
+
+    def test_it_can_be_hidden(self, default_named: Workbook, tmp_path: Path) -> None:
+        default_named["R"].update_shape("Button 1", hidden=True)
+        default_named.save()
+        assert Workbook.open(tmp_path / "refused.xlsx")["R"].shape("Button 1").hidden is True
+
+    def test_it_moves(self, default_named: Workbook, tmp_path: Path) -> None:
+        default_named["R"].update_shape("Button 1", left=20)
+        default_named.save()
+        vml = parts_of(tmp_path / "refused.xlsx")["xl/drawings/vmlDrawing1.vml"].decode()
+        head = vml[vml.find('id="_x0000_s1025"') :]
+        assert "margin-left:20pt" in head[: head.find(">")]
+
+    def test_renaming_it_gives_its_vml_an_spid(self, default_named: Workbook, tmp_path: Path) -> None:
+        """The id stops being the spid once it holds the name, so the spid
+        moves to ``o:spid``, where Excel keeps a renamed control's."""
+        default_named["R"].update_shape("Button 1", new_name="Renamed")
+        default_named.save()
+        vml = parts_of(tmp_path / "refused.xlsx")["xl/drawings/vmlDrawing1.vml"].decode()
+        assert 'id="Renamed" o:spid="_x0000_s1025"' in vml
+        again = Workbook.open(tmp_path / "refused.xlsx")["R"]
+        assert again.update_shape("Renamed", hidden=True).hidden is True
+
+    def test_its_macro_reaches_the_vml(self, default_named: Workbook, tmp_path: Path) -> None:
+        default_named["R"].set_shape_macro("Button 1", "Clicked")
+        default_named.save()
+        vml = parts_of(tmp_path / "refused.xlsx")["xl/drawings/vmlDrawing1.vml"].decode()
+        block = vml[vml.find('id="_x0000_s1025"') :]
+        assert "<x:FmlaMacro>[0]!Clicked</x:FmlaMacro>" in block[: block.find("</v:shape>")]
+
+    def test_removing_it_takes_its_vml_shape_and_leaves_the_note(
+        self, default_named: Workbook, tmp_path: Path
+    ) -> None:
+        default_named["R"].remove_shape("Button 1")
+        default_named.save()
+        vml = parts_of(tmp_path / "refused.xlsx")["xl/drawings/vmlDrawing1.vml"].decode()
+        assert 'id="_x0000_s1025"' not in vml
+        assert 'id="_x0000_s1026"' in vml
+
+
+#: A header picture's VML part as Excel writes it, less the shape type.
+HEADER_VML = (
+    '<xml xmlns:v="urn:schemas-microsoft-com:vml"\r\n'
+    ' xmlns:o="urn:schemas-microsoft-com:office:office"\r\n'
+    ' xmlns:x="urn:schemas-microsoft-com:office:excel">\r\n'
+    ' <o:shapelayout v:ext="edit">\r\n  <o:idmap v:ext="edit" data="1"/>\r\n'
+    ' </o:shapelayout><v:shape id="LH" o:spid="_x0000_s1025" type="#_x0000_t75"\r\n'
+    "  style='position:absolute;margin-left:0;margin-top:0;width:30pt;height:15pt;\r\n"
+    "  z-index:1'>\r\n"
+    '  <v:imagedata o:relid="rId1" o:title="logo"/>\r\n'
+    '  <o:lock v:ext="edit" rotation="t"/>\r\n'
+    " </v:shape></xml>"
+)
+
+
+def with_header_picture(book: Workbook, sheet: Worksheet) -> str:
+    """Give a sheet a header picture's VML part, related first, as Excel
+    relates it, and named by ``<legacyDrawingHF>``. Returns the part."""
+    package = book.package
+    part = book.free_part_name("xl/drawings/vmlDrawing{n}.vml")
+    package.content_types.set_default("vml", "application/vnd.openxmlformats-officedocument.vmlDrawing")
+    package.write(part, HEADER_VML.encode("utf-8"))
+    relationship = package.relationships(sheet.part_name).add_part(
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing", part
+    )
+    insert_in_schema_order(
+        sheet.document.root,
+        Element.create("legacyDrawingHF", {"r:id": relationship.id}),
+        WORKSHEET_CHILD_ORDER,
+    )
+    return part
+
+
+class TestAHeaderPicture:
+    """A header or footer picture is VML related by the same type as the
+    sheet's notes and controls, in a part of its own. Measured: Excel lists
+    it first and numbers the picture from 1025, as it numbers the notes."""
+
+    def test_a_note_and_a_control_go_in_the_sheets_own_vml(self, bare: Workbook) -> None:
+        sheet = bare["Data"]
+        header = with_header_picture(bare, sheet)
+        sheet.add_form_control("Go", left=100, top=60, width=80, height=24, text="Go")
+        sheet.set_comment("D4", "a note")
+        assert bare.package.read(header).decode("utf-8") == HEADER_VML
+        drawing = getattr(sheet, "_legacy_vml_parts")()
+        assert header not in drawing
+        assert len(drawing) == 1
+        vml = bare.package.read(drawing[0]).decode("utf-8")
+        assert 'ObjectType="Button"' in vml and 'ObjectType="Note"' in vml
+        assert sheet.comment("D4") is not None
+
+    def test_an_edit_to_a_control_leaves_the_header_alone(self, bare: Workbook) -> None:
+        sheet = bare["Data"]
+        header = with_header_picture(bare, sheet)
+        shape_id = sheet.add_form_control("Go", left=100, top=60, width=80, height=24, text="Go").shape_id
+        # Excel's own numbering: the picture shares its number with a note
+        # or a control on the sheet.
+        clashing = HEADER_VML.replace("_x0000_s1025", f"_x0000_s{shape_id}")
+        bare.package.write(header, clashing.encode("utf-8"))
+
+        sheet.update_shape("Go", new_name="Moved", left=120, text="Now", hidden=True)
+        assert sheet.shape("Moved").hidden is True
+        sheet.set_shape_macro("Moved", "Clicked")
+        sheet.remove_shape("Moved")
+        assert bare.package.read(header).decode("utf-8") == clashing
+
+
+def with_ole_object(book: Workbook, sheet: Worksheet, name: str, *, hidden: bool = False) -> int:
+    """Embed an OLE object the way Excel does, measured: a hidden drawing
+    twin, an ``<oleObject>`` record in the sheet's ``<oleObjects>``, a VML
+    shape that draws it, and the embedded part. Returns its shape id."""
+    package = book.package
+    shape_id: int = getattr(sheet, "_next_control_id")()
+    getattr(sheet, "_declare_control_namespaces")()
+    _, drawing = drawing_of(sheet)
+    corners = (
+        "<xdr:from><xdr:col>2</xdr:col><xdr:colOff>47625</xdr:colOff><xdr:row>2</xdr:row>"
+        "<xdr:rowOff>123825</xdr:rowOff></xdr:from><xdr:to><xdr:col>2</xdr:col>"
+        "<xdr:colOff>590550</xdr:colOff><xdr:row>5</xdr:row><xdr:rowOff>66675</xdr:rowOff></xdr:to>"
+    )
+    twin = (
+        '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+        '<mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14">'
+        f'<xdr:twoCellAnchor editAs="oneCell">{corners}<xdr:sp macro="" textlink=""><xdr:nvSpPr>'
+        f'<xdr:cNvPr id="{shape_id}" name="{name}" hidden="1"><a:extLst>'
+        '<a:ext uri="{63B3BB69-23CF-44E3-9099-C40C66FF867C}">'
+        f'<a14:compatExt spid="_x0000_s{shape_id}"/></a:ext></a:extLst></xdr:cNvPr><xdr:cNvSpPr/>'
+        '</xdr:nvSpPr><xdr:spPr bwMode="auto"><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/>'
+        '</a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:sp>'
+        "<xdr:clientData/></xdr:twoCellAnchor></mc:Choice><mc:Fallback/></mc:AlternateContent>"
+    )
+    drawing.root.append(XmlDocument.parse(twin.encode("utf-8")).root)
+
+    embedded = book.free_part_name("xl/embeddings/oleObject{n}.bin")
+    package.write(embedded, b"\xd0\xcf\x11\xe0", content_type="application/vnd.openxmlformats-officedocument.oleObject")
+    relationship = package.relationships(sheet.part_name).add_part(
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject", embedded
+    )
+    record = (
+        '<oleObjects><mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+        f'<mc:Choice Requires="x14"><oleObject progId="Packager Shell Object" shapeId="{shape_id}" '
+        f'r:id="{relationship.id}"><objectPr defaultSize="0"><anchor moveWithCells="1">'
+        f'{corners.replace("xdr:from", "from").replace("xdr:to>", "to>")}</anchor></objectPr></oleObject>'
+        f'</mc:Choice><mc:Fallback><oleObject progId="Packager Shell Object" shapeId="{shape_id}" '
+        f'r:id="{relationship.id}"/></mc:Fallback></mc:AlternateContent></oleObjects>'
+    )
+    insert_in_schema_order(
+        sheet.document.root, XmlDocument.parse(record.encode("utf-8")).root, WORKSHEET_CHILD_ORDER
+    )
+
+    part: str = getattr(sheet, "_vml_part")()
+    vml = package.read(part).decode("utf-8")
+    shape = (
+        f'<v:shape id="{name}" o:spid="_x0000_s{shape_id}" type="#_x0000_t75"\r\n'
+        "  style='position:absolute;margin-left:99.75pt;margin-top:39.75pt;width:42.75pt;\r\n"
+        f"  height:40.5pt;z-index:1{';visibility:hidden' if hidden else ''}' filled=\"t\"\r\n"
+        '  o:insetmode="auto">\r\n  <v:imagedata o:relid="rId1" o:title=""/>\r\n'
+        '  <x:ClientData ObjectType="Pict">\r\n   <x:SizeWithCells/>\r\n'
+        "   <x:Anchor>\r\n    2, 5, 2, 13, 2, 62, 5, 7</x:Anchor>\r\n   <x:CF>Pict</x:CF>\r\n"
+        "   <x:AutoPict/>\r\n  </x:ClientData>\r\n </v:shape>"
+    )
+    package.write(part, vml.replace("</xml>", f"{shape}</xml>").encode("utf-8"))
+    return shape_id
+
+
+class TestAnOleObject:
+    """Excel draws an embedded object from its VML and keeps a hidden twin
+    of it in the drawing, as it does a control. Measured: ``Shape.Type`` is
+    7, and the twin says hidden whether the object shows or not."""
+
+    def test_it_reads_as_one_and_shown(self, bare: Workbook) -> None:
+        sheet = bare["Data"]
+        with_ole_object(bare, sheet, "Attached")
+        shape = sheet.shape("Attached")
+        assert (shape.kind, shape.mso_type, shape.hidden, shape.cells) == ("oleObject", 7, False, "C3:C6")
+
+    def test_a_hidden_one_reads_hidden(self, bare: Workbook) -> None:
+        sheet = bare["Data"]
+        with_ole_object(bare, sheet, "Tucked", hidden=True)
+        assert sheet.shape("Tucked").hidden is True
+
+    def test_update_shape_leaves_it_alone(self, bare: Workbook) -> None:
+        sheet = bare["Data"]
+        with_ole_object(bare, sheet, "Attached")
+        with pytest.raises(ValueError, match="OLE object"):
+            sheet.update_shape("Attached", new_name="Renamed", hidden=True)
+        assert sheet.shape("Attached").hidden is False
+
+    def test_remove_shape_leaves_it_alone(self, bare: Workbook) -> None:
+        """Taking only its twin leaves Excel drawing it from the record and
+        the VML, measured, so nothing goes."""
+        sheet = bare["Data"]
+        with_ole_object(bare, sheet, "Attached")
+        with pytest.raises(ValueError, match="OLE object removal"):
+            sheet.remove_shape("Attached")
+        assert sheet.shape("Attached").kind == "oleObject"
 
 
 class TestSettingAMacro:
@@ -368,6 +1079,13 @@ class TestSettingAMacro:
         sheet = book["Controls"]
         sheet.set_shape_macro("Plain", "Clicked")
         assert sheet.shape("Plain").macro == "Clicked"
+
+    def test_an_activex_control_has_none_to_set(self, book: Workbook) -> None:
+        sheet = book["Controls"]
+        retype_as_activex(book, sheet)
+        with pytest.raises(ValueError, match="event procedure"):
+            sheet.set_shape_macro("Go", "Other")
+        assert sheet.shape("Go").macro == "[0]!Clicked"
 
     def test_on_a_control_it_keeps_the_prefix(self, book: Workbook) -> None:
         """The bracketed number indexes the workbook holding the

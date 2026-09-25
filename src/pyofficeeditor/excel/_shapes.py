@@ -48,10 +48,12 @@ drawing nobody edited survives a save byte for byte.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from collections.abc import Iterator
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
-from pyofficeeditor._xml import Element, escape_attribute, escape_text
+from pyofficeeditor._xml import Element, XmlDocument, decode_entities, escape_attribute, escape_text
+from pyofficeeditor.excel._reference import CellRef, RangeRef
 
 #: English Metric Units in one point. Office measures a shape in EMU in the
 #: file and in points through the object model, and this is the whole of the
@@ -75,6 +77,8 @@ ShapeKind = Literal[
     "chart",
     "group",
     "formControl",
+    "activeX",
+    "oleObject",
     "other",
 ]
 
@@ -85,6 +89,10 @@ MSO_TYPE: dict[str, int] = {
     "chart": 3,
     "group": 6,
     "formControl": 8,
+    "activeX": 12,
+    # An embedded object, measured. A linked one is 10 in Excel, and this
+    # does not tell the two apart.
+    "oleObject": 7,
     "line": 9,
     "picture": 13,
     "textBox": 17,
@@ -192,6 +200,10 @@ CONTROL_KINDS = (
     "GBox",
     "Label",
 )
+
+#: The kinds that show a caption. Excel writes no text for a drop down, a
+#: list box, a spinner or a scroll bar, in the drawing or in the VML.
+CAPTIONED_CONTROLS = ("Button", "CheckBox", "Radio", "GBox", "Label")
 
 #: Which attribute holds a control's current value, by kind.
 #:
@@ -485,6 +497,16 @@ class Shape:
     width: float = 0.0
     height: float = 0.0
     text: str = ""
+    #: The cells the anchor covers, such as ``B2:C3``. A group's members
+    #: have no anchor of their own and answer ``""``.
+    cells: str = ""
+    #: The alternative text, the ``descr`` Excel keeps on the shape's
+    #: ``cNvPr``. A form control's comes from the sheet's own record.
+    alt_text: str = ""
+    #: Whether the shape is hidden. A control's or an OLE object's comes
+    #: from its VML: Excel marks the drawing twin of each hidden, shown or
+    #: not.
+    hidden: bool = False
     #: The procedure a click runs. A form control's comes from the sheet's
     #: own ``<controls>`` rather than from the drawing.
     macro: str = ""
@@ -562,9 +584,38 @@ def _from_anchor(anchor: Element, grid: SheetGrid, images: dict[str, str]) -> Sh
         return None
     box = _transform_box(body)
     if box is None:
-        box = _anchor_box(anchor, grid)
+        box = anchor_box(anchor, grid)
     left, top, width, height = box
-    return _shape_of(body, grid, images, left=left, top=top, width=width, height=height)
+    shape = _shape_of(body, grid, images, left=left, top=top, width=width, height=height)
+    return replace(shape, cells=anchor_cells(anchor, grid))
+
+
+def anchor_cells(anchor: Element, grid: SheetGrid) -> str:
+    """The cells an anchor covers, such as ``B2:C3``.
+
+    A two-cell anchor names both corners. A one-cell anchor names one and
+    an extent, and an absolute anchor names no cell at all, so for those
+    the far corner is found on the sheet's grid. A corner that sits
+    exactly on a cell's top or left edge does not reach into that cell.
+    """
+    start, end = _find(anchor, "from"), _find(anchor, "to")
+    if start is not None and end is not None:
+        first_column, first_row = _index(start, "col"), _index(start, "row")
+        last_column, column_offset = _index(end, "col"), _offset(end, "colOff")
+        last_row, row_offset = _index(end, "row"), _offset(end, "rowOff")
+    else:
+        left, top, width, height = anchor_box(anchor, grid)
+        first_column, first_row = grid.column_at(left)[0], grid.row_at(top)[0]
+        last_column, column_offset = grid.column_at(left + width)
+        last_row, row_offset = grid.row_at(top + height)
+    if column_offset == 0 and last_column > first_column:
+        last_column -= 1
+    if row_offset == 0 and last_row > first_row:
+        last_row -= 1
+    return RangeRef(
+        CellRef(first_row + 1, first_column + 1),
+        CellRef(max(last_row, first_row) + 1, max(last_column, first_column) + 1),
+    ).a1
 
 
 def _transform_box(body: Element) -> tuple[float, float, float, float] | None:
@@ -643,6 +694,8 @@ def _shape_of(
         width=width,
         height=height,
         text=_text_of(body),
+        alt_text="" if naming is None else (naming.get("descr") or ""),
+        hidden=False if naming is None else naming.get("hidden") in ("1", "true"),
         macro=body.get("macro") or "",
         shape_id=int(_as_float(None if naming is None else naming.get("id"), 0)),
         children=children,
@@ -650,7 +703,7 @@ def _shape_of(
     )
 
 
-def _anchor_box(anchor: Element, grid: SheetGrid) -> tuple[float, float, float, float]:
+def anchor_box(anchor: Element, grid: SheetGrid) -> tuple[float, float, float, float]:
     """The shape's box in points, from the anchor rather than the transform.
 
     A two-cell anchor gives both corners, a one-cell anchor a corner and an
@@ -1246,9 +1299,9 @@ def control_vml(shape: Shape, grid: SheetGrid) -> str:
     return (
         f'<v:shape id="{vml_id(shape.name)}" o:spid="_x0000_s{shape.shape_id}"'
         ' type="#_x0000_t201"'
-        f" style='position:absolute;margin-left:{shape.left:g}pt;"
-        f"margin-top:{shape.top:g}pt;width:{shape.width:g}pt;height:{shape.height:g}pt;"
-        "z-index:1;mso-wrap-style:tight'"
+        f" style='position:absolute;margin-left:{css_points(shape.left)};"
+        f"margin-top:{css_points(shape.top)};width:{css_points(shape.width)};"
+        f"height:{css_points(shape.height)};z-index:1;mso-wrap-style:tight'"
         f'{style.attributes} o:insetmode="auto">'
         f"{style.body}{text}"
         f'<x:ClientData ObjectType="{style.object_type}">'
@@ -1264,8 +1317,85 @@ def vml_id(name: str) -> str:
     return cleaned if cleaned and not cleaned[0].isdigit() else f"_{cleaned}"
 
 
-#: One control's VML shape, found by the id the drawing gave it.
-_VML_SHAPE = r'(<v:shape\b[^>]*?o:spid="_x0000_s{id}".*?</v:shape>)'
+def css_points(value: float) -> str:
+    """A length as a VML style writes it, in points.
+
+    Plain decimals, never an exponent: Python's ``g`` format turns a
+    control a million points down the sheet, around row 69,000, into
+    ``1.5e+06pt``, which is not a length.
+    """
+    text = f"{value:.4f}".rstrip("0").rstrip(".")
+    return f"{text or '0'}pt"
+
+
+#: Every shape in a VML part. A self-closed ``<v:shape/>`` is passed over
+#: rather than read as opening a shape that runs on into the next one.
+_VML_SHAPES = re.compile(r"<v:shape\b[^>]*(?<!/)>.*?</v:shape>", re.DOTALL)
+#: The id a VML shape is found by, which the drawing and the sheet's record
+#: know it by too. Excel writes it as ``o:spid`` once the shape has a name
+#: of its own, ``id="Go" o:spid="_x0000_s1025"``, and otherwise as the id
+#: itself, ``id="_x0000_s1025"``: every note, and every control still
+#: called by its default name.
+_VML_SPID = re.compile(r'\bo:spid="_x0000_s(\d+)"')
+_VML_ID_SPID = re.compile(r'(?<![\w:])id="_x0000_s(\d+)"')
+_VML_ID = re.compile(r'(?<![\w:])id="[^"]*"')
+_VML_STYLE = re.compile(r"""\bstyle=(['"])(.*?)\1""", re.DOTALL)
+_VML_HIDDEN = re.compile(r"(?<![\w-])visibility\s*:\s*hidden", re.IGNORECASE)
+_VML_TEXTBOX = re.compile(r"<v:textbox\b[^>]*>(.*?)</v:textbox>", re.DOTALL)
+
+
+@dataclass(frozen=True)
+class VmlControl:
+    """What a control's VML says that its drawing twin does not."""
+
+    #: Whether its style says ``visibility:hidden``.
+    hidden: bool = False
+    #: Its caption, or ``None`` when it has no text box.
+    caption: str | None = None
+
+
+def _vml_shapes(vml: str) -> Iterator[tuple[int, re.Match[str]]]:
+    """Each shape in a VML part with the id it is found by: the one rule
+    every read and every edit here uses."""
+    for match in _VML_SHAPES.finditer(vml):
+        block = match.group(0)
+        head = block[: block.find(">") + 1]
+        found = _VML_SPID.search(head) or _VML_ID_SPID.search(head)
+        if found is not None:
+            yield int(found.group(1)), match
+
+
+def _vml_shape(vml: str, shape_id: int) -> re.Match[str] | None:
+    """One control's VML shape, found by the id the drawing gave it."""
+    return next((match for found, match in _vml_shapes(vml) if found == shape_id), None)
+
+
+def vml_controls(vml: str) -> dict[int, VmlControl]:
+    """Each shape in a VML part, by id, read in one pass: whether it is
+    hidden and what its caption says."""
+    found: dict[int, VmlControl] = {}
+    for shape_id, match in _vml_shapes(vml):
+        block = match.group(0)
+        head = block[: block.find(">") + 1]
+        style = _VML_STYLE.search(head)
+        box = _VML_TEXTBOX.search(block)
+        found[shape_id] = VmlControl(
+            hidden=style is not None and _VML_HIDDEN.search(style.group(2)) is not None,
+            caption=None if box is None else _vml_caption(box.group(1)),
+        )
+    return found
+
+
+def _vml_caption(markup: str) -> str:
+    """The text of a VML text box, with its line breaks.
+
+    Excel lays VML out over several lines and breaks inside a tag or
+    between tags; that layout is not text. A caption's own line breaks are
+    ``<br>`` elements.
+    """
+    markup = re.sub(r"\r?\n\s*", "", markup)
+    markup = re.sub(r"<br\s*/?>", "\n", markup, flags=re.IGNORECASE)
+    return decode_entities(re.sub(r"<[^>]*>", "", markup))
 
 #: The macro inside it, which Excel writes but does not read back: the
 #: sheet's own ``<controlPr macro=...>`` is what a click actually runs.
@@ -1278,10 +1408,15 @@ def with_vml_shape(vml: str, markup: str) -> str:
     return vml if at < 0 else vml[:at] + markup + vml[at:]
 
 
+def has_vml_shape(vml: str, shape_id: int) -> bool:
+    """Whether a VML part draws one control, found as every edit finds it."""
+    return _vml_shape(vml, shape_id) is not None
+
+
 def without_vml_shape(vml: str, shape_id: int) -> str:
     """A VML part with one control's shape taken out."""
-    pattern = re.compile(_VML_SHAPE.format(id=shape_id), re.DOTALL)
-    return pattern.sub("", vml, count=1)
+    match = _vml_shape(vml, shape_id)
+    return vml if match is None else vml[: match.start()] + vml[match.end() :]
 
 
 def vml_shape_ids(vml: str) -> set[int]:
@@ -1339,34 +1474,112 @@ def anchor_holding(root: Element, name: str) -> Element | None:
     Not the anchor itself where a control is concerned: Excel wraps a
     control's anchor in an ``mc:AlternateContent``, and removing the inner
     anchor would leave the empty wrapper behind.
+
+    Only a shape's own anchor counts. A group holding a member of the same
+    name is not the answer, because a sheet lists its groups and not their
+    members, and taking the group would remove shapes nobody named.
     """
-    for child in root.children:
-        if not isinstance(child, Element):
-            continue
-        local = _local(child.name)
-        if local in ANCHORS:
-            body = _shape_element(child)
-            if body is not None and _named(body, name) is not None:
-                return child
-        elif local == "AlternateContent":
-            chosen = _find(child, "Choice") or _find(child, "Fallback")
-            if chosen is not None and anchor_holding(chosen, name) is not None:
-                return child
+    for child in root.elements():
+        if shape_copies(child, name):
+            return child
     return None
+
+
+def anchors_in(node: Element) -> list[Element]:
+    """The anchors one top-level drawing node holds: the node itself, or
+    each branch of an ``mc:AlternateContent``."""
+    local = _local(node.name)
+    if local in ANCHORS:
+        return [node]
+    if local != "AlternateContent":
+        return []
+    found: list[Element] = []
+    for branch in node.elements():
+        if _local(branch.name) in ("Choice", "Fallback"):
+            for child in branch.elements():
+                found.extend(anchors_in(child))
+    return found
+
+
+def shape_copies(node: Element, name: str) -> list[Element]:
+    """Each copy of a named shape in one top-level drawing node.
+
+    A plain anchor holds one. An ``mc:AlternateContent`` can hold a copy
+    in its ``mc:Choice`` and another in its ``mc:Fallback``, for Excel
+    versions that cannot read the first, and an edit has to reach both or
+    the two disagree.
+    """
+    found: list[Element] = []
+    for anchor in anchors_in(node):
+        body = _shape_element(anchor)
+        if body is not None and _shape_name(body) == name:
+            found.append(body)
+    return found
 
 
 def find_shape_element(root: Element, name: str) -> Element | None:
     """The element behind a named shape, anywhere in a drawing.
 
-    Anchors inside ``mc:AlternateContent`` are searched too, and so are a
-    group's members, so a shape nested in a group is reachable.
+    A shape with an anchor of its own, which is what the sheet lists, is
+    found first. Then a group's members are searched, so a shape nested
+    in a group is still reachable. Anchors inside ``mc:AlternateContent``
+    are searched too.
     """
+    for anchor in _anchors(root):
+        body = _shape_element(anchor)
+        if body is not None and _shape_name(body) == name:
+            return body
     for anchor in _anchors(root):
         body = _shape_element(anchor)
         found = None if body is None else _named(body, name)
         if found is not None:
             return found
     return None
+
+
+def shape_names(root: Element) -> set[str]:
+    """Every name a drawing uses, a group's members included."""
+    names: set[str] = set()
+    for anchor in _anchors(root):
+        body = _shape_element(anchor)
+        stack = [] if body is None else [body]
+        while stack:
+            current = stack.pop()
+            names.add(_shape_name(current))
+            stack.extend(
+                child for child in current.elements() if _local(child.name) in _ELEMENT_KINDS
+            )
+    names.discard("")
+    return names
+
+
+def is_two_cell(anchor: Element) -> bool:
+    """Whether an anchor names both corners, which is what moving a shape
+    in place rewrites."""
+    return anchor.child("from") is not None and anchor.child("to") is not None
+
+
+def move_anchor(
+    anchor: Element,
+    grid: SheetGrid,
+    box: tuple[float, float, float, float],
+    *,
+    wrapper: str = "xdr:",
+) -> None:
+    """Put a two-cell anchor's corners where a box now is, in points.
+
+    ``wrapper`` is as :func:`corner_markup` takes it: ``xdr:`` in a
+    drawing, nothing in the sheet's own ``<controlPr>`` anchor. Check
+    :func:`is_two_cell` first; this changes the corners it finds.
+    """
+    left, top, width, height = box
+    for which, across, down in (("from", left, top), ("to", left + width, top + height)):
+        old = anchor.child(which)
+        if old is None:
+            continue
+        markup = corner_markup(which, grid, across, down, wrapper=wrapper)
+        anchor.insert_before(old, XmlDocument.parse(markup.encode("utf-8")).root)
+        anchor.remove(old)
 
 
 def _named(body: Element, name: str) -> Element | None:
@@ -1419,12 +1632,11 @@ def set_vml_macro(text: str, shape_id: int, macro: str) -> str:
     ``<x:FmlaMacro>`` goes after ``<x:AutoFill>`` where there is one, which
     is where Excel puts it.
     """
-    pattern = re.compile(_VML_SHAPE.format(id=shape_id), re.DOTALL)
-    match = pattern.search(text)
+    match = _vml_shape(text, shape_id)
     if match is None:
         return text
 
-    block = match.group(1)
+    block = match.group(0)
     replacement = f"<x:FmlaMacro>{escape_text(macro)}</x:FmlaMacro>" if macro else ""
     if _VML_MACRO.search(block) is not None:
         changed = _VML_MACRO.sub(lambda _: replacement, block, count=1)
@@ -1437,7 +1649,209 @@ def set_vml_macro(text: str, shape_id: int, macro: str) -> str:
         else:
             at = anchor.end()
             changed = block[:at] + replacement + block[at:]
-    return text[: match.start(1)] + changed + text[match.end(1) :]
+    return text[: match.start()] + changed + text[match.end() :]
+
+
+def update_vml_control(
+    text: str,
+    shape: Shape,
+    grid: SheetGrid,
+    *,
+    rename: bool = False,
+    move: bool = False,
+    caption: bool = False,
+    visibility: bool = False,
+    linked_cell: str | None = None,
+    list_range: str | None = None,
+) -> str:
+    """One control's VML with the given things changed and the rest left as
+    Excel wrote it: the measured style, the fill, the font a caption is
+    drawn in, and the order of the ``x:ClientData`` children.
+
+    ``shape`` carries the new values. Raises ``ValueError``, having changed
+    nothing, when the VML has no shape for the control or lacks what a
+    change needs.
+    """
+    match = _vml_shape(text, shape.shape_id)
+    if match is None:
+        raise ValueError(f"the VML has no shape for control {shape.shape_id}.")
+    block = match.group(0)
+    head_end = block.find(">") + 1
+    head, tail = block[:head_end], block[head_end:]
+    kind = shape.control.kind if shape.control is not None else ""
+    style_of_kind = _VML_STYLES.get(kind)
+    if rename:
+        named = f'id="{escape_attribute(vml_id(shape.name))}"'
+        if _VML_SPID.search(head) is None:
+            # The id was what found the shape, and it is about to hold the
+            # name instead. Excel moves a renamed shape's number to an
+            # o:spid, which is how the drawing and the sheet still reach it.
+            named += f' o:spid="_x0000_s{shape.shape_id}"'
+        head, count = _VML_ID.subn(lambda _: named, head, count=1)
+        if not count:
+            head = head.replace("<v:shape", f"<v:shape {named}", 1)
+    if move or visibility:
+        style = _VML_STYLE.search(head)
+        if style is None:
+            raise ValueError(f"control {shape.shape_id}'s VML has no style to place it by.")
+        value = style.group(2)
+        if move:
+            for key, length in (
+                ("margin-left", shape.left), ("margin-top", shape.top),
+                ("width", shape.width), ("height", shape.height),
+            ):
+                value, count = re.subn(
+                    rf"(?<![\w-]){key}\s*:[^;]*",
+                    lambda _, key=key, length=length: f"{key}:{css_points(length)}",
+                    value,
+                    count=1,
+                )
+                if not count:
+                    raise ValueError(f"control {shape.shape_id}'s VML style has no {key}.")
+            tail, count = re.subn(
+                r"(<x:Anchor>).*?(</x:Anchor>)",
+                lambda m: m.group(1) + vml_anchor(shape, grid) + m.group(2),
+                tail, count=1, flags=re.DOTALL,
+            )
+            if not count:
+                raise ValueError(f"control {shape.shape_id}'s VML has no cell anchor.")
+        if visibility:
+            value = _with_visibility(value, hidden=shape.hidden)
+        head = head[: style.start(2)] + value + head[style.end(2) :]
+    if caption:
+        tail = _with_caption(tail, shape.text, style_of_kind)
+    slots = style_of_kind.slots if style_of_kind is not None else ()
+    for tag, wanted in (("FmlaLink", linked_cell), ("FmlaRange", list_range)):
+        if wanted is not None:
+            markup = f"<x:{tag}>{escape_text(wanted)}</x:{tag}>" if wanted else ""
+            tail = _with_client_data(tail, tag, markup, slots)
+    return text[: match.start()] + head + tail + text[match.end() :]
+
+
+def _with_visibility(style: str, *, hidden: bool) -> str:
+    """A VML style with its visibility set. Excel writes
+    ``visibility:hidden`` just before ``mso-wrap-style`` and nothing at all
+    for a shown shape."""
+    items = [
+        item for item in style.split(";")
+        if item.strip() and not re.match(r"\s*visibility\s*:", item, re.IGNORECASE)
+    ]
+    if hidden:
+        at = next(
+            (index for index, item in enumerate(items) if item.strip().lower().startswith("mso-wrap-style")),
+            len(items),
+        )
+        items.insert(at, "visibility:hidden")
+    return ";".join(items)
+
+
+def _with_caption(tail: str, text: str, style: _VmlStyle | None) -> str:
+    """A control's VML body with its caption replaced.
+
+    The ``<font>`` Excel wraps a caption in is kept, so the caption keeps
+    its typeface, size and colour. A control with no text box gets one
+    where :func:`control_vml` puts it, just before the ``x:ClientData``.
+    """
+    rendered = "<br/>".join(escape_text(line) for line in text.split("\n"))
+    box = re.search(r"(<v:textbox\b[^>]*>)(.*?)(</v:textbox>)", tail, re.DOTALL)
+    if box is None:
+        align = style.align if style is not None else "left"
+        markup = (
+            "<v:textbox style='mso-direction-alt:auto' o:singleclick=\"f\">"
+            f"<div style='text-align:{align}'>{rendered}</div></v:textbox>"
+        )
+        at = tail.find("<x:ClientData")
+        return markup + tail if at < 0 else tail[:at] + markup + tail[at:]
+    inner = box.group(2)
+    division = re.search(r"(<div\b[^>]*>)(.*?)(</div>)", inner, re.DOTALL)
+    if division is None:
+        changed = f"<div>{rendered}</div>"
+    else:
+        font = re.search(r"<font\b[^>]*>", division.group(2))
+        content = f"{font.group(0)}{rendered}</font>" if font is not None else rendered
+        changed = inner[: division.start(2)] + content + inner[division.end(2) :]
+    return tail[: box.start(2)] + changed + tail[box.end(2) :]
+
+
+def _with_client_data(tail: str, tag: str, markup: str, slots: tuple[str, ...]) -> str:
+    """A control's VML body with one ``x:ClientData`` child replaced,
+    removed when ``markup`` is empty, or added in the slot Excel's order
+    gives it, before the first later child that is present."""
+    existing = re.search(rf"<x:{tag}\b[^>]*?(?:/>|>.*?</x:{tag}>)", tail, re.DOTALL)
+    if existing is not None:
+        return tail[: existing.start()] + markup + tail[existing.end() :]
+    if not markup:
+        return tail
+    later = slots[slots.index(tag) + 1 :] if tag in slots else ()
+    found = [hit.start() for slot in later if (hit := re.search(rf"<x:{slot}\b", tail)) is not None]
+    at = min(found) if found else tail.find("</x:ClientData>")
+    if at < 0:
+        raise ValueError(f"the control's VML has no x:ClientData to put {tag} in.")
+    return tail[:at] + markup + tail[at:]
+
+
+def replace_text(body: Element, text: str) -> None:
+    """Set a drawing shape's text and keep how it is drawn.
+
+    The text body's own properties stay, and each new paragraph takes the
+    first old paragraph's properties and its first run's, so a centred,
+    sized, coloured caption stays centred, sized and coloured. A shape with
+    no text body gets a plain one, where the schema puts it: after the
+    shape's properties and style.
+    """
+    fresh = XmlDocument.parse(text_body(text).encode("utf-8")).root
+    old = _find(body, "txBody")
+    if old is None:
+        before = _find(body, "style") or _find(body, "spPr")
+        if before is None:
+            body.append(fresh)
+        else:
+            body.insert_after(before, fresh)
+        return
+    paragraphs = [node for node in old.elements() if _local(node.name) == "p"]
+    first = paragraphs[0] if paragraphs else None
+    prefix = first.name.rpartition(":")[0] if first is not None else "a"
+    name = f"{prefix}:" if prefix else ""
+    layout = None if first is None else _find(first, "pPr")
+    run = None if first is None else _find(first, "r")
+    run_properties = None if run is None else _find(run, "rPr")
+    end_properties = None if first is None else _find(first, "endParaRPr")
+    for paragraph in paragraphs:
+        old.remove(paragraph)
+    for line in text.split("\n") if text else [""]:
+        paragraph = Element.create(f"{name}p")
+        if layout is not None:
+            paragraph.append(_copy(layout))
+        if line:
+            piece = Element.create(f"{name}r")
+            if run_properties is not None:
+                piece.append(_copy(run_properties))
+            elif end_properties is not None:
+                piece.append(_copy(end_properties, f"{name}rPr"))
+            else:
+                piece.append(Element.create(f"{name}rPr", {"lang": "en-US"}))
+            words = Element.create(f"{name}t")
+            words.set_text(line)
+            piece.append(words)
+            paragraph.append(piece)
+        elif end_properties is not None:
+            paragraph.append(_copy(end_properties))
+        elif run_properties is not None:
+            paragraph.append(_copy(run_properties, f"{name}endParaRPr"))
+        else:
+            paragraph.append(Element.create(f"{name}endParaRPr", {"lang": "en-US"}))
+        old.append(paragraph)
+
+
+def _copy(element: Element, name: str | None = None) -> Element:
+    """A detached copy of an element, renamed when ``name`` is given."""
+    parsed = XmlDocument.parse(element.to_xml().encode("utf-8")).root
+    if name is None:
+        return parsed
+    renamed = Element.create(name, parsed.attributes)
+    for child in parsed.children:
+        renamed.append(child)
+    return renamed
 
 
 def _find(parent: Element, name: str) -> Element | None:
@@ -1485,6 +1899,7 @@ def _as_float(raw: str | None, fallback: float) -> float:
 __all__ = [
     "ANCHORS",
     "AUTO_SHAPE_TYPES",
+    "CAPTIONED_CONTROLS",
     "CONTROL_KINDS",
     "CT_CONTROL_PROPERTIES",
     "CT_DRAWING",
@@ -1512,7 +1927,11 @@ __all__ = [
     "Shape",
     "ShapeKind",
     "SheetGrid",
+    "VmlControl",
+    "anchor_box",
+    "anchor_cells",
     "anchor_holding",
+    "anchors_in",
     "characters_to_points",
     "check_control_kind",
     "control_drawing",
@@ -1521,17 +1940,26 @@ __all__ = [
     "control_range",
     "control_vml",
     "corner_markup",
+    "css_points",
     "emu",
     "find_shape_element",
+    "has_vml_shape",
+    "is_two_cell",
+    "move_anchor",
     "new_anchor",
     "points",
     "qualified_macro",
     "read_control",
     "read_drawing",
+    "replace_text",
     "set_vml_macro",
+    "shape_copies",
+    "shape_names",
     "text_body",
+    "update_vml_control",
     "vml_anchor",
     "vml_blocks",
+    "vml_controls",
     "vml_has_shapes",
     "vml_id",
     "vml_shape_ids",

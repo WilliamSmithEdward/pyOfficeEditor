@@ -44,6 +44,7 @@ import datetime as dt
 import os
 import re
 import shutil
+import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -2452,6 +2453,243 @@ def test_excel_accepts_a_workbook_with_shapes_removed(
     left = {name for name in seen["names"].split(",") if name}
     assert not (gone & left)
     assert "Go" in left, "the others are untouched"
+
+
+def test_excel_accepts_a_workbook_with_every_control_removed(
+    excel: object, live_controls_xlsm: Path, tmp_path: Path
+) -> None:
+    """The last control takes the sheet's ``<controls>`` with it, and the
+    ``mc:AlternateContent`` Excel wraps that in, rather than leaving an
+    empty wrapper Excel never writes."""
+    target = tmp_path / "no_controls.xlsm"
+    shutil.copy(live_controls_xlsm, target)
+
+    with Workbook.open(target) as book:
+        sheet = book["Controls"]
+        controls = {shape.name for shape in sheet.shapes if shape.kind == "formControl"}
+        for name in controls:
+            sheet.remove_shape(name)
+        kept = {shape.name for shape in sheet.shapes}
+        book.save()
+
+    seen = probe(excel, _REMOVED_PROBE, target, "no_controls")
+    assert controls, "the workbook has controls to remove"
+    assert {name for name in seen["names"].split(",") if name} == kept
+
+
+_UPDATED_SHAPE_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim s As Shape
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set s = wb.Worksheets(1).Shapes("Moved")
+    Probe = "name=" & s.Name & "|left=" & CStr(s.Left) & _
+            "|top=" & CStr(s.Top) & "|text=" & s.TextFrame.Characters.Text & _
+            "|visible=" & CStr(s.Visible)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+End Function
+"""
+
+
+def test_excel_accepts_an_updated_form_control(
+    excel: object, live_controls_xlsm: Path, tmp_path: Path
+) -> None:
+    target = tmp_path / "updated.xlsm"
+    shutil.copy(live_controls_xlsm, target)
+    with Workbook.open(target) as book:
+        book["Controls"].update_shape(
+            "Go", new_name="Moved", left=110, top=35, width=125, height=40,
+            text="Now run", hidden=True, linked_cell="$D$6", list_range="$H$1:$H$9",
+        )
+        book.save()
+    seen = probe(excel, _UPDATED_SHAPE_PROBE, target, "updated")
+    assert seen["name"] == "Moved"
+    assert abs(float(seen["left"]) - 110) < 2
+    assert abs(float(seen["top"]) - 35) < 2
+    assert seen["text"] == "Now run"
+    assert seen["visible"] == "0"
+
+
+_SHAPES_ON_R_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim s As Shape
+    Dim found As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For Each s In wb.Worksheets("R").Shapes
+        If Len(found) > 0 Then found = found & "|"
+        found = found & s.Name & "=" & CStr(s.Type) & ";" & CStr(s.Visible) & ";" & _
+                CStr(s.Left) & ";" & s.AlternativeText
+    Next s
+    Probe = found
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+End Function
+"""
+
+
+def test_excel_accepts_edits_to_a_control_with_its_default_name(
+    excel: object, live_refused_xlsx: Path, tmp_path: Path
+) -> None:
+    """Excel writes the VML of a control still called "Button 1" with no
+    ``o:spid``: its id is its number. A rename moves the number to an
+    ``o:spid``, and a removal has to find the shape the same way."""
+    renamed = tmp_path / "renamed.xlsx"
+    removed = tmp_path / "removed.xlsx"
+    shutil.copy(live_refused_xlsx, renamed)
+    shutil.copy(live_refused_xlsx, removed)
+    with Workbook.open(renamed) as book:
+        book["R"].update_shape("Button 1", new_name="Renamed", left=20, hidden=True, alt_text="described")
+        book.save()
+    with Workbook.open(removed) as book:
+        book["R"].remove_shape("Button 1")
+        book.save()
+
+    seen = probe(excel, _SHAPES_ON_R_PROBE, renamed, "default_renamed")
+    kind, visible, left, described = seen.pop("Renamed").split(";")
+    assert (kind, visible, described) == ("8", "0", "described")
+    assert abs(float(left) - 20) < 1
+    assert "Button 1" not in seen
+    left_behind = probe(excel, _SHAPES_ON_R_PROBE, removed, "default_removed")
+    assert left_behind == seen, "the button went and nothing else did"
+
+
+_OLE_OBJECT_BUILD = r"""
+Public Function Build(ByVal Embedded As String, ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim o As OLEObject
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Add(xlWBATWorksheet)
+    Set ws = wb.Worksheets(1)
+    Set o = ws.OLEObjects.Add(Filename:=Embedded, Link:=False, Left:=100, Top:=40, Width:=120, Height:=60)
+    o.Name = "Shown"
+    Set o = ws.OLEObjects.Add(Filename:=Embedded, Link:=False, Left:=100, Top:=140, Width:=120, Height:=60)
+    o.Name = "Tucked"
+    o.Visible = False
+    ws.Shapes.AddShape(1, 300, 40, 80, 40).Name = "Box"
+    wb.SaveAs Target, 51
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Build = "built"
+End Function
+"""
+
+_EVERY_SHAPE_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim s As Shape
+    Dim found As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    For Each s In wb.Worksheets(1).Shapes
+        If Len(found) > 0 Then found = found & "|"
+        found = found & s.Name & "=" & CStr(s.Type) & ";" & CStr(s.Visible = msoFalse)
+    Next s
+    Probe = found
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+End Function
+"""
+
+
+def test_the_library_reads_an_ole_object_as_excel_does(excel: object, tmp_path: Path) -> None:
+    """Excel keeps an embedded object's drawing twin hidden whether it shows
+    or not, and draws the object from its VML, as it does a control. Taking
+    the twin alone leaves Excel drawing it, so a removal is refused."""
+    embedded = tmp_path / "attached.txt"
+    embedded.write_text("embedded by Excel\n", encoding="utf-8")
+    target = tmp_path / "ole.xlsx"
+    built = excel.run_vba(  # type: ignore[attr-defined]
+        _OLE_OBJECT_BUILD, proc="Build", args=(str(embedded), str(target)),
+        timeout=180, module_name="Build_ole",
+    )
+    assert built.outcome == "passed", f"Excel could not author the workbook: {built!r}"
+
+    seen = probe(excel, _EVERY_SHAPE_PROBE, target, "ole")
+    with Workbook.open(target) as book:
+        sheet = book[0]
+        read = {shape.name: f"{shape.mso_type};{shape.hidden}" for shape in sheet.shapes}
+        with pytest.raises(ValueError, match="OLE object"):
+            sheet.update_shape("Shown", left=10)
+        with pytest.raises(ValueError, match="OLE object removal"):
+            sheet.remove_shape("Tucked")
+    assert read == seen == {"Shown": "7;False", "Tucked": "7;True", "Box": "1;False"}
+
+
+_HEADER_PICTURE_BUILD = r"""
+Public Function Build(ByVal Picture As String, ByVal Target As String, ByVal WithNote As Boolean) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Add(xlWBATWorksheet)
+    Set ws = wb.Worksheets(1)
+    ws.PageSetup.LeftHeaderPicture.Filename = Picture
+    ws.PageSetup.LeftHeader = "&G"
+    If WithNote Then ws.Range("B2").AddComment "Excel's note"
+    wb.SaveAs Target, 51
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Build = "built=" & CStr(WithNote)
+End Function
+"""
+
+_HEADER_PICTURE_PROBE = r"""
+Public Function Probe(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim s As Shape
+    Dim names As String
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Target)
+    Set ws = wb.Worksheets(1)
+    For Each s In ws.Shapes
+        If s.Type = msoFormControl Then names = names & s.Name & ","
+    Next s
+    Probe = "controls=" & names & "|notes=" & CStr(ws.Comments.Count) & _
+            "|header=" & ws.PageSetup.LeftHeader & _
+            "|picture=" & CStr(ws.PageSetup.LeftHeaderPicture.Filename <> "" Or _
+                                ws.PageSetup.LeftHeaderPicture.Height > 0)
+    wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+End Function
+"""
+
+
+def test_excel_accepts_notes_and_controls_beside_a_header_picture(
+    excel: object, live_pictures_xlsx: Path, tmp_path: Path
+) -> None:
+    """A header picture is VML related by the same type as the sheet's
+    notes and controls, in a part of its own that Excel lists first. A note
+    or a control put in that part makes Excel refuse the file."""
+    picture = tmp_path / "logo.png"
+    with zipfile.ZipFile(live_pictures_xlsx) as archive:
+        picture.write_bytes(archive.read("xl/media/image1.png"))
+
+    for with_note in (False, True):
+        target = tmp_path / f"header_{with_note}.xlsx"
+        built = excel.run_vba(  # type: ignore[attr-defined]
+            _HEADER_PICTURE_BUILD, proc="Build", args=(str(picture), str(target), with_note),
+            timeout=180, module_name=f"Build_header_{int(with_note)}",
+        )
+        assert built.outcome == "passed", f"Excel could not author the workbook: {built!r}"
+        with Workbook.open(target) as book:
+            sheet = book[0]
+            sheet.add_form_control("Go", left=100, top=60, width=80, height=24, text="Go")
+            sheet.set_comment("D4", "the library's note")
+            sheet.update_shape("Go", new_name="Moved", left=120)
+            book.save()
+
+        seen = probe(excel, _HEADER_PICTURE_PROBE, target, f"header_{int(with_note)}")
+        assert seen == {
+            "controls": "Moved,",
+            "notes": "2" if with_note else "1",
+            "header": "&G",
+            "picture": "True",
+        }
 
 
 _MACRO_PROBE = r"""

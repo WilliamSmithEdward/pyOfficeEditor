@@ -21,7 +21,67 @@ anything trailing the file is swept into the oldest release's notes. -->
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Changing a shape in place.** `Worksheet.update_shape` moves, resizes
+  and renames a shape, changes its text, sets its alt text and whether it
+  is hidden, and rewires a Forms control's linked cell and list range,
+  changing all four of a control's parts together. New text keeps the font, size,
+  colour and alignment of the text it replaces, in the drawing and in a
+  control's VML. A side left out keeps where the anchor has it, which is
+  where Excel draws the shape. `Worksheet.cell_origin` gives a cell's
+  top-left corner in points, to put a shape on that cell.
+  [#4](https://github.com/WilliamSmithEdward/pyOfficeEditor/issues/4)
+
+- **More of what a shape is.** `Shape.cells` is the range its anchor
+  covers, `Shape.alt_text` its alternative text and `Shape.hidden` whether
+  it shows. A Forms control's comes from its VML, because Excel marks every
+  control's drawing twin hidden, shown or not. An ActiveX control reads as
+  kind `"activeX"`, one with no drawing twin included, and `remove_shape`,
+  `update_shape` and `set_shape_macro` refuse it rather than take its
+  binary part apart. An embedded OLE object reads as kind `"oleObject"`,
+  `Shape.Type` 7, and `remove_shape` and `update_shape` refuse it too. A
+  Forms control inside a group now reads as a control.
+
+### Fixed
+
+- **Removing a chart left the chart behind.** Its part, its relationship
+  and its content-type entry now go, and so do the style and colour parts
+  Excel gives every chart it makes.
+  [#3](https://github.com/WilliamSmithEdward/pyOfficeEditor/issues/3)
+
+- **Removing a group left its members' parts behind.** A picture's image,
+  a chart, and a Forms control's record, part and VML shape now go with
+  the group. Every relationship only the removed shape used goes, a
+  hyperlink's included, and each part it reached goes once nothing else
+  uses it.
+  [#5](https://github.com/WilliamSmithEdward/pyOfficeEditor/issues/5)
+
+- **A group member's name reached the whole group.** `remove_shape` on a
+  name only a group member carried removed the group. A sheet lists
+  groups, not their members, so that name now raises `KeyError`, and a new
+  shape may not take it.
+
+- **Removing the last Forms control on a sheet made Excel refuse the
+  file.** The records went, and the `mc:AlternateContent` Excel wraps them
+  in stayed behind empty. It now goes with them.
+
+- **A control still called by its default name kept its VML.** Excel
+  writes the VML of a "Button 1" with its number as its id and no
+  `o:spid`, and only the `o:spid` was looked for. `remove_shape` left that
+  VML shape behind and Excel went on showing the button, and
+  `set_shape_macro` missed the VML's copy of the macro. Renaming such a
+  control now gives its VML the `o:spid` Excel gives a renamed one.
+
+- **A note or a control added beside a header or footer picture made
+  Excel refuse the file.** The picture is VML related the same way, in a
+  part Excel lists first, and the note or control went into it. Notes and
+  controls now keep to the sheet's own VML part.
+
+- **Removing an embedded OLE object left Excel showing it.** Only its
+  hidden drawing shape went, and Excel draws the object from its record
+  and its VML. `remove_shape` now refuses it, as it refuses an ActiveX
+  control.
 
 ## [0.3.0] - 2026-09-23
 

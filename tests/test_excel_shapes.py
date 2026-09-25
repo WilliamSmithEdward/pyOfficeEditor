@@ -13,7 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from pyofficeeditor.excel import Workbook, Worksheet
+from pyofficeeditor._xml import XmlDocument
+from pyofficeeditor.excel import CellRef, Workbook, Worksheet
 from pyofficeeditor.excel._shapes import (
     AUTO_SHAPE_TYPES,
     DEFAULT_COLUMN_POINTS,
@@ -21,6 +22,7 @@ from pyofficeeditor.excel._shapes import (
     MSO_TYPE,
     PRESET_GEOMETRY,
     SheetGrid,
+    anchor_cells,
     characters_to_points,
     emu,
     points,
@@ -135,6 +137,7 @@ class TestReadingWhatExcelWrote:
         """It comes from the sheet's own ``<control>``, where the bracketed
         number names the workbook."""
         assert sheet.shape("Go").macro == "[1]!Clicked"
+        assert sheet.shape("Go").hidden is False
 
     def test_a_shape_with_no_macro(self, sheet: Worksheet) -> None:
         assert sheet.shape("Oval").macro == ""
@@ -151,6 +154,47 @@ class TestReadingWhatExcelWrote:
     def test_a_group_holds_its_members(self, sheet: Worksheet) -> None:
         pair = sheet.shape("Pair")
         assert {child.name for child in pair.children} == {"GroupA", "GroupB"}
+
+    def test_the_cells_each_anchor_covers(self, sheet: Worksheet) -> None:
+        """As the anchor names them: a corner on a cell's top or left edge
+        does not reach into that cell."""
+        assert {shape.name: shape.cells for shape in sheet.shapes} == {
+            "Box": "B3:D6",
+            "Rounded": "D3:F5",
+            "Oval": "F3:H5",
+            "Note": "B9:D11",
+            "Edge": "B14:E16",
+            "Pair": "G9:J11",
+            "Go": "B19:C21",
+        }
+        # A group's members have no anchor of their own.
+        assert {child.cells for child in sheet.shape("Pair").children} == {""}
+
+    def test_a_one_cell_anchor_reaches_as_far_as_its_extent(self) -> None:
+        # From B2, 96 points across and 29 down: two columns and two rows
+        # of the default grid, so the far corner sits on D4's edge.
+        anchor = XmlDocument.parse(
+            b"<xdr:oneCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff>"
+            b"<xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>"
+            b'<xdr:ext cx="1219200" cy="368300"/></xdr:oneCellAnchor>'
+        ).root
+        assert anchor_cells(anchor, SheetGrid()) == "B2:C3"
+        absolute = XmlDocument.parse(
+            b'<xdr:absoluteAnchor><xdr:pos x="0" y="0"/><xdr:ext cx="609600" cy="184150"/>'
+            b"</xdr:absoluteAnchor>"
+        ).root
+        assert anchor_cells(absolute, SheetGrid()) == "A1"
+
+    def test_no_alt_text_and_not_hidden(self, sheet: Worksheet) -> None:
+        box = sheet.shape("Box")
+        assert (box.alt_text, box.hidden) == ("", False)
+
+    def test_cell_origin_is_where_a_shape_on_that_cell_starts(self, sheet: Worksheet) -> None:
+        # Columns A to C are 12.63 characters wide here, 69.75 points, and
+        # rows 1 and 2 the file's default 14.5.
+        assert sheet.cell_origin("A1") == (0.0, 0.0)
+        assert sheet.cell_origin("C3") == (139.5, 29.0)
+        assert sheet.cell_origin(CellRef(3, 3)) == (139.5, 29.0)
 
     def test_the_members_are_not_listed_separately(self, sheet: Worksheet) -> None:
         """Excel reports the group, not the two shapes inside it."""

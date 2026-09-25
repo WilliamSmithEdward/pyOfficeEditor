@@ -418,7 +418,7 @@ class Workbook:
                     self._package.relationships(self._workbook_part).remove(relationship_id)
                 break
 
-        self._remove_with_dependents(part)
+        self.remove_with_dependents(part)
         previous_order = list(self._order)
         position = self._order.index(name)
         del self._order[position]
@@ -428,11 +428,13 @@ class Workbook:
         self._clamp_active_tab()
         self.mark_changed()
 
-    def _remove_with_dependents(self, part: str) -> None:
+    def remove_with_dependents(self, part: str) -> None:
         """Remove a part, then each part it pointed at that nothing else
         points at, and so on down: a sheet's drawing, the charts in it and
         each chart's own style and colour parts. A picture another sheet
-        also shows is kept."""
+        also shows is kept. A part already gone is left gone."""
+        if not self._package.has_part(part):
+            return
         dependents = [
             relationship.target_part
             for relationship in self._package.relationships(part)
@@ -441,7 +443,7 @@ class Workbook:
         self._package.remove_part(part)
         for dependent in dependents:
             if self._package.has_part(dependent) and not self.is_referenced(dependent):
-                self._remove_with_dependents(dependent)
+                self.remove_with_dependents(dependent)
 
     def rename_sheet(self, old: str, new: str) -> Worksheet:
         """Rename a worksheet, repointing every reference to it.

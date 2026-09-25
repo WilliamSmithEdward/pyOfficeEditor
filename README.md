@@ -16,7 +16,14 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > you set them up. Hyperlinks, outline grouping, and the shapes on a sheet:
 > AutoShapes, text boxes, lines and all nine Forms controls read, added,
 > removed and pointed at a macro, with a control's linked cell, list range
-> and value. Autofilters, on a sheet or a table, read and write every
+> and value. `update_shape` changes a shape's position, size, name, text,
+> alt text and visibility in place, and a control's linked cell and list
+> range. A shape reports the cells it covers, its alt text and whether it
+> is hidden, and `cell_origin` gives the point that puts one on a cell.
+> Removing a chart or a group takes every part only it used with it.
+> ActiveX controls and embedded objects are read, and `update_shape` and
+> `remove_shape` leave them to Excel. Autofilters, on a sheet or a table,
+> read and write every
 > criterion but colour and icon, and hide the rows they exclude, because
 > Excel does not recompute a filter when the workbook opens. A cell's text
 > is what Excel shows for it, number format and all. Notes and threaded

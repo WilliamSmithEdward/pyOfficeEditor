@@ -25,12 +25,13 @@ address that reads nicely; everything it does, the worksheet exposes too.
 from __future__ import annotations
 
 import datetime as dt
+import math
 from collections.abc import Iterable, Iterator, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from pyofficeeditor._xml import Element, XmlDocument
+from pyofficeeditor._xml import Element, XmlDocument, local_name
 from pyofficeeditor.excel._calc.engine import Engine
 from pyofficeeditor.excel._calc.values import Empty
 from pyofficeeditor.excel._chartbuild import CHART_KINDS, CT_CHART, ChartKind, SeriesData, chart_frame, chart_part
@@ -125,6 +126,7 @@ from pyofficeeditor.excel._schema import (
     insert_in_schema_order,
 )
 from pyofficeeditor.excel._shapes import (
+    CAPTIONED_CONTROLS,
     CT_CONTROL_PROPERTIES,
     CT_DRAWING,
     CT_VML,
@@ -140,19 +142,31 @@ from pyofficeeditor.excel._shapes import (
     Shape,
     ShapeKind,
     SheetGrid,
-    anchor_holding,
+    VmlControl,
+    anchor_box,
+    anchor_cells,
+    anchors_in,
     check_control_kind,
     control_drawing,
     control_entry,
     control_properties,
     control_vml,
+    emu,
     find_shape_element,
+    has_vml_shape,
+    is_two_cell,
+    move_anchor,
     new_anchor,
     qualified_macro,
     read_control,
     read_drawing,
+    replace_text,
     set_vml_macro,
+    shape_copies,
+    shape_names,
+    update_vml_control,
     vml_blocks,
+    vml_controls,
     vml_has_shapes,
     vml_shape_ids,
     with_vml_block,
@@ -189,6 +203,120 @@ MAX_OUTLINE_LEVEL = 7
 
 if TYPE_CHECKING:
     from pyofficeeditor.excel.workbook import Workbook
+    from pyofficeeditor.opc import Relationship
+
+
+@dataclass(frozen=True)
+class _SheetRecord:
+    """What the sheet's own ``<control>`` or ``<oleObject>`` says about one
+    object drawn in VML, whose drawing shape is only a hidden twin."""
+
+    #: ``formControl``, ``activeX`` or ``oleObject``.
+    kind: ShapeKind = "formControl"
+    name: str = ""
+    #: The procedure a click runs, as ``[0]!Clicked``.
+    macro: str = ""
+    alt_text: str = ""
+    #: What a Forms control is wired to, read from its own part.
+    control: FormControl | None = None
+    #: The ``<controlPr><anchor>``, which places an ActiveX control that
+    #: has no drawing twin.
+    anchor: Element | None = None
+
+
+def _members(shape: Shape) -> Iterator[Shape]:
+    """A shape and, for a group, every shape inside it, at any depth."""
+    yield shape
+    for child in shape.children:
+        yield from _members(child)
+
+
+def _finished(shape: Shape, records: dict[int, _SheetRecord], facts: dict[int, VmlControl]) -> Shape:
+    """A shape read from the drawing, with what the sheet and the VML know
+    about each control or OLE object in it filled in, at any depth in a
+    group."""
+    children = tuple(_finished(child, records, facts) for child in shape.children)
+    record = records.get(shape.shape_id)
+    if record is None:
+        return replace(shape, children=children) if shape.children else shape
+    fact = facts.get(shape.shape_id, VmlControl())
+    return replace(
+        shape,
+        kind=record.kind,
+        macro=record.macro,
+        control=record.control,
+        alt_text=record.alt_text or shape.alt_text,
+        hidden=fact.hidden,
+        # The caption Excel draws is the VML's. A control this library made
+        # has no text in its drawing twin, only there.
+        text=shape.text or (fact.caption or ""),
+        children=children,
+    )
+
+
+def _set_or_drop(element: Element, attribute: str, value: str) -> None:
+    """Set an attribute, or drop it for an empty value, which is how Excel
+    writes one that says nothing."""
+    if value:
+        element.set(attribute, value)
+    else:
+        element.unset(attribute)
+
+
+def _inside_fallback(element: Element) -> bool:
+    """Whether an element sits in an ``mc:Fallback``, the copy of a record
+    kept for Excel versions that cannot read the ``mc:Choice`` beside it."""
+    node = element.parent
+    while node is not None:
+        if local_name(node.name) == "Fallback":
+            return True
+        node = node.parent
+    return False
+
+
+def _shows_text(shape: Shape) -> bool:
+    """Whether a shape has text to change: an AutoShape, a text box, and a
+    Forms control that shows a caption."""
+    if shape.kind in ("shape", "textBox"):
+        return True
+    return shape.kind == "formControl" and shape.control is not None and shape.control.kind in CAPTIONED_CONTROLS
+
+
+def _relationship_ids(node: Element, ids: set[str]) -> set[str]:
+    """Which of a part's relationship ids a node and its descendants use.
+
+    Found by value rather than by attribute name, because a picture names
+    its image in ``r:embed``, a chart in ``r:id``, a hyperlink in ``r:id``
+    on ``a:hlinkClick`` and a SmartArt diagram in four attributes of its
+    own, and an attribute list would miss the next one.
+    """
+    found = {value for value in node.attributes.values() if value in ids}
+    for element in node.descendants():
+        found.update(value for value in element.attributes.values() if value in ids)
+    return found
+
+
+def _set_transform(body: Element, box: tuple[float, float, float, float]) -> None:
+    """Move a shape's own transform with its anchor.
+
+    A chart's frame and a form control's twin carry an all-zero transform,
+    which is Excel saying the anchor alone places them, and are left so.
+    """
+    if local_name(body.name) == "graphicFrame":
+        return
+    properties = body.child("spPr") or body.child("grpSpPr")
+    transform = None if properties is None else properties.child("xfrm")
+    offset = None if transform is None else transform.child("off")
+    extent = None if transform is None else transform.child("ext")
+    if offset is None or extent is None:
+        return
+    values = (offset.get("x"), offset.get("y"), extent.get("cx"), extent.get("cy"))
+    if all(value in (None, "0") for value in values):
+        return
+    offset.set("x", str(emu(box[0])))
+    offset.set("y", str(emu(box[1])))
+    extent.set("cx", str(emu(box[2])))
+    extent.set("cy", str(emu(box[3])))
 
 
 def _format_dimension(value: float) -> str:
@@ -1819,7 +1947,7 @@ class Worksheet:
                     relationships.remove(relationship.id)
             package.remove_part(part)
 
-        for vml_part in related_parts(self, RT_VML):
+        for vml_part in self._legacy_vml_parts():
             vml = package.read(vml_part).decode("utf-8")
             box = note_shapes(vml).get(cell)
             if box is None:
@@ -1942,7 +2070,7 @@ class Worksheet:
 
     def _note_boxes(self) -> dict[CellRef, str]:
         package = self._workbook.package
-        for part in related_parts(self, RT_VML):
+        for part in self._legacy_vml_parts():
             return note_shapes(package.read(part).decode("utf-8", errors="replace"))
         return {}
 
@@ -1959,6 +2087,36 @@ class Worksheet:
             for index in range(min(cell.row + 40, MAX_ROW))
         ]
         return columns, rows
+
+    def _legacy_vml_parts(self) -> list[str]:
+        """The VML parts that draw on the sheet: its notes and its controls.
+
+        A header or footer picture is VML too, related by the same type,
+        and ``<legacyDrawingHF>`` names its part. Measured: Excel lists that
+        relationship first and numbers the picture ``_x0000_s1025``, the
+        same as the sheet's first note, so a note, a control or an edit to
+        one would otherwise land in the header, and Excel refuses the file.
+        """
+        package = self._workbook.package
+        try:
+            relationships = package.relationships(self._part_name)
+        except PackageError:
+            return []
+        drawings = {
+            element.get("r:id") or element.get("id")
+            for element in self._root.children_named("legacyDrawing")
+        }
+        pictures = {
+            element.get("r:id") or element.get("id")
+            for element in self._root.children_named("legacyDrawingHF")
+        } - drawings
+        return [
+            relationship.target_part
+            for relationship in relationships.by_type(RT_VML)
+            if relationship.id not in pictures
+            and not relationship.is_external
+            and package.has_part(relationship.target_part)
+        ]
 
     def _remove_vml_part(self, part: str) -> None:
         """Take a sheet's VML part away, with its relationship and the
@@ -1996,11 +2154,14 @@ class Worksheet:
 
     @property
     def shapes(self) -> list[Shape]:
-        """Every shape on the sheet, in the order the drawing holds them.
+        """Every shape on the sheet, in the order the drawing holds them,
+        then each ActiveX control the sheet records with no drawing twin.
 
-        A form control is finished off here rather than in the drawing: the
-        drawing calls it an ordinary shape and carries no macro, and only
-        the sheet's own ``<control>`` records say otherwise.
+        A form control is finished off here rather than in the drawing, at
+        any depth in a group: the drawing calls it an ordinary shape, hidden
+        and with no macro, and only the sheet's own ``<control>`` records
+        and the VML say otherwise. An OLE object is the same, with an
+        ``<oleObject>`` record.
         """
         grid = SheetGrid.of(self._root)
         package = self._workbook.package
@@ -2014,28 +2175,215 @@ class Worksheet:
             }
             found.extend(read_drawing(document.root, grid, images))
 
-        controls = self._form_controls()
-        if not controls:
+        records = self._sheet_records()
+        if not records:
             return found
-        return [
-            replace(
-                shape,
-                kind="formControl",
-                macro=controls[shape.shape_id][0],
-                control=controls[shape.shape_id][1],
+        facts = self._vml_facts()
+        finished = [_finished(shape, records, facts) for shape in found]
+        seen = {member.shape_id for shape in finished for member in _members(shape)}
+        for shape_id, record in records.items():
+            if shape_id in seen or record.kind != "activeX":
+                continue
+            # An ActiveX control with no drawing twin: its record still names
+            # it and places it.
+            anchor = record.anchor
+            left, top, width, height = (0.0, 0.0, 0.0, 0.0) if anchor is None else anchor_box(anchor, grid)
+            finished.append(
+                Shape(
+                    name=record.name or f"ActiveX {shape_id}",
+                    kind="activeX",
+                    left=left,
+                    top=top,
+                    width=width,
+                    height=height,
+                    cells="" if anchor is None else anchor_cells(anchor, grid),
+                    alt_text=record.alt_text,
+                    hidden=facts.get(shape_id, VmlControl()).hidden,
+                    macro=record.macro,
+                    shape_id=shape_id,
+                )
             )
-            if shape.shape_id in controls
-            else shape
-            for shape in found
-        ]
+        return finished
 
     def shape(self, name: str) -> Shape:
         """One shape by name."""
-        for found in self.shapes:
+        shapes = self.shapes
+        for found in shapes:
             if found.name == name:
                 return found
-        available = ", ".join(s.name for s in self.shapes) or "none"
+        available = ", ".join(s.name for s in shapes) or "none"
         raise KeyError(f"no shape named {name!r} on {self._name!r}. It has: {available}")
+
+    def cell_origin(self, reference: str | CellRef) -> tuple[float, float]:
+        """A cell's top-left corner in points: the ``left`` and ``top`` that
+        put a shape on that cell, worked out from this sheet's own column
+        widths and row heights the way an anchor is."""
+        cell = CellRef.parse(reference) if isinstance(reference, str) else reference
+        grid = SheetGrid.of(self._root)
+        return grid.x(cell.column - 1), grid.y(cell.row - 1)
+
+    def update_shape(
+        self,
+        name: str,
+        *,
+        new_name: str | None = None,
+        left: float | None = None,
+        top: float | None = None,
+        width: float | None = None,
+        height: float | None = None,
+        text: str | None = None,
+        alt_text: str | None = None,
+        hidden: bool | None = None,
+        linked_cell: str | None = None,
+        list_range: str | None = None,
+    ) -> Shape:
+        """Change a shape in place, keeping its style and relationships.
+
+        Whatever is left as ``None`` stays as it is. The box is in points,
+        and a side not given keeps where the anchor has it, which is where
+        Excel draws the shape. New ``text`` takes the font, size, colour and
+        alignment of the text it replaces, and a link to a cell's value is
+        dropped, since the shape would otherwise go on showing the cell.
+        ``alt_text`` of ``""`` clears it.
+
+        A Forms control's four parts change together: its drawing twin, its
+        record on the sheet, its own part and its VML. ``linked_cell`` and
+        ``list_range`` belong to a control, and ``""`` clears either. A
+        control takes ``text`` only where it shows a caption: a button, a
+        tick box, an option button, a group box or a label.
+
+        Raises ``ValueError``, having changed nothing, for an ActiveX control,
+        an OLE object or a group, for text on a shape that shows none, for a
+        side that is negative or not a number, for a name another shape has,
+        and for a move of a shape whose anchor does not name both corners.
+        """
+        current = self.shape(name)
+        control = current.kind == "formControl"
+        if current.kind == "activeX":
+            raise ValueError(f"{name!r} is an ActiveX control, which update_shape does not change.")
+        if current.kind == "oleObject":
+            raise ValueError(f"{name!r} is an OLE object, which update_shape does not change.")
+        if current.kind == "group":
+            raise ValueError(f"{name!r} is a group, which update_shape does not change.")
+        if text is not None and not _shows_text(current):
+            what = f"{current.control.kind} control" if current.control is not None else current.kind
+            raise ValueError(f"{name!r} is a {what} and shows no text to change.")
+        if not control and (linked_cell is not None or list_range is not None):
+            raise ValueError("linked_cell and list_range belong to a form control.")
+        for side, value in (("left", left), ("top", top), ("width", width), ("height", height)):
+            if value is not None and not (math.isfinite(value) and value >= 0):
+                raise ValueError(f"{side} is in points and cannot be {value!r}.")
+        if new_name is not None and new_name != name:
+            self._check_new_shape_name(new_name)
+        located = self._located(name)
+        if located is None:
+            raise KeyError(f"{name!r} is on {self._name!r} but in none of its drawing parts.")
+        _, node, copies = located
+        anchors = anchors_in(node)
+        moving = any(value is not None for value in (left, top, width, height))
+        if moving and not (anchors and all(is_two_cell(anchor) for anchor in anchors)):
+            raise ValueError(f"{name!r} has no two-cell anchor to move in place.")
+        grid = SheetGrid.of(self._root)
+        was = anchor_box(anchors[0], grid) if anchors else (current.left, current.top, current.width, current.height)
+        box = (
+            was[0] if left is None else left,
+            was[1] if top is None else top,
+            was[2] if width is None else width,
+            was[3] if height is None else height,
+        )
+        package = self._workbook.package
+        records: list[Element] = []
+        vml_updates: list[tuple[str, str]] = []
+        if control:
+            if current.control is None or not current.control.part_name:
+                raise ValueError(f"{name!r} has no control part to update.")
+            records = [
+                record for record in self._outside_cells("control")
+                if record.get("shapeId") == str(current.shape_id)
+            ]
+            if not records:
+                raise ValueError(f"{name!r} has no record on the sheet to update.")
+            after = replace(
+                current,
+                name=name if new_name is None else new_name,
+                left=box[0],
+                top=box[1],
+                width=box[2],
+                height=box[3],
+                text=current.text if text is None else text,
+                hidden=current.hidden if hidden is None else hidden,
+            )
+            for part in self._legacy_vml_parts():
+                original = package.read(part).decode("utf-8")
+                if not has_vml_shape(original, current.shape_id):
+                    continue
+                vml_updates.append((part, update_vml_control(
+                    original, after, grid,
+                    rename=new_name is not None, move=moving, caption=text is not None,
+                    visibility=hidden is not None, linked_cell=linked_cell, list_range=list_range,
+                )))
+            if not vml_updates:
+                raise ValueError(f"{name!r} has no VML shape to update.")
+
+        # Every check has passed. From here the parts change together.
+        for body in copies:
+            naming = next(body.descendants("cNvPr"), None)
+            if naming is not None:
+                if new_name is not None:
+                    naming.set("name", new_name)
+                if alt_text is not None:
+                    _set_or_drop(naming, "descr", alt_text)
+                if hidden is not None and not control:
+                    _set_or_drop(naming, "hidden", "1" if hidden else "")
+            if text is not None and (not control or body.child("txBody") is not None):
+                replace_text(body, text)
+                if body.get("textlink"):
+                    body.set("textlink", "")
+            if moving:
+                _set_transform(body, box)
+        if moving:
+            for anchor in anchors:
+                move_anchor(anchor, grid, box)
+        if control:
+            assert current.control is not None
+            for record in records:
+                if new_name is not None:
+                    record.set("name", new_name)
+                properties = record.child("controlPr")
+                if properties is None:
+                    continue
+                if alt_text is not None:
+                    _set_or_drop(properties, "altText", alt_text)
+                placed = properties.child("anchor")
+                if moving and placed is not None and is_two_cell(placed):
+                    move_anchor(placed, grid, box, wrapper="")
+            wiring = package.xml(current.control.part_name).root
+            for attribute, wanted in (("fmlaLink", linked_cell), ("fmlaRange", list_range)):
+                if wanted is not None:
+                    _set_or_drop(wiring, attribute, wanted)
+            for part, updated in vml_updates:
+                package.write(part, updated.encode("utf-8"))
+        self._invalidate()
+        return self.shape(name if new_name is None else new_name)
+
+    def _located(self, name: str) -> tuple[str, Element, list[Element]] | None:
+        """Where a listed shape is: its drawing part, the top-level node that
+        holds it, and each copy of it in that node."""
+        package = self._workbook.package
+        for part in related_parts(self, RT_DRAWING):
+            for node in package.xml(part).root.elements():
+                copies = shape_copies(node, name)
+                if copies:
+                    return part, node, copies
+        return None
+
+    def _vml_facts(self) -> dict[int, VmlControl]:
+        """What the sheet's VML says of each control, read in one pass."""
+        package = self._workbook.package
+        facts: dict[int, VmlControl] = {}
+        for part in self._legacy_vml_parts():
+            facts.update(vml_controls(package.read(part).decode("utf-8", errors="replace")))
+        return facts
 
     def add_shape(
         self,
@@ -2216,32 +2564,66 @@ class Worksheet:
         return self.shape(name)
 
     def remove_shape(self, name: str) -> None:
-        """Take a shape off the sheet, and its parts with it.
+        """Take a shape off the sheet, and each part only it used.
 
-        A drawing shape is one anchor. A form control is four things, and
-        leaving any of them behind is worse than leaving all of them: an
-        orphaned relationship pointing at a part that is gone is the
-        failure that stays invisible until Excel next opens the file, and
-        then it is the whole workbook that gets repaired rather than the
-        control that goes missing.
+        A drawing shape is one anchor and whatever it points at: a picture's
+        image, a chart with the chart's own style and colour parts, a
+        hyperlink. Each goes once nothing else uses it, so an image another
+        picture shows stays. A group goes with its members, pictures, charts
+        and controls included.
+
+        A form control is four things, and leaving any of them behind is
+        worse than leaving all of them: an orphaned relationship pointing at
+        a part that is gone is the failure that stays invisible until Excel
+        next opens the file, and then it is the whole workbook that gets
+        repaired rather than the control that goes missing.
+
+        Raises ``ValueError`` for an ActiveX control, an OLE object, or a
+        group holding either: its parts include a binary this does not take
+        apart, and measured, Excel draws an OLE object again from its record
+        and its VML when only its drawing shape is gone.
         """
         shape = self.shape(name)
-        package = self._workbook.package
-
-        for part in related_parts(self, RT_DRAWING):
-            document = package.xml(part)
-            anchor = anchor_holding(document.root, name)
-            if anchor is None:
-                continue
-            document.root.remove(anchor)
-            if shape.image:
-                self._forget_image(part, document.root, shape.image)
-            package.write(part, document.to_bytes(), content_type=CT_DRAWING)
-            break
-
-        if shape.control is not None:
-            self._remove_control_record(shape)
+        members = list(_members(shape))
+        if any(member.kind == "activeX" for member in members):
+            raise ValueError(
+                f"ActiveX control removal takes its binary part apart, which this does not do; "
+                f"remove {name!r} in Excel."
+            )
+        if any(member.kind == "oleObject" for member in members):
+            raise ValueError(
+                f"OLE object removal takes its embedded part apart, which this does not do; "
+                f"remove {name!r} in Excel."
+            )
+        located = self._located(name)
+        if located is not None:
+            part, node, _ = located
+            self._drop_drawing_node(part, node)
+        self._remove_control_records([member for member in members if member.kind == "formControl"])
         self._invalidate()
+
+    def _drop_drawing_node(self, part: str, node: Element) -> None:
+        """Take one top-level node out of a drawing, with each relationship
+        only it used and each part only those relationships reached."""
+        package = self._workbook.package
+        relationships = package.relationships(part)
+        ids = {relationship.id for relationship in relationships}
+        used = _relationship_ids(node, ids)
+        root = package.xml(part).root
+        root.remove(node)
+        if not used:
+            return
+        still = _relationship_ids(root, ids)
+        orphaned: list[str] = []
+        for relationship in list(relationships):
+            if relationship.id not in used or relationship.id in still:
+                continue
+            relationships.remove(relationship.id)
+            if not relationship.is_external:
+                orphaned.append(relationship.target_part)
+        for target in orphaned:
+            if not self._workbook.is_referenced(target):
+                self._workbook.remove_with_dependents(target)
 
     def add_picture(
         self,
@@ -2450,23 +2832,6 @@ class Worksheet:
             raise ValueError(f"{name!r} is not a picture with an image in this workbook.")
         return self._workbook.package.read(shape.image)
 
-    def _forget_image(self, drawing_part: str, root: Element, media: str) -> None:
-        """Drop a removed picture's image relationship, when no other
-        picture in the drawing uses it, and the media part, when nothing in
-        the package points at it any more."""
-        package = self._workbook.package
-        relationships = package.relationships(drawing_part)
-        still_used = {
-            blip.get("r:embed") for blip in root.descendants("blip") if blip.get("r:embed") is not None
-        }
-        for relationship in relationships.by_type(RT_IMAGE):
-            if relationship.is_external or relationship.target_part != media:
-                continue
-            if relationship.id not in still_used:
-                relationships.remove(relationship.id)
-        if not self._workbook.is_referenced(media):
-            package.remove_part(media)
-
     def _unwrap_control(self, control: Element) -> None:
         """Take one ``<control>`` off the sheet, wrapper and all.
 
@@ -2474,7 +2839,8 @@ class Worksheet:
         inside ``<controls>``, so removing the element found leaves an
         empty wrapper behind. This walks up to whatever child of
         ``<controls>`` holds it and removes that, then drops ``<controls>``
-        and its own wrapper once the last control has gone.
+        and the ``mc:AlternateContent`` around it once the last control has
+        gone. Measured: Excel refuses a sheet that keeps an empty one.
         """
         node: Element = control
         while True:
@@ -2491,52 +2857,72 @@ class Worksheet:
             # The last one: take the empty container and its wrapper too,
             # rather than leaving a <controls/> Excel never writes.
             container = parent.parent
-            if container is not None:
-                container.remove(parent)
-                outer = container.parent
-                if outer is not None and not any(True for _ in container.elements()):
-                    outer.remove(container)
+            if container is None:
+                return
+            container.remove(parent)
+            outer = container.parent
+            if outer is None or any(True for _ in container.elements()):
+                return
+            outer.remove(container)
+            # A wrapper with no choice left offers nothing, and a fallback
+            # in it offered the same controls to older versions.
+            holder = outer.parent
+            if (
+                holder is not None
+                and local_name(outer.name) == "AlternateContent"
+                and not any(local_name(child.name) == "Choice" for child in outer.elements())
+            ):
+                holder.remove(outer)
             return
 
-    def _remove_control_record(self, shape: Shape) -> None:
-        """The three parts besides the drawing: sheet record, part, VML."""
+    def _remove_control_records(self, shapes: list[Shape]) -> None:
+        """The three parts of each form control besides its drawing: its
+        record on the sheet, its own part and its VML shape. The sheet is
+        walked once and the VML rewritten once, however many controls go."""
+        if not shapes:
+            return
         package = self._workbook.package
+        ids = {str(shape.shape_id) for shape in shapes}
+        for control in list(self._outside_cells("control")):
+            if control.get("shapeId") in ids:
+                self._unwrap_control(control)
+
         relationships = package.relationships(self._part_name)
-
-        for control in list(self._root.descendants("control")):
-            if control.get("shapeId") != str(shape.shape_id):
+        for shape in shapes:
+            control = shape.control
+            if control is None:
                 continue
-            self._unwrap_control(control)
-            break
+            if control.relationship:
+                try:
+                    relationships.remove(control.relationship)
+                except PackageError:
+                    # Already gone, which is the state this is trying to
+                    # reach. Raising here would abandon the removal half
+                    # done, leaving the VML shape and the control part behind.
+                    pass
+            if control.part_name and package.has_part(control.part_name):
+                package.remove_part(control.part_name)
 
-        control = shape.control
-        if control is not None and control.relationship:
-            try:
-                relationships.remove(control.relationship)
-            except PackageError:
-                # Already gone, which is the state this is trying to reach.
-                # Raising here would abandon the removal half done, leaving
-                # the VML shape and the control part behind.
-                pass
-        if control is not None and control.part_name and package.has_part(control.part_name):
-            package.remove_part(control.part_name)
-
-        for part in related_parts(self, RT_VML):
+        for part in self._legacy_vml_parts():
             text = package.read(part).decode("utf-8")
-            stripped = without_vml_shape(text, shape.shape_id)
+            stripped = text
+            for shape in shapes:
+                stripped = without_vml_shape(stripped, shape.shape_id)
             if stripped != text:
                 package.write(part, stripped.encode("utf-8"))
-                break
 
     def _check_new_shape_name(self, name: str) -> None:
         if not name.strip():
             raise ValueError("a shape needs a name; Excel names every shape it makes.")
-        for existing in self.shapes:
-            if existing.name == name:
-                raise ValueError(
-                    f"{self._name!r} already has a shape named {name!r}. Excel allows "
-                    f"two shapes to share a name, but then neither can be reached by it."
-                )
+        taken = {shape.name for shape in self.shapes}
+        package = self._workbook.package
+        for part in related_parts(self, RT_DRAWING):
+            taken |= shape_names(package.xml(part).root)
+        if name in taken:
+            raise ValueError(
+                f"{self._name!r} already has a shape named {name!r}, perhaps inside a group. "
+                f"Excel allows two shapes to share a name, but then neither can be reached by it."
+            )
 
     def _next_shape_id(self) -> int:
         """One past the highest id in use, and never into control territory."""
@@ -2556,7 +2942,7 @@ class Worksheet:
         used = {shape.shape_id for shape in self.shapes if shape.shape_id >= FIRST_CONTROL_ID}
         block = 1
         package = self._workbook.package
-        for part in related_parts(self, RT_VML):
+        for part in self._legacy_vml_parts():
             vml = package.read(part).decode("utf-8", errors="replace")
             block = min(vml_blocks(vml), default=1)
             used |= vml_shape_ids(vml)
@@ -2586,7 +2972,7 @@ class Worksheet:
         where a Default comes after one.
         """
         package = self._workbook.package
-        for part in related_parts(self, RT_VML):
+        for part in self._legacy_vml_parts():
             return part
 
         part = self._workbook.free_part_name("xl/drawings/vmlDrawing{n}.vml")
@@ -2628,7 +3014,7 @@ class Worksheet:
         the inner container by name at any depth rather than by position.
         """
         self._declare_control_namespaces()
-        for found in self._root.descendants("controls"):
+        for found in self._outside_cells("controls"):
             return found
 
         container = Element.create("controls")
@@ -2666,8 +3052,17 @@ class Worksheet:
         The procedure is not checked for existence. Excel does not check
         either: a button pointing at a Sub nobody wrote is a normal state
         for a workbook being assembled.
+
+        An ActiveX control raises ``ValueError``: a click on one runs its
+        own event procedure in the sheet's code, and it has no macro to
+        point anywhere.
         """
         shape = self.shape(name)
+        if shape.kind == "activeX":
+            raise ValueError(
+                f"{name!r} is an ActiveX control, whose click runs its own event procedure; "
+                "it has no macro to set."
+            )
         if shape.control is not None:
             self._set_control_macro(shape, macro)
         else:
@@ -2694,7 +3089,7 @@ class Worksheet:
 
     def _set_control_macro(self, shape: Shape, macro: str) -> None:
         """Set it on the sheet's own record, and on the VML beside it."""
-        for control in self._root.descendants("control"):
+        for control in self._outside_cells("control"):
             if control.get("shapeId") != str(shape.shape_id):
                 continue
             properties = next(control.descendants("controlPr"), None)
@@ -2723,7 +3118,7 @@ class Worksheet:
         the same way row and column shifting reaches its anchors.
         """
         package = self._workbook.package
-        for part in related_parts(self, RT_VML):
+        for part in self._legacy_vml_parts():
             raw = package.read(part)
             try:
                 text = raw.decode("utf-8")
@@ -2734,8 +3129,22 @@ class Worksheet:
                 package.write(part, rewritten.encode("utf-8"))
                 return
 
-    def _form_controls(self) -> dict[int, tuple[str, FormControl | None]]:
-        """Each form control's macro and wiring, by its drawing shape id.
+    def _outside_cells(self, name: str) -> Iterator[Element]:
+        """Each element of one name in the sheet, at any depth, skipping the
+        cells. The records of controls and OLE objects come after them, in
+        the sheet's own children or in an ``mc:AlternateContent`` among
+        those, and a sheet's cells can run to millions of elements."""
+        for child in self._root.elements():
+            local = local_name(child.name)
+            if local == "sheetData":
+                continue
+            if local == name:
+                yield child
+            yield from child.descendants(name)
+
+    def _sheet_records(self) -> dict[int, _SheetRecord]:
+        """What the sheet's own records of its controls and OLE objects say,
+        by shape id.
 
         Three things make this awkward, and all three are measured. A
         control carries no macro on its drawing shape: the sheet's
@@ -2747,41 +3156,60 @@ class Worksheet:
         place: the ``<control>`` points at a part of its own by
         relationship id, and the linked cell, the list range and the
         current value are in there.
+
+        A record whose relationship points anywhere but at a control part
+        is an ActiveX control's. Such a record can come twice, the full one
+        in an ``mc:Choice`` and a bare copy in the ``mc:Fallback``, and the
+        full one is the one kept.
+
+        An OLE object is recorded the same way, as an ``<oleObject>`` in
+        ``<oleObjects>`` with an ``<objectPr>`` where a control has its
+        ``<controlPr>``. Measured: Excel marks its drawing twin hidden as
+        well, and draws it from the VML.
         """
-        found: dict[int, tuple[str, FormControl | None]] = {}
-        for control in self._root.descendants("control"):
-            raw = control.get("shapeId")
-            if raw is None:
-                continue
-            try:
-                shape_id = int(raw)
-            except ValueError:
-                continue
-            properties = next(control.descendants("controlPr"), None)
-            macro = None if properties is None else properties.get("macro")
-            found[shape_id] = (macro or "", self._control_part(control.get("r:id")))
+        package = self._workbook.package
+        relationships = {one.id: one for one in package.relationships(self.part_name)}
+        found: dict[int, _SheetRecord] = {}
+        for tag, settings in (("control", "controlPr"), ("oleObject", "objectPr")):
+            for record in self._outside_cells(tag):
+                try:
+                    shape_id = int(record.get("shapeId") or "")
+                except ValueError:
+                    continue
+                if shape_id in found and _inside_fallback(record):
+                    continue
+                properties = record.child(settings)
+                relationship = relationships.get(record.get("r:id") or "")
+                kind: ShapeKind = "oleObject"
+                if tag == "control":
+                    active_x = relationship is not None and relationship.type != RT_CONTROL_PROPERTIES
+                    kind = "activeX" if active_x else "formControl"
+                found[shape_id] = _SheetRecord(
+                    kind=kind,
+                    name=record.get("name") or "",
+                    macro="" if properties is None else (properties.get("macro") or ""),
+                    alt_text="" if properties is None else (properties.get("altText") or ""),
+                    control=(
+                        self._control_part(relationship)
+                        if kind == "formControl" and relationship is not None
+                        else None
+                    ),
+                    anchor=None if properties is None else properties.child("anchor"),
+                )
         return found
 
-    def _control_part(self, relationship_id: str | None) -> FormControl | None:
+    def _control_part(self, relationship: Relationship) -> FormControl | None:
         """The control part a ``<control>`` points at, read.
 
-        A missing relationship or part is not an error here. Excel writes
-        both, but a package assembled by something else may not, and a
-        shape with no wiring to report is better than a read that raises.
+        A missing part is not an error here. Excel writes one, but a package
+        assembled by something else may not, and a shape with no wiring to
+        report is better than a read that raises.
         """
-        if not relationship_id:
-            return None
         package = self._workbook.package
-        try:
-            relationship = package.relationships(self.part_name).by_id(relationship_id)
-        except PackageError:
-            return None
         name = relationship.target_part
         if relationship.is_external or not package.has_part(name):
             return None
-        return read_control(
-            package.xml(name).root, part_name=name, relationship=relationship_id
-        )
+        return read_control(package.xml(name).root, part_name=name, relationship=relationship.id)
 
     # ------------------------------------------------------------------
     # Hyperlinks
