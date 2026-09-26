@@ -56,12 +56,22 @@ def LET(context: Context, *nodes: Node) -> Value:
         context.scopes.pop()
 
 
+#: How a file writes an optional parameter in a LAMBDA's list, ``_xlop.y``,
+#: where the body reads it as ``_xlpm.y``.
+_OPTIONAL = "_XLOP."
+_PARAMETER = "_XLPM."
+
+
 @function("LAMBDA", LAZY, minimum=1, maximum=254)
 def LAMBDA(context: Context, *nodes: Node) -> Value:
-    parameters = tuple(_parameter(node) for node in nodes[:-1])
+    names = [_parameter(node) for node in nodes[:-1]]
+    optional = [name.startswith(_OPTIONAL) for name in names]
+    if any(optional[index] and not optional[index + 1] for index in range(len(optional) - 1)):
+        return VALUE
+    parameters = tuple(_PARAMETER + name[len(_OPTIONAL) :] if flag else name for name, flag in zip(names, optional, strict=True))
     if len(set(parameters)) != len(parameters):
         return VALUE
-    return Lambda.make(parameters, nodes[-1], tuple(context.scopes))
+    return Lambda.make(parameters, nodes[-1], tuple(context.scopes), optional.count(False))
 
 
 @function("ISOMITTED", LAZY)

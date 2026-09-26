@@ -17,7 +17,16 @@ from pathlib import Path
 
 import pytest
 
-from pyofficeeditor.excel import CellError, FilterColumn, FormulaSyntaxError, Workbook, column_letter, criteria
+from pyofficeeditor.excel import (
+    CellError,
+    CellValue,
+    FilterColumn,
+    FormulaSyntaxError,
+    Workbook,
+    Worksheet,
+    column_letter,
+    criteria,
+)
 from pyofficeeditor.excel._calc import parse, special
 from pyofficeeditor.excel._calc.functions.distributions import normal_inverse
 from pyofficeeditor.excel._calc.nodes import (
@@ -481,11 +490,14 @@ def test_let_and_lambda(book: Workbook) -> None:
     sheet["A3"].formula = "_xlfn.LET(_xlpm.f,_xlfn.LAMBDA(_xlpm.n,_xlpm.n+1),_xlpm.f(_xlpm.f(1)))"
     sheet["A4"].formula = "_xlfn.LAMBDA(_xlpm.x,_xlpm.x)"
     sheet["A5"].formula = (
-        "_xlfn.LAMBDA(_xlpm.a,_xlpm.b,IF(_xlfn.ISOMITTED(_xlpm.b),_xlpm.a,_xlpm.a+_xlpm.b))(5)"
+        "_xlfn.LAMBDA(_xlpm.a,_xlpm.b,IF(_xlfn.ISOMITTED(_xlpm.b),_xlpm.a,_xlpm.a+_xlpm.b))(5,)"
     )
     sheet["A6"].formula = "_xlfn.REDUCE(1,{1,2,3,4},_xlfn.LAMBDA(_xlpm.p,_xlpm.v,_xlpm.p*_xlpm.v))"
+    # Measured: an argument left out of the call is #VALUE!; left empty,
+    # as in (5,) above, it is omitted.
+    sheet["A7"].formula = "_xlfn.LAMBDA(_xlpm.a,_xlpm.b,_xlpm.a)(5)"
     book.calculate()
-    assert [sheet[f"A{row}"].value for row in range(1, 7)] == [6, 8, 3, CellError("#CALC!"), 5, 24]
+    assert [sheet[f"A{row}"].value for row in range(1, 8)] == [6, 8, 3, CellError("#CALC!"), 5, 24, CellError("#VALUE!")]
 
 
 def test_a_lambda_in_a_defined_name_can_call_itself(book: Workbook) -> None:
@@ -849,6 +861,268 @@ def test_weibull_takes_its_distribution_as_1_less_e_to_the_minus_t_below_1(book:
     # -(e^-t - 1) by Kahan's trick, not 1 - EXP(-t), up to t = 1.
     assert sheet.evaluate("WEIBULL.DIST(0.1,1,1,TRUE)") == 0.09516258196404045
     assert sheet.evaluate("WEIBULL.DIST(0.85,1,1,TRUE)") == 0.5725850680512734
+
+
+# ----------------------------------------------------------------------
+# GROUPBY and PIVOTBY
+# ----------------------------------------------------------------------
+
+#: Sheet In: orders with a blank region, a number for one, one region
+#: spelled in lower case, a blank product, and a blank and a text quantity.
+ORDERS: list[tuple[CellValue, ...]] = [
+    ("Region", "Product", "Year", "Qty", "Price", "Flag"),
+    ("East", "Pen", 2023, 3, 1.5, True), ("West", "Book", 2024, 1, 12.0, False),
+    ("East", "Ink", 2024, 5, 4.25, True), ("North", "Pen", 2023, 2, 1.5, True),
+    ("West", "Pen", 2023, 4, 1.25, True), ("east", "Book", 2023, 2, 11.5, False),
+    ("South", "Ink", 2024, 7, 4.0, True), ("North", "Book", 2024, 1, 13.0, True),
+    ("West", "Ink", 2023, 6, 4.5, False), ("East", "Pen", 2024, 8, 1.75, True),
+    (None, "Pen", 2024, 2, 1.5, True), ("South", None, 2023, 3, 4.0, True),
+    ("North", "Ink", 2023, None, 4.25, True), ("East", "Book", 2024, 2, 12.5, False),
+    ("West", "Book", 2023, "x", 12.0, True), (7, "Pen", 2024, 1, 1.5, True),
+    ("South", "Pen", 2024, 9, 1.25, False), ("North", "Pen", 2024, 3, 1.5, True),
+]  # fmt: skip
+
+#: Sheet Pv: groups whose key order, total order and leaves' orders all
+#: differ. a: x = 4 + 6, y = 1; b: x = 3, y = 4; c: x = 2, y = 20; d: x = 9,
+#: y = 6.
+LEVELS: list[tuple[CellValue, ...]] = [
+    ("K1", "K2", "T", "V"), ("c", "y", "t", 20), ("a", "x", "t", 4), ("d", "y", "t", 6), ("b", "x", "t", 3),
+    ("a", "y", "t", 1), ("c", "x", "t", 2), ("d", "x", "t", 9), ("b", "y", "t", 4), ("a", "x", "t", 6),
+]  # fmt: skip
+
+
+def _grouped(book: Workbook) -> None:
+    """The sheets the grouping tests read: In, Pv, and Mw, where each leaf
+    of A/B/C by p/q has one row and value columns worth 1, 100, 10000 and
+    1000000 times the powers of two, so that every sum says what it added."""
+    for name, rows in (("In", ORDERS), ("Pv", LEVELS)):
+        sheet = book.add_sheet(name)
+        for row, values in enumerate(rows, start=1):
+            for column, value in enumerate(values, start=1):
+                if value is not None:
+                    sheet[f"{column_letter(column)}{row}"] = value
+    sheet = book.add_sheet("Mw")
+    for row, (first, second) in enumerate([("A", "p"), ("A", "q"), ("B", "p"), ("B", "q"), ("C", "p"), ("C", "q")], start=2):
+        sheet[f"A{row}"] = "r"
+        sheet[f"B{row}"] = first
+        sheet[f"C{row}"] = second
+        for offset, column in enumerate("DEFG"):
+            sheet[f"{column}{row}"] = 2 ** (row - 2) * 100**offset
+
+
+def _text(sheet: Worksheet, formula: str) -> object:
+    """The formula's result as ARRAYTOTEXT(...,1) writes it, which is how
+    Excel's results were read."""
+    return sheet.evaluate(f"ARRAYTOTEXT({formula},1)")
+
+
+def test_groupby_matches_keys_as_sort_does_and_spells_each_by_its_first_leaf(book: Workbook) -> None:
+    _grouped(book)
+    sheet = book["Data"]
+    # "east" and "East" are one group, spelled from the first row of its
+    # first leaf: Book, found in "east" 2023; with products descending,
+    # Pen, found first in "East". A blank key sorts last either way.
+    assert _text(sheet, "GROUPBY(In!A2:B19,In!D2:D19,_xleta.SUM,0,2)") == (
+        '{7,"Pen",1;7,"",1;"east","Book",4;"east","Ink",5;"east","Pen",11;"east","",20;"North","Book",1;'
+        '"North","Ink",0;"North","Pen",5;"North","",6;"South","Ink",7;"South","Pen",9;"South",,3;"South","",19;'
+        '"West","Book",1;"West","Ink",6;"West","Pen",4;"West","",11;,"Pen",2;,"",2;"Grand Total","",59}'
+    )
+    assert _text(sheet, "GROUPBY(In!A2:B19,In!D2:D19,_xleta.SUM,0,1,{1,-2})") == (
+        '{7,"Pen",1;"East","Pen",11;"East","Ink",5;"East","Book",4;"North","Pen",5;"North","Ink",0;'
+        '"North","Book",1;"South","Pen",9;"South","Ink",7;"South",,3;"West","Pen",4;"West","Ink",6;'
+        '"West","Book",1;,"Pen",2;"Total","",59}'
+    )
+
+
+def test_groupby_sorts_every_level_by_its_own_groups_result(book: Workbook) -> None:
+    _grouped(book)
+    assert _text(book["Data"], "GROUPBY(Pv!A2:B10,Pv!D2:D10,_xleta.SUM,0,1,3)") == (
+        '{"b","x",3;"b","y",4;"a","y",1;"a","x",10;"d","y",6;"d","x",9;"c","x",2;"c","y",20;"Total","",55}'
+    )
+
+
+def test_groupby_takes_headers_when_the_values_start_with_text_above_numbers(book: Workbook) -> None:
+    sheet = book["Data"]
+    for row, (key, number, text) in enumerate([("k", "v", "v"), ("a", None, 1), ("b", 1, "z"), ("a", 2, 2), ("b", 3, 3)], start=1):
+        sheet[f"A{row}"] = key
+        if number is not None:
+            sheet[f"B{row}"] = number
+        sheet[f"C{row}"] = text
+    assert _text(sheet, "GROUPBY(A1:A5,B1:B5,_xleta.SUM)") == '{"a",2;"b",4;"Total",6}'
+    # Text below the header is #VALUE!; text all the way down is no header.
+    assert _text(sheet, "GROUPBY(A1:A5,C1:C5,_xleta.SUM)") == CellError("#VALUE!")
+    assert _text(sheet, 'GROUPBY({1;2;1},{"a";"b";"c"},_xleta.SUM)') == '{1,0;2,0;"Total",0}'
+
+
+def test_groupby_names_the_value_column_beside_each_stacked_function(book: Workbook) -> None:
+    _grouped(book)
+    assert _text(book["Data"], "GROUPBY(In!A1:A19,In!D1:E19,VSTACK(_xleta.SUM,_xleta.MAX),3)") == (
+        '{"Region","","","";7,"SUM","Qty",1;7,"MAX","Price",1.5;"East","SUM","Qty",20;"East","MAX","Price",12.5;'
+        '"North","SUM","Qty",6;"North","MAX","Price",13;"South","SUM","Qty",19;"South","MAX","Price",4;'
+        '"West","SUM","Qty",11;"West","MAX","Price",12;,"SUM","Qty",2;,"MAX","Price",1.5;"Total","SUM","Qty",59;'
+        '"Total","MAX","Price",13}'
+    )
+
+
+def test_groupby_keeps_an_error_in_its_cell_but_refuses_an_array(book: Workbook) -> None:
+    _grouped(book)
+    sheet = book["Data"]
+    assert _text(sheet, 'GROUPBY(In!A2:A19,In!D2:D19,LAMBDA(x,IF(ROWS(x)>3,VALUE("a"),1)))') == (
+        '{7,1;"East",#VALUE!;"North",#VALUE!;"South",1;"West",#VALUE!;,1;"Total",#VALUE!}'
+    )
+    # A group reaches the function as an array, even a group of one row,
+    # and a result that is an array refuses the whole summary.
+    assert _text(sheet, "GROUPBY(In!A2:A19,In!D2:D19,LAMBDA(x,x))") == CellError("#VALUE!")
+
+
+def test_pivotby_spreads_a_field_across_the_top_with_subtotals_first(book: Workbook) -> None:
+    _grouped(book)
+    sheet = book["Data"]
+    assert _text(sheet, "PIVOTBY(In!A2:A19,In!C2:C19,In!E2:E19,_xleta.SUM)") == (
+        '{"",2023,2024,"Total";7,"",1.5,1.5;"East",13,18.5,31.5;"North",5.75,14.5,20.25;"South",4,5.25,9.25;'
+        '"West",17.75,12,29.75;,"",1.5,1.5;"Total",40.5,53.25,93.75}'
+    )
+    assert _text(sheet, "PIVOTBY(In!A2:A19,In!B2:C19,In!E2:E19,_xleta.SUM,0,1,,-2)") == (
+        '{"","Grand Total","Book","Book","Book","Ink","Ink","Ink","Pen","Pen","Pen",,;'
+        '"","","",2023,2024,"",2023,2024,"",2023,2024,"",2023;7,1.5,"","","","","","",1.5,"",1.5,"","";'
+        '"East",31.5,24,11.5,12.5,4.25,"",4.25,3.25,1.5,1.75,"","";"North",20.25,13,"",13,4.25,4.25,"",3,1.5,1.5,"","";'
+        '"South",9.25,"","","",4,"",4,1.25,"",1.25,4,4;"West",29.75,24,12,12,4.5,4.5,"",1.25,1.25,"","","";'
+        ',1.5,"","","","","","",1.5,"",1.5,"","";"Total",93.75,61,23.5,37.5,17,8.75,8.25,11.75,4.25,7.5,4,4}'
+    )
+
+
+def test_pivotby_shows_the_column_fields_names_as_one_text(book: Workbook) -> None:
+    _grouped(book)
+    assert _text(book["Data"], "PIVOTBY(In!A1:B19,In!B1:C19,In!E1:E19,_xleta.SUM,3)") == (
+        '{"","","Product, Year","","","","","","","";"","","Book","Book","Ink","Ink","Pen","Pen",,"Total";'
+        '"","",2023,2024,2023,2024,2023,2024,2023,"";"Region","Product","Price","Price","Price","Price","Price",'
+        '"Price","Price","Price";7,"Pen","","","","","",1.5,"",1.5;"east","Book",11.5,12.5,"","","","","",24;'
+        '"east","Ink","","","",4.25,"","","",4.25;"east","Pen","","","","",1.5,1.75,"",3.25;'
+        '"North","Book","",13,"","","","","",13;"North","Ink","","",4.25,"","","","",4.25;'
+        '"North","Pen","","","","",1.5,1.5,"",3;"South","Ink","","","",4,"","","",4;'
+        '"South","Pen","","","","","",1.25,"",1.25;"South",,"","","","","","",4,4;"West","Book",12,12,"","","","","",24;'
+        '"West","Ink","","",4.5,"","","","",4.5;"West","Pen","","","","",1.25,"","",1.25;'
+        ',"Pen","","","","","",1.5,"",1.5;"Total","",23.5,37.5,8.75,8.25,4.25,7.5,4,93.75}'
+    )
+
+
+def test_pivotby_relative_to_the_parent_row(book: Workbook) -> None:
+    _grouped(book)
+    # ROWS(y) counts the rows of the cell's parent row, the grand total's
+    # for a subtotal, its own for the grand total.
+    formula = "PIVOTBY(In!A2:B19,In!B2:C19,In!E2:E19,LAMBDA(x,y,ROWS(y)),0,2,,2,,,4)"
+    assert _text(book["Data"], formula) == (
+        '{"","","Book","Book","Book","Ink","Ink","Ink","Pen","Pen","Pen",,,"Grand Total";'
+        '"","",2023,2024,"",2023,2024,"",2023,2024,"",2023,"","";7,"Pen","","","","","","","",1,1,"","",1;'
+        '7,"","","","","","","","",5,8,"","",18;"east","Book",1,1,2,"","","","","","","","",5;'
+        '"east","Ink","","","","",1,1,"","","","","",5;"east","Pen","","","","","","",1,1,2,"","",5;'
+        '"east","",2,3,5,"",2,4,3,5,8,"","",18;"North","Book","",1,1,"","","","","","","","",4;'
+        '"North","Ink","","","",1,"",1,"","","","","",4;"North","Pen","","","","","","",1,1,2,"","",4;'
+        '"North","","",3,5,2,"",4,3,5,8,"","",18;"South","Ink","","","","",1,1,"","","","","",3;'
+        '"South","Pen","","","","","","","",1,1,"","",3;"South",,"","","","","","","","","",1,1,3;'
+        '"South","","","","","",2,4,"",5,8,1,1,18;"West","Book",1,1,2,"","","","","","","","",4;'
+        '"West","Ink","","","",1,"",1,"","","","","",4;"West","Pen","","","","","","",1,"",1,"","",4;'
+        '"West","",2,3,5,2,"",4,3,"",8,"","",18;,"Pen","","","","","","","",1,1,"","",1;'
+        ',"","","","","","","","",5,8,"","",18;"Grand Total","",2,3,5,2,2,4,3,5,8,1,1,18}'
+    )
+
+
+def test_pivotby_sorts_by_a_value_only_where_there_is_a_total_to_sort_by(book: Workbook) -> None:
+    _grouped(book)
+    sheet = book["Data"]
+    # Across the top the leaves sort by their totals, but a, b, c and d,
+    # having no columns of their own, keep key order until subtotals show.
+    assert _text(sheet, "PIVOTBY(Pv!C2:C10,Pv!A2:B10,Pv!D2:D10,_xleta.SUM,0,1,,1,3)") == (
+        '{"","a","a","b","b","c","c","d","d","Total";"","y","x","x","y","x","y","y","x","";'
+        '"t",1,10,3,4,2,20,6,9,55;"Total",1,10,3,4,2,20,6,9,55}'
+    )
+    assert _text(sheet, "PIVOTBY(Pv!C2:C10,Pv!A2:B10,Pv!D2:D10,_xleta.SUM,0,1,,2,3)") == (
+        '{"","b","b","b","a","a","a","d","d","d","c","c","c","Grand Total";"","x","y","","y","x","","y","x","","x","y","","";'
+        '"t",3,4,7,1,10,11,6,9,15,2,20,22,55;"Total",3,4,7,1,10,11,6,9,15,2,20,22,55}'
+    )
+    # Down the side every level sorts, but only beside a total column.
+    assert _text(sheet, "PIVOTBY(Pv!A2:B10,Pv!C2:C10,Pv!D2:D10,_xleta.SUM,0,1,-3)") == (
+        '{"","","t","Total";"c","y",20,20;"c","x",2,2;"d","x",9,9;"d","y",6,6;"a","x",10,10;"a","y",1,1;'
+        '"b","y",4,4;"b","x",3,3;"Total","",55,55}'
+    )
+    assert _text(sheet, "PIVOTBY(Pv!A2:A10,Pv!B2:B10,Pv!D2:D10,_xleta.SUM,0,1,2,0)") == (
+        '{"","x","y";"a",10,1;"b",3,4;"c",2,20;"d",9,6;"Total",24,31}'
+    )
+
+
+def test_pivotby_misplaces_one_functions_totals_over_several_value_columns(book: Workbook) -> None:
+    _grouped(book)
+    sheet = book["Data"]
+    # Each total goes one column along a node, the grand total first, and
+    # the leaves are written over them: of the grand total (63 and 6300)
+    # only 6300 survives, in B's subtotal.
+    assert _text(sheet, "PIVOTBY(Mw!A2:A7,Mw!B2:C7,Mw!D2:E7,_xleta.SUM,0,0,,2)") == (
+        '{"","A","A","A","A","A","A","B","B","B","B","B","B","C","C","C","C","C","C","Grand Total","Grand Total";'
+        '"","p","p","q","q","","","p","p","q","q","","","p","p","q","q","","","","";'
+        '"r",1,100,2,200,"","",4,400,8,800,6300,"",16,1600,32,3200,"","","",""}'
+    )
+    # Totals first move the columns as they were placed.
+    assert _text(sheet, "PIVOTBY(Mw!A2:A7,Mw!B2:C7,Mw!D2:G7,_xleta.SUM,0,0,,-2)") == (
+        '{"","Grand Total","Grand Total","Grand Total","Grand Total","A","A","A","A","A","A","A","A","A","A","A","A",'
+        '"B","B","B","B","B","B","B","B","B","B","B","B","C","C","C","C","C","C","C","C","C","C","C","C";'
+        '"","","","","","","","","","p","p","p","p","q","q","q","q","","","","","p","p","p","p","q","q","q","q",'
+        '"","","","","p","p","p","p","q","q","q","q";"r","","","","","",63,6300,630000,1,100,10000,1000000,'
+        '2,200,20000,2000000,"","","","",4,400,40000,4000000,8,800,80000,8000000,"","","","",'
+        '16,1600,160000,16000000,32,3200,320000,32000000}'
+    )
+    assert _text(sheet, "PIVOTBY(Mw!A2:A7,Mw!A2:A7,Mw!D2:E7,_xleta.SUM)") == (
+        '{"","r","r","Total","Total";"r",63,6300,6300,"";"Total",63,6300,6300,""}'
+    )
+    # Two functions over the two columns total as they should.
+    assert _text(sheet, "PIVOTBY(Mw!A2:A7,Mw!A2:A7,Mw!D2:E7,HSTACK(_xleta.SUM,_xleta.SUM),0,0)") == (
+        '{"","r","r","Total","Total";"","SUM","SUM","SUM","SUM";"r",63,6300,63,6300}'
+    )
+
+
+def test_pivotby_names_functions_and_their_value_columns(book: Workbook) -> None:
+    _grouped(book)
+    sheet = book["Data"]
+    assert _text(sheet, "PIVOTBY(In!A1:A19,In!C1:C19,In!E1:E19,HSTACK(_xleta.SUM,_xleta.MAX),3)") == (
+        '{"","Year","","","","","";"",2023,2023,2024,2024,"Total","Total";"","SUM","MAX","SUM","MAX","SUM","MAX";'
+        '"Region","Price","Price","Price","Price","Price","Price";7,"","",1.5,1.5,1.5,1.5;'
+        '"East",13,11.5,18.5,12.5,31.5,12.5;"North",5.75,4.25,14.5,13,20.25,13;"South",4,4,5.25,4,9.25,4;'
+        '"West",17.75,12,12,12,29.75,12;,"","",1.5,1.5,1.5,1.5;"Total",40.5,12,53.25,13,93.75,13}'
+    )
+    # Stacked over two value columns, each row names its value column and
+    # the row fields' names move up beside the last row of keys.
+    formula = "PIVOTBY(In!A1:A19,In!C1:C19,In!D1:E19,VSTACK(_xleta.SUM,_xleta.MAX),3)"
+    assert _text(sheet, formula) == (
+        '{"","","","Year","","";"Region","","",2023,2024,"Total";7,"SUM","Qty","",1,1;7,"MAX","Price","",1.5,1.5;'
+        '"East","SUM","Qty",5,15,20;"East","MAX","Price",11.5,12.5,12.5;"North","SUM","Qty",2,4,6;'
+        '"North","MAX","Price",4.25,13,13;"South","SUM","Qty",3,16,19;"South","MAX","Price",4,4,4;'
+        '"West","SUM","Qty",10,1,11;"West","MAX","Price",12,12,12;,"SUM","Qty","",2,2;,"MAX","Price","",1.5,1.5;'
+        '"Total","SUM","Qty",20,39,59;"Total","MAX","Price",12,13,13}'
+    )
+
+
+def test_a_lambdas_arguments_are_counted_and_may_be_optional(book: Workbook) -> None:
+    sheet = book["Data"]
+    optional = "_xlfn.LAMBDA(_xlpm.x,_xlop.y,IF(_xlfn.ISOMITTED(_xlpm.y),\"om\",_xlpm.y))"
+    assert sheet.evaluate(f"{optional}(1)") == "om"
+    assert sheet.evaluate(f"{optional}(1,5)") == 5
+    assert sheet.evaluate(f"{optional}(1,)") == "om"
+    assert sheet.evaluate(f"{optional}(1,2,3)") == CellError("#VALUE!")
+    assert sheet.evaluate("LAMBDA(x,x+1)()") == CellError("#VALUE!")
+    assert sheet.evaluate("REDUCE(0,{1,2},_xlfn.LAMBDA(_xlpm.a,_xlpm.b,_xlop.c,_xlpm.a+_xlpm.b))") == 3
+    # PERCENTOF needs two arguments where BYROW gives one.
+    assert sheet.evaluate("BYROW({1,2;3,4},_xleta.PERCENTOF)") == CellError("#VALUE!")
+
+
+def test_counta_counts_every_item_of_an_array_but_only_filled_cells(book: Workbook) -> None:
+    sheet = book["Data"]
+    sheet["C1"] = "a"
+    sheet["C3"] = "c"
+    assert sheet.evaluate("COUNTA(C1:C3)") == 2
+    assert sheet.evaluate("COUNTA(VSTACK(C1:C3))") == 3
+    # A blank cell for ignore_empty is FALSE; left out, it is TRUE.
+    assert sheet.evaluate('TEXTJOIN("|",,C1:C3)') == "a|c"
+    assert sheet.evaluate('TEXTJOIN("|",C2,C1:C3)') == "a||c"
+    assert sheet.evaluate('TEXTJOIN("|",C5:C6,C1:C3)') == CellError("#VALUE!")
 
 
 # ----------------------------------------------------------------------

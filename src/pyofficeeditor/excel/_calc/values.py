@@ -218,15 +218,30 @@ class Lambda(CellError):  # noqa: N818 - an error value, not an exception
     a LAMBDA left uncalled in a cell; MAP, REDUCE and the rest, and a call
     such as ``LAMBDA(x,x*2)(4)``, use it as the function it is. It keeps
     the names in scope where it was made.
+
+    A function's name passed where a LAMBDA goes, ``BYROW(A1:B2,SUM)``,
+    which a file writes ``_xleta.SUM``, is one too: ``builtin`` names the
+    function, called with whatever arguments the caller passes.
+
+    ``required`` is how many arguments a call must pass: the parameters
+    before the optional ones, which a file writes ``_xlop.y``, or the
+    fewest a function passed by name takes.
     """
 
     parameters: tuple[str, ...] = ()
     body: Node | None = None
     closure: tuple[Scope, ...] = ()
+    builtin: str | None = None
+    required: int = 0
 
     @classmethod
-    def make(cls, parameters: tuple[str, ...], body: Node, closure: tuple[Scope, ...]) -> Lambda:
-        return cls(CALC.code, parameters, body, closure)
+    def make(cls, parameters: tuple[str, ...], body: Node, closure: tuple[Scope, ...], required: int) -> Lambda:
+        return cls(CALC.code, parameters, body, closure, required=required)
+
+    @classmethod
+    def eta(cls, name: str, required: int) -> Lambda:
+        """The function ``name`` as a value, as ``_xleta.SUM`` gives it."""
+        return cls(CALC.code, builtin=name, required=required)
 
 
 # ----------------------------------------------------------------------

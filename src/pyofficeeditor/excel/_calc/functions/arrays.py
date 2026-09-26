@@ -71,7 +71,7 @@ def _from_lines(lines: list[Line], by_column: bool) -> Array:
     return Array([[line[row] for line in lines] for row in range(len(lines[0]))])
 
 
-def _sort_key(value: Scalar) -> Key:
+def sort_key(value: Scalar) -> Key:
     """Where a value sorts: numbers, then text, logicals, errors, blanks."""
     if isinstance(value, bool):
         return 2, value
@@ -88,8 +88,8 @@ def _same_key(value: Scalar) -> Key:
     """What makes two values one for UNIQUE: case never matters, and a
     blank is the empty text."""
     if isinstance(value, Empty):
-        return _sort_key("")
-    return _sort_key(value)
+        return sort_key("")
+    return sort_key(value)
 
 
 # ----------------------------------------------------------------------
@@ -165,7 +165,7 @@ def _sorted(lines: list[Line], keys: list[Line], orders: list[int]) -> list[Line
     first key first; lines with equal keys keep their order."""
     positions = list(range(len(lines)))
     for index in reversed(range(len(orders))):
-        positions.sort(key=lambda position: _sort_key(keys[position][index]), reverse=orders[index] < 0)
+        positions.sort(key=lambda position: sort_key(keys[position][index]), reverse=orders[index] < 0)
     return [lines[position] for position in positions]
 
 
@@ -327,14 +327,16 @@ def CHOOSECOLS(context: Context, array: Value, *picks: Value) -> Value:
 
 @function("VSTACK", A, maximum=254)
 def VSTACK(context: Context, *arrays: Value) -> Value:
-    grids = [matrix(context, array) for array in arrays]
+    # An error or a function given on its own is one item of the stack, as
+    # HSTACK(SUM,AVERAGE) makes the list of functions GROUPBY takes.
+    grids = [context.array_of(array) for array in arrays]
     width = max(grid.width for grid in grids)
     return Array([list(row) + [NA] * (width - len(row)) for grid in grids for row in grid.rows])
 
 
 @function("HSTACK", A, maximum=254)
 def HSTACK(context: Context, *arrays: Value) -> Value:
-    grids = [matrix(context, array) for array in arrays]
+    grids = [context.array_of(array) for array in arrays]
     height = max(grid.height for grid in grids)
     rows: list[Line] = [[] for _ in range(height)]
     for grid in grids:
@@ -448,4 +450,4 @@ def ARRAYTOTEXT(context: Context, array: Value, form: Scalar | None = None) -> V
     return VALUE if len(text) > MAX_TEXT else text
 
 
-__all__: list[str] = []
+__all__ = ["sort_key"]

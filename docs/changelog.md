@@ -59,6 +59,26 @@ anything trailing the file is swept into the oldest release's notes. -->
   216 bonds with a long odd first period, and comes within 1e-10 of
   Excel's answer on those.
 
+- **GROUPBY and PIVOTBY**, measured against Excel on 437 formulas, all of
+  which match but one Excel will not take: grouping by one field or
+  several, totals and subtotals above or below, keys sorted either way or
+  groups sorted by a result, filters, headers given or left to Excel, and
+  several functions side by side or stacked. PERCENTOF, or a LAMBDA of two
+  parameters, gets every row's values as its second argument, or in
+  PIVOTBY the rows relative_to names: the cell's column, its row, all of
+  them, or its parent column or row. Excel's own ways are kept. Keys match
+  as SORT matches them, and each shows the spelling of its first leaf's
+  first row. PIVOTBY sorts rows by a result only beside a total column,
+  and columns only where a group has a column of its own. One function
+  over several value columns puts PIVOTBY's column totals in the columns
+  Excel puts them in, which are the wrong ones, by the rule measured for
+  where each lands.
+
+- **A function passed by name, and optional LAMBDA parameters.** A file
+  writes `=BYROW(A1:B9,SUM)` as `_xleta.SUM`, and a LAMBDA's `[y]` as
+  `_xlop.y`; both now calculate, ISOMITTED telling an optional parameter
+  left out.
+
 ### Changed
 
 - **An inserted row is formatted like the row above it, and an inserted
@@ -153,6 +173,20 @@ anything trailing the file is swept into the oldest release's notes. -->
   CUMIPMT and CUMPRINC check a fractional start or end as given, then
   round the start up and the end down, all as Excel does; they used to
   truncate both first.
+
+- **A LAMBDA called without one of its arguments still ran.** Measured,
+  that is `#VALUE!`, as an argument too many already was. An argument
+  left empty, as in `f(1,)`, counts as omitted.
+
+- **COUNTA left an array's blank items out.** Every item of an array
+  counts, blank or not; only a range's blank cells are left out.
+
+- **TEXTJOIN with ignore_empty left out kept the empty items.** Left out,
+  it is TRUE. A blank cell given for it is FALSE, and a range of more than
+  one cell is `#VALUE!`.
+
+- **VSTACK and HSTACK given an error on its own gave that error.** The
+  error is one item of the stack, as a function given on its own is.
 
 ## [0.3.0] - 2026-09-23
 

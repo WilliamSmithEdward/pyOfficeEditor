@@ -56,10 +56,14 @@ def COUNT(context: Context, *args: Value) -> Value:
 
 @function("COUNTA", R, maximum=255)
 def COUNTA(context: Context, *args: Value) -> Value:
+    """Measured: a range's blank cells are not counted, but every item of
+    an array is, a blank one too, as VSTACK or GROUPBY keeps it."""
     count = 0
     for arg in args:
-        if isinstance(arg, (Reference, Array)):
+        if isinstance(arg, Reference):
             count += sum(1 for value, _ in context.scalars(arg) if not isinstance(value, Empty))
+        elif isinstance(arg, Array):
+            count += arg.height * arg.width
         else:
             count += 1
     return float(count)

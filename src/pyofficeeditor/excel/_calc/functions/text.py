@@ -204,10 +204,22 @@ def CONCAT(context: Context, *parts: Value) -> Value:
     return _checked("".join(context.text(piece) for part in parts for piece in _pieces(context, part)))
 
 
-@function("TEXTJOIN", R, V, R, maximum=252)
-def TEXTJOIN(context: Context, delimiter: Value, ignore_empty: Scalar, *parts: Value) -> Value:
+def _skips_empty(context: Context, value: Value) -> bool:
+    """TEXTJOIN's ignore_empty. Measured: left out, it is TRUE, where a
+    blank cell given for it is FALSE; a range of more than one cell is
+    ``#VALUE!``."""
+    if isinstance(value, Empty):
+        return True
+    items = list(matrix(context, value).items()) if isinstance(value, (Reference, Array)) else [value]
+    if len(items) != 1:
+        raise ExcelError(VALUE)
+    return context.logical(items[0])
+
+
+@function("TEXTJOIN", R, R, R, maximum=252)
+def TEXTJOIN(context: Context, delimiter: Value, ignore_empty: Value, *parts: Value) -> Value:
     separators = [context.text(piece) for piece in _pieces(context, delimiter)] or [""]
-    skip = context.logical(ignore_empty)
+    skip = _skips_empty(context, ignore_empty)
     texts: list[str] = []
     for part in parts:
         for piece in _pieces(context, part):
