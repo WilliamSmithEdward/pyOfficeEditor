@@ -117,6 +117,13 @@ class Area:
     def is_cell(self) -> bool:
         return self.top == self.bottom and self.left == self.right
 
+    @property
+    def external(self) -> bool:
+        """Whether the area is on a sheet of another workbook, read from its
+        link's cache: such a sheet is named ``[1]Sheet1``, which no sheet of
+        the workbook itself can be, a sheet's name never holding ``[``."""
+        return self.sheet.startswith("[")
+
     def contains(self, row: int, column: int) -> bool:
         return self.top <= row <= self.bottom and self.left <= column <= self.right
 

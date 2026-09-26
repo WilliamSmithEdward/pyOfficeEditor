@@ -289,7 +289,8 @@ def OFFSET(
     width: Scalar | None = None,
 ) -> Value:
     area = reference.area
-    if area is None:
+    # Measured: a closed workbook's range, read from its link, is #VALUE!.
+    if area is None or area.external:
         return VALUE
     down = int(context.number(rows))
     across = int(context.number(columns))
@@ -347,6 +348,10 @@ def INDIRECT(context: Context, text: Scalar, a1: Scalar | None = None) -> Value:
     except FormulaSyntaxError:
         return REF_ERROR
     if not isinstance(node, (CellReference, AreaReference, AxisReference, NameReference)):
+        return REF_ERROR
+    # Measured: text naming another workbook's cells is #REF! while that
+    # workbook is closed, as it is to everything here.
+    if node.prefix is not None and node.prefix.book is not None:
         return REF_ERROR
     found = context.evaluate(node)
     return found if isinstance(found, Reference) else REF_ERROR

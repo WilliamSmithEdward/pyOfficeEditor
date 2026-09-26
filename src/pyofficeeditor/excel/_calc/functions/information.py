@@ -80,7 +80,10 @@ def ISREF(context: Context, value: Node) -> Value:
 
 @function("ISFORMULA", REF)
 def ISFORMULA(context: Context, reference: Reference) -> Value:
+    """Measured: ``#N/A`` of a closed workbook, read from its link."""
     area = reference.areas[0]
+    if area.external:
+        return NA
     return context.book.formula_text(area.sheet, area.top, area.left) is not None
 
 
@@ -176,7 +179,9 @@ def SHEET(context: Context, value: Value | None = None) -> Value:
     if value is None:
         return float(order.index(context.sheet) + 1)
     if isinstance(value, Reference):
-        return float(order.index(value.areas[0].sheet) + 1)
+        # Measured: #N/A for a closed workbook's sheet, read from its link.
+        sheet = value.areas[0].sheet
+        return float(order.index(sheet) + 1) if sheet in order else NA
     if isinstance(value, str):
         found = context.book.sheet_key(value)
         return NA if found is None else float(order.index(found) + 1)
@@ -191,6 +196,9 @@ def SHEETS(context: Context, value: Value | None = None) -> Value:
     if value is None:
         return float(len(context.book.sheet_order()))
     if isinstance(value, Reference):
+        # Measured: #N/A for a closed workbook's sheets, read from its link.
+        if any(area.external for area in value.areas):
+            return NA
         return float(len({area.sheet for area in value.areas}))
     if isinstance(value, CellError):
         return value
@@ -211,9 +219,12 @@ def CELL(context: Context, info: Scalar, reference: Reference | None = None) -> 
     kind = context.text(info).lower()
     if reference is None:
         raise UnsupportedFormulaError("CELL without a reference, which reads the cell last changed")
+    area = reference.areas[0]
+    if area.external:
+        # Measured: of a closed workbook, read from its link.
+        return NA
     if kind in _FORMATTING:
         raise UnsupportedFormulaError(f'CELL("{kind}"), which reads formatting')
-    area = reference.areas[0]
     book = context.book
     if kind == "row":
         return float(area.top)

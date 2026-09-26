@@ -180,6 +180,18 @@ class Book(Protocol):
         """The pivot tables on a sheet, as their reports show them."""
         ...
 
+    def external_sheets(self, book: str, first: str, last: str | None) -> list[str] | None:
+        """The sheets of a linked workbook a reference names, ``first``, or
+        ``first`` to ``last`` in that workbook's order, as the engine names
+        them; an empty list when the workbook has no such sheet, and
+        ``None`` when there is no link ``book`` to read them from."""
+        ...
+
+    def external_name(self, book: str, name: str) -> Node | None:
+        """A name defined in a linked workbook, as a formula reading that
+        workbook, or ``None`` when the link has no such name."""
+        ...
+
 
 _ARITHMETIC = frozenset({"+", "-", "*", "/", "^"})
 _COMPARISON: dict[str, Callable[[int], bool]] = {
@@ -313,7 +325,12 @@ class Context:
         if prefix is None:
             return [self.sheet]
         if prefix.book is not None:
-            raise UnsupportedFormulaError("a reference to another workbook")
+            if prefix.sheet is None:
+                return REF
+            linked = self.book.external_sheets(prefix.book, prefix.sheet, prefix.last_sheet)
+            if linked is None:
+                raise UnsupportedFormulaError("a reference to another workbook the file keeps no copy of")
+            return linked or REF
         if prefix.sheet is None:
             return REF
         first = self.book.sheet_key(prefix.sheet)
@@ -337,7 +354,10 @@ class Context:
             if key.startswith(_ETA):
                 return self._eta(key[len(_ETA) :])
         if node.prefix is not None and node.prefix.book is not None:
-            raise UnsupportedFormulaError("a name defined in another workbook")
+            if node.prefix.sheet is not None:
+                raise UnsupportedFormulaError("a name defined for one sheet of another workbook")
+            found = self.book.external_name(node.prefix.book, node.name)
+            return REF if found is None else self.evaluate(found)
         sheet = None
         if node.prefix is not None:
             if node.prefix.sheet is None:

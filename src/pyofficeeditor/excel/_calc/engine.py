@@ -9,11 +9,15 @@ thousand running totals, each reading the one above, calculates without
 ten thousand nested Python calls.
 
 A formula that cannot be calculated here, because it calls a function
-this engine does not have, reads another workbook, or will not parse,
-keeps the value the file cached for it, and so does every formula that
-reads it: its value is only as good as that cache. :class:`Calculation`
-lists both. A circular reference keeps its cached values too, as Excel,
-with iteration off, leaves them.
+this engine does not have, reads a workbook the file keeps no link to,
+or will not parse, keeps the value the file cached for it, and so does
+every formula that reads it: its value is only as good as that cache.
+:class:`Calculation` lists both. A circular reference keeps its cached
+values too, as Excel, with iteration off, leaves them.
+
+Another workbook is read as Excel reads it while it is closed: from the
+cells its link caches, loaded as sheets named ``[1]Sheet1`` beside the
+workbook's own.
 
 A what-if data table is calculated as Excel calculates one: each value it
 tries is put in its input cell, and its formula calculated with it, by a
@@ -23,8 +27,10 @@ view of the workbook that calculates again only what reads that cell.
 from __future__ import annotations
 
 import bisect
+import dataclasses
 import datetime as dt
 import os
+import typing
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -41,9 +47,10 @@ from pyofficeeditor.excel._calc.evaluator import (
     UnsupportedFormulaError,
 )
 from pyofficeeditor.excel._calc.lexer import FormulaSyntaxError
-from pyofficeeditor.excel._calc.nodes import Call, Node, walk
+from pyofficeeditor.excel._calc.nodes import Call, NameReference, Node, Prefix, walk
 from pyofficeeditor.excel._calc.parser import parse
 from pyofficeeditor.excel._calc.values import EMPTY, Area, Array, Empty, Reference, Scalar, Value
+from pyofficeeditor.excel._externals import read_external_books
 from pyofficeeditor.excel._numfmt import BUILTIN_DISPLAY_CODES
 from pyofficeeditor.excel._pivots import PivotReport, read_pivot_report
 from pyofficeeditor.excel._reference import CellRef, RangeRef
@@ -178,11 +185,16 @@ class Engine:
         self._filters: dict[str, tuple[int, int]] = {}
         self._subtotals: dict[CellKey, bool] = {}
         self._pivots: dict[str, list[PivotReport]] = {}
+        #: Each linked workbook's sheets, as sheets here are named for it,
+        #: and its names, by the number formulas give the link.
+        self._links: dict[str, list[str]] = {}
+        self._link_names: dict[str, dict[str, str]] = {}
         self._reading_tainted = False
         for sheet in workbook.sheets:
             self._load(sheet)
             self._load_filter(sheet)
         self._load_tables()
+        self._load_links()
 
     @property
     def epoch_1904(self) -> bool:
@@ -257,6 +269,25 @@ class Engine:
         except ValueError:
             return
         self._filters[sheet.name] = (block.top + 1, block.bottom)
+
+    def _load_links(self) -> None:
+        """Each linked workbook's cells as its link caches them, as sheets
+        named ``[1]Sheet1`` beside the workbook's own, and its names: what
+        Excel calculates with while that workbook is closed."""
+        for book in read_external_books(self._workbook.package, self._workbook.workbook_part):
+            number = str(book.number)
+            order: list[str] = []
+            for sheet, cells in zip(book.sheets, book.cells, strict=True):
+                key = f"[{number}]{sheet}"
+                grid: dict[int, dict[int, Content]] = {}
+                for (row, column), value in cells.items():
+                    grid.setdefault(row, {})[column] = value
+                self._grid[key] = grid
+                self._rows[key] = sorted(grid)
+                self._used[key] = (max(grid, default=0), max((max(line) for line in grid.values()), default=0))
+                order.append(key)
+            self._links[number] = order
+            self._link_names[number] = {name.casefold(): refers for name, refers in book.names.items()}
 
     def _load_tables(self) -> None:
         for sheet in self._workbook.sheets:
@@ -382,19 +413,46 @@ class Engine:
         return content if isinstance(content, _Formula) else None
 
     def row_hidden(self, sheet: str, row: int) -> bool:
-        return self._sheets[sheet].row_hidden(row)
+        """Whether a row is hidden; no row of a linked workbook is."""
+        found = self._sheets.get(sheet)
+        return found is not None and found.row_hidden(row)
 
     def row_filtered(self, sheet: str, row: int) -> bool:
         """A hidden row inside an active filter's range. The file records
         only that a row is hidden, not what hid it, so there every hidden
         row counts as one the filter left out."""
         span = self._filters.get(sheet)
-        return span is not None and span[0] <= row <= span[1] and self._sheets[sheet].row_hidden(row)
+        return span is not None and span[0] <= row <= span[1] and self.row_hidden(sheet, row)
+
+    def external_sheets(self, book: str, first: str, last: str | None) -> list[str] | None:
+        order = self._links.get(book)
+        if order is None:
+            return None
+        names = [key[len(book) + 2 :].casefold() for key in order]
+        try:
+            start = names.index(first.casefold())
+            end = start if last is None else names.index(last.casefold())
+        except ValueError:
+            return []
+        low, high = sorted((start, end))
+        return order[low : high + 1]
+
+    def external_name(self, book: str, name: str) -> Node | None:
+        refers = self._link_names.get(book, {}).get(name.casefold())
+        if refers is None:
+            return None
+        try:
+            return _in_book(parse(refers), book)
+        except FormulaSyntaxError:
+            return None
 
     def pivot_reports(self, sheet: str) -> list[PivotReport]:
         """The sheet's pivot tables, read once. Reading one Excel wrote in a
         way this does not follow is left to the formulas that need it."""
         found = self._pivots.get(sheet)
+        if found is None and sheet not in self._sheets:
+            # A linked workbook's pivot tables are not in its link.
+            return []
         if found is None:
             styles = self._workbook.styles
             custom = {} if styles is None else styles.custom_formats
@@ -673,6 +731,30 @@ class _WhatIf(Engine):
         if not self._reading_tried:
             self._independent.add(formula.key)
         return value
+
+
+#: Every kind of node a formula's tree is made of.
+_NODES = typing.get_args(Node)
+
+
+def _in_book(node: Node, book: str) -> Node:
+    """A formula of a linked workbook, as one defining a name there, with
+    each reference and name in it made to name that workbook."""
+    changes: dict[str, object] = {}
+    for item in dataclasses.fields(node):
+        value = getattr(node, item.name)
+        if isinstance(value, Prefix):
+            if value.book is None:
+                changes[item.name] = Prefix(value.sheet, value.last_sheet, book)
+        elif isinstance(node, NameReference) and item.name == "prefix" and value is None:
+            changes[item.name] = Prefix(book=book)
+        elif isinstance(value, _NODES):
+            changes[item.name] = _in_book(value, book)
+        elif isinstance(value, tuple):
+            parts = typing.cast("tuple[object, ...]", value)
+            if parts and all(isinstance(part, _NODES) for part in parts):
+                changes[item.name] = tuple(_in_book(typing.cast("Node", part), book) for part in parts)
+    return dataclasses.replace(node, **changes) if changes else node
 
 
 def _data_table(formula: Element, sheet: str) -> _DataTable | None:

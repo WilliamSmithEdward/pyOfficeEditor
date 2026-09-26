@@ -74,6 +74,18 @@ anything trailing the file is swept into the oldest release's notes. -->
   Excel puts them in, which are the wrong ones, by the rule measured for
   where each lands.
 
+- **Formulas that read another workbook calculate.** They used to keep
+  the values Excel cached. Excel keeps a copy of every linked cell a
+  formula read, in the link's own part, and calculates with it while the
+  other workbook is closed; that copy is now read the same way, names and
+  ranges across sheets included, a cell it lacks being blank. Measured in
+  Excel with the linked workbook closed: SUMIF, COUNTIF and the rest of
+  their family, the database functions and OFFSET are `#VALUE!` over its
+  ranges, INDIRECT naming it is `#REF!`, and CELL, SHEET, SHEETS and
+  ISFORMULA are `#N/A`, while RANK, SUBTOTAL, COUNTBLANK, ROW and the
+  others work as ever. A workbook the file keeps no link to still leaves
+  the formula its cached value.
+
 - **What-if data tables calculate.** A table Excel's Data Table makes, in
   one variable down a column or along a row or in two, used to keep the
   values Excel cached. Each cell is now calculated as Excel calculates
