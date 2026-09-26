@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Protocol
 
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, AxisRef, CellRef, RangeRef
 from pyofficeeditor.excel._tokens import Token, TokenKind, render, tokenize
@@ -499,6 +500,13 @@ class Deletion:
             CellRef(bottom, right, block.end.absolute_row, block.end.absolute_column),
         )
 
+    def moved_areas(
+        self, areas: tuple[RangeRef, ...], *, joined: bool = False, stretched: bool = True
+    ) -> tuple[RangeRef, ...]:
+        """Where a stored range lands, such as a conditional format's: each
+        area as it shrinks, less those that are gone."""
+        return tuple(moved for area in areas if (moved := self.moved_range(area)) is not None)
+
     def moved_axis(self, span: AxisRef) -> AxisRef | None:
         """Where a whole-axis reference lands, or ``None`` when it is gone.
 
@@ -539,14 +547,41 @@ class Deletion:
         return (new_low, new_high)
 
 
+class Remap(Protocol):
+    """Where an edit sends the references it reaches, as a deletion does: a
+    cell, a block and a whole-row or whole-column span each land somewhere,
+    or on ``None`` when nothing of them is left, which a formula spells
+    ``#REF!``. :class:`Deletion` is one, and :class:`TableShrink` another."""
+
+    @property
+    def is_empty(self) -> bool: ...
+
+    def moved(self, reference: CellRef) -> CellRef | None: ...
+
+    def moved_range(self, block: RangeRef) -> RangeRef | None: ...
+
+    def moved_areas(
+        self, areas: tuple[RangeRef, ...], *, joined: bool = False, stretched: bool = True
+    ) -> tuple[RangeRef, ...]:
+        """Where a stored range lands, the areas a conditional format or a
+        validation covers, which may come to more areas or fewer.
+        ``joined`` is for a conditional format's, which joins areas that a
+        validation's keeps apart; ``stretched`` is for the range of rules
+        that read no cell relative to where they apply."""
+        ...
+
+    def moved_axis(self, span: AxisRef) -> AxisRef | None: ...
+
+
 def delete_in_formula(
     formula: str,
-    deletion: Deletion,
+    deletion: Remap,
     *,
     formula_sheet: str,
     target_sheet: str,
 ) -> str:
-    """Rewrite a formula for a deletion, turning what is gone into ``#REF!``.
+    """Rewrite a formula for a deletion, or another :class:`Remap`, turning
+    what is gone into ``#REF!``.
 
     A range is handled as one thing, because ``SUM(A1:A10)`` over a deletion
     of rows 3 to 4 becomes ``SUM(A1:A8)`` rather than an error: only a range
@@ -635,6 +670,190 @@ def delete_in_formula(
         index += 1
 
     return render(rebuilt) if changed else formula
+
+
+@dataclass(frozen=True)
+class TableShrink:
+    """What a table giving up the rows at its bottom does to a reference,
+    as Excel's Resize does it. Remove Duplicates resizes a table this way
+    once it has moved the rows it keeps up. Nothing becomes ``#REF!``.
+
+    Measured in Excel, a table's data rows ``first`` to ``last`` becoming
+    ``first`` to ``kept``:
+
+    - A reference shaped like a part of the table shrinks with it: one in
+      its columns, from its header row or its first data row down to its
+      last data row, ends on ``kept`` instead. For a table over ``A1:C8``,
+      ``B2:B8``, ``A1:C8`` and ``$B$2:$B$8`` do; ``B3:B8`` does not, nor
+      does ``A2:E8``, which runs past its columns, and a reference to a
+      row it gives up stays as written.
+    - A totals row moves up to sit under the rows kept, and in the table's
+      columns the rows it passes move down a row to make way. A reference
+      in the table's columns goes where its ends go, and when its top would
+      then come below its bottom, as ``B8:B9``'s would with the totals row
+      moving from row 9 to row 6, it is the totals row alone. One running
+      past the table's columns loses its part in them when all of its rows
+      move down, as ``A8:E8`` becomes ``D8:E8``, and otherwise stays as
+      written.
+    """
+
+    left: int
+    right: int
+    #: The rows a part of the table starts on: its header row and its first
+    #: data row, or the first data row alone when it has no header row.
+    starts: tuple[int, ...]
+    last: int
+    kept: int
+    #: The totals row before the table shrank, when it has one.
+    totals: int | None = None
+
+    @property
+    def is_empty(self) -> bool:
+        return self.kept >= self.last
+
+    def _row(self, row: int) -> int:
+        """Where a row of the table's columns lands as the totals row moves
+        up past it."""
+        if self.totals is None:
+            return row
+        if self.kept < row < self.totals:
+            return row + 1
+        if row == self.totals:
+            return self.kept + 1
+        return row
+
+    def moved(self, reference: CellRef) -> CellRef:
+        if not self.left <= reference.column <= self.right:
+            return reference
+        row = self._row(reference.row)
+        if row == reference.row:
+            return reference
+        return CellRef(row, reference.column, reference.absolute_row, reference.absolute_column)
+
+    def moved_range(self, block: RangeRef) -> RangeRef:
+        top, bottom, left, right = block.top, block.bottom, block.left, block.right
+        inside = self.left <= left and right <= self.right
+        if inside and top in self.starts and bottom == self.last:
+            bottom = self.kept
+        elif inside:
+            bottom = self._row(bottom)
+            top = min(self._row(top), bottom)
+        elif (
+            self.totals is not None
+            and left <= self.right
+            and self.left <= right
+            and self.kept < top
+            and bottom < self.totals
+        ):
+            if left < self.left and self.right < right:
+                # Past the table's columns on both sides: not measured, and
+                # what is left would not be one block.
+                return block
+            if left < self.left:
+                right = self.left - 1
+            else:
+                left = self.right + 1
+        if (top, bottom, left, right) == (block.top, block.bottom, block.left, block.right):
+            return block
+        return RangeRef(
+            CellRef(top, left, block.start.absolute_row, block.start.absolute_column),
+            CellRef(bottom, right, block.end.absolute_row, block.end.absolute_column),
+        )
+
+    def moved_areas(
+        self, areas: tuple[RangeRef, ...], *, joined: bool = False, stretched: bool = True
+    ) -> tuple[RangeRef, ...]:
+        """Where a conditional format's or a validation's range lands.
+
+        Measured over every span of a column as a totals row moves up, the
+        cells go where they go, so an area may land as several. But when
+        the range's rules read no cell relative to where they apply,
+        ``stretched``, an area in the table's columns that starts on the
+        totals row runs from where the totals row goes down to where it
+        ended. A conditional format's range, ``joined``, then joins every
+        two areas that make one block; a validation's joins only what
+        moved, keeping the rows above it apart.
+        """
+        if self.totals is None:
+            return tuple(self.moved_range(area) for area in areas)
+        found: list[tuple[int, int, int, int]] = []
+        for area in areas:
+            found.extend(self._landing(area, stretched=stretched, joined=joined))
+        return tuple(_area(*area) for area in (_joined(found, keep_order=True) if joined else found))
+
+    def _landing(self, block: RangeRef, *, stretched: bool, joined: bool) -> list[tuple[int, int, int, int]]:
+        """Where one area lands, as ``(top, bottom, left, right)``: the part
+        outside the table's columns, then the rest in reading order."""
+        top, bottom, left, right = block.top, block.bottom, block.left, block.right
+        start, end = self.kept + 1, self.totals or 0
+        if stretched and self.left <= left and right <= self.right and top == end:
+            return [(start, bottom, left, right)]
+        if right < self.left or self.right < left or bottom < start or end < top:
+            return [(top, bottom, left, right)]
+        outside: list[tuple[int, int, int, int]] = []
+        if left < self.left:
+            outside.append((top, bottom, left, self.left - 1))
+        if self.right < right:
+            outside.append((top, bottom, self.right + 1, right))
+        low, high = max(left, self.left), min(right, self.right)
+        above = [(top, start - 1, low, high)] if top < start else []
+        moved = [
+            (first + step, last + step, low, high)
+            for first, last, step in (
+                (max(top, start), min(bottom, end - 1), 1),
+                (max(top, end), min(bottom, end), start - end),
+                (max(top, end + 1), bottom, 0),
+            )
+            if first <= last
+        ]
+        return [*outside, *(_joined([*above, *moved]) if joined else [*above, *_joined(moved)])]
+
+    def moved_axis(self, span: AxisRef) -> AxisRef:
+        """Whole rows and columns run past the table, and stay."""
+        return span
+
+
+def _area(top: int, bottom: int, left: int, right: int) -> RangeRef:
+    return RangeRef(CellRef(top, left), CellRef(bottom, right))
+
+
+def reads_relatively(formula: str) -> bool:
+    """Whether ``formula`` reads a cell relative to where it stands, as
+    ``$B2`` and ``B$2`` do and ``$B$2`` does not."""
+    return any(
+        (isinstance(token.value, CellRef) and not (token.value.absolute_row and token.value.absolute_column))
+        or (isinstance(token.value, AxisRef) and not (token.value.absolute_low and token.value.absolute_high))
+        for token in tokenize(formula)
+        if token.kind in (TokenKind.REFERENCE, TokenKind.AXIS)
+    )
+
+
+def _joined(areas: list[tuple[int, int, int, int]], *, keep_order: bool = False) -> list[tuple[int, int, int, int]]:
+    """``areas``, each ``(top, bottom, left, right)``, with any two that
+    make one block together made one, in reading order or, with
+    ``keep_order``, each where the first of its parts was."""
+    found = list(areas)
+    joined = True
+    while joined:
+        joined = False
+        for first in range(len(found)):
+            for second in range(len(found)):
+                a, b = found[first], found[second]
+                if first == second:
+                    continue
+                if a[2:] == b[2:] and a[1] + 1 == b[0]:
+                    joint = (a[0], b[1], a[2], a[3])
+                elif a[:2] == b[:2] and a[3] + 1 == b[2]:
+                    joint = (a[0], a[1], a[2], b[3])
+                else:
+                    continue
+                found[min(first, second)] = joint
+                del found[max(first, second)]
+                joined = True
+                break
+            if joined:
+                break
+    return found if keep_order else sorted(found)
 
 
 def sorted_formula(formula: str, rows: int) -> str:
@@ -779,7 +998,9 @@ def shared_formula_for(master: str, master_cell: CellRef, target: CellRef) -> st
 __all__ = [
     "REF_ERROR",
     "Deletion",
+    "Remap",
     "Shift",
+    "TableShrink",
     "delete_in_formula",
     "quote_sheet_name",
     "rename_sheet_in_formula",

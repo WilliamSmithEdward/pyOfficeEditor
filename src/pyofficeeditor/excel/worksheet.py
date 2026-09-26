@@ -73,7 +73,7 @@ from pyofficeeditor.excel._dimensions import (
     says_nothing,
     sheet_standard_width,
 )
-from pyofficeeditor.excel._duplicates import remove_duplicate_rows
+from pyofficeeditor.excel._duplicates import find_duplicate_rows, remove_duplicate_rows, remove_table_rows
 from pyofficeeditor.excel._dxf import Dxf
 from pyofficeeditor.excel._errorchecks import ErrorCheck, check_errors
 from pyofficeeditor.excel._filters import (
@@ -184,7 +184,7 @@ from pyofficeeditor.excel._shapes import (
     with_vml_shape,
     without_vml_shape,
 )
-from pyofficeeditor.excel._sort import SortKey, sort_filter, sort_keys, sort_rows, sort_table
+from pyofficeeditor.excel._sort import SortKey, check_movable, sort_filter, sort_keys, sort_rows, sort_table
 from pyofficeeditor.excel._tables import (
     CT_TABLE,
     RT_TABLE,
@@ -1707,23 +1707,70 @@ class Worksheet:
         last cell, and a last row holding a formula over a range is taken
         for a total and left alone. Merged cells and an array formula the
         move would split are refused with a ``ValueError`` and nothing
-        changed, as Excel refuses them, and so is a table, which Excel
-        shrinks and this does not do yet.
+        changed, as Excel refuses them.
+
+        A range in a table stands for the whole table: its data rows, down
+        to the sheet's last cell as a range's are, its own header row the
+        header whatever ``header`` says, and every one of its columns
+        unless ``columns`` names some of them. A range running past a table is refused, as
+        Excel refuses it. The table then gives up the rows it no longer
+        needs, as its resize does: a reference shaped like a part of the
+        table shrinks with it, and a totals row moves up under the rows
+        kept. Its filter is applied again, showing the rows a criterion
+        hid before hiding them as they now fall; one with no criterion
+        shows the table's rows. A table with a totals row is refused
+        while its filter hides rows by a criterion, as Excel refuses it.
         """
         block = (RangeRef.parse(cells) if isinstance(cells, str) else cells).normalized
         names = [columns] if isinstance(columns, str) else columns
-        compared = list(range(block.left, block.right + 1)) if names is None else [column_index(name) for name in names]
+        table = next((table for table in self.tables if table.ref.intersects(block)), None)
+        span = block if table is None else table.ref
+        compared = list(range(span.left, span.right + 1)) if names is None else [column_index(name) for name in names]
         if not compared:
             raise ValueError("removing duplicates needs at least one column to compare.")
         for name, column in zip(names or (), compared, strict=False):
-            if not block.left <= column <= block.right:
-                raise ValueError(f"the column {name!r} is not a column of {block.a1}.")
+            if not span.left <= column <= span.right:
+                raise ValueError(f"the column {name!r} is not a column of {span.a1}.")
+        if table is not None:
+            if not table.ref.contains(block):
+                raise ValueError(
+                    f"{block.a1} runs past the table {table.name!r}, and Excel refuses a range that takes in "
+                    "part of a table and cells outside it."
+                )
+            return self._remove_table_duplicates(table, compared)
         if header and block.top == block.bottom:
             raise ValueError(f"{block.a1} is one row, so there is nothing below its header.")
-        for table in self.tables:
-            if table.ref.intersects(block):
-                raise ValueError(f"{block.a1} meets the table {table.name!r}; removing duplicates from a table is not supported yet.")
         return remove_duplicate_rows(self, block, compared, header=header)
+
+    def _remove_table_duplicates(self, table: Table, columns: Sequence[int]) -> int:
+        """Remove Duplicates over all of ``table``; see
+        :meth:`remove_duplicates`."""
+        data = table.data_range
+        if data is None or data.top > self.max_row:
+            return 0
+        # Measured: as in a range, rows past the sheet's last cell are left
+        # out, and the table gives them up with the rest below the rows kept.
+        used = RangeRef(data.start, CellRef(min(data.bottom, self.max_row), data.right))
+        kept, removed = find_duplicate_rows(self, used, columns)
+        if not removed:
+            return 0
+        check_movable(self, data)
+        current = table.auto_filter
+        filtering = current is not None and current.filtering
+        if filtering and table.has_totals_row:
+            raise ValueError(
+                f"the table {table.name!r} has a totals row and its filter hides rows by a criterion, and Excel "
+                "refuses to rearrange such a table's cells; clear the filter's criteria first."
+            )
+        if filtering:
+            self._show_filtered_rows(self._table_filter_block(table))
+        remove_table_rows(self, table, kept, removed)
+        if current is not None:
+            if filtering:
+                self.apply_table_filter(table.name)
+            else:
+                self._show_filtered_rows(self._table_filter_block(table))
+        return len(removed)
 
     def clear_auto_filter(self, *, show_rows: bool = True) -> None:
         """Take the filter off, and show the rows it was hiding.

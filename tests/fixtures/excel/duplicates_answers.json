@@ -728,6 +728,132 @@
     "header": true,
     "refused": ""
   },
+  "Table!A1:C8": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableCalc!A1:D8": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableCell!B3": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableEmptyRows!A1:B10": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableFiltered!A1:C8": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableFilteredTotals!A1:C8": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": "You can't rearrange cells within a table this way, because it might affect other table cells in an unexpected way."
+  },
+  "TableHeadless!A2:C8": {
+    "columns": [
+      1
+    ],
+    "header": false,
+    "refused": ""
+  },
+  "TableHidden!A1:C8": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableInner!B1:C8": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableLastSum!A1:B6": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableLonger!A1:C10": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": "Application-defined or object-defined error"
+  },
+  "TableNoHeaderAsked!A1:C8": {
+    "columns": [
+      1
+    ],
+    "header": false,
+    "refused": ""
+  },
+  "TableSorted!A1:C8": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableTotals!A1:C8": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableTotalsRow!A9:C9": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableTotalsShapes!A1:C8": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableUnique!A1:C8": {
+    "columns": [
+      2
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TableWider!A1:E8": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": "Application-defined or object-defined error"
+  },
   "Total!A1:C5": {
     "columns": [
       1

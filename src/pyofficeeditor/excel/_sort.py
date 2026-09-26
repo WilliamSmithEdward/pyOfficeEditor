@@ -200,14 +200,17 @@ def row_values(sheet: Worksheet, rows: Sequence[int], columns: Sequence[int]) ->
     return values
 
 
-def move_rows(sheet: Worksheet, moves: dict[int, int], block: RangeRef) -> None:
+def move_rows(sheet: Worksheet, moves: dict[int, int], block: RangeRef, *, copies: bool = True) -> None:
     """Move the cells of ``block``'s rows as ``moves`` says, each row to its
     new place, with their formulas, notes, threads and links, as Excel's
-    Sort moves them. ``moves`` is a permutation of the rows it names."""
+    Sort moves them. ``moves`` is a permutation of the rows it names. A
+    formula moves as a copy does, its relative references going with it,
+    unless ``copies`` is off, when it moves as a cut does and reads what it
+    read before."""
     if not moves:
         return
     _unshare(sheet, moves, block)
-    _move_cells(sheet, moves, block)
+    _move_cells(sheet, moves, block, copies=copies)
     _move_attached(sheet, moves, block)
     sheet.workbook.mark_values_changed()
 
@@ -288,9 +291,10 @@ def _unshare(sheet: Worksheet, moves: dict[int, int], block: RangeRef) -> None:
         sheet.invalidate()
 
 
-def _move_cells(sheet: Worksheet, moves: dict[int, int], block: RangeRef) -> None:
+def _move_cells(sheet: Worksheet, moves: dict[int, int], block: RangeRef, *, copies: bool) -> None:
     """Take each moving row's cells in the block out, then put them into
-    the row each goes to, their formulas as the sort writes them."""
+    the row each goes to, their formulas as the sort writes them, or as
+    they were when they do not move as copies."""
     elements = sheet.rows_by_number()
     taken: dict[int, list[tuple[int, Element]]] = {}
     for source in moves:
@@ -309,7 +313,7 @@ def _move_cells(sheet: Worksheet, moves: dict[int, int], block: RangeRef) -> Non
         for column, cell in taken[source]:
             formula = cell.child("f")
             if formula is not None:
-                if formula.text:
+                if formula.text and copies:
                     formula.set_text(sorted_formula(formula.text, step))
                 ref = formula.get("ref")
                 if ref is not None and formula.get("t") in ("array", "dataTable"):

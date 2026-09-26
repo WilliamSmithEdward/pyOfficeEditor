@@ -24,6 +24,13 @@ Measured in Excel through ``Range.RemoveDuplicates``:
   formula over a range is taken for a total and left alone.
 - Merged cells, and an array formula the move would split, are refused as
   the sort refuses them.
+- A range in a table stands for the whole table: its data rows down to
+  the sheet's last cell, its own header row the header, its columns
+  counted from its first, and no last row taken for a total. A range
+  running past a table is refused.
+  The rows go as they go from a range, and the table then gives up the
+  rows it no longer needs as its resize does; see
+  :mod:`~pyofficeeditor.excel._tableshrink`.
 """
 
 from __future__ import annotations
@@ -35,10 +42,12 @@ from pyofficeeditor._xml import Element
 from pyofficeeditor.excel._collate import sort_key
 from pyofficeeditor.excel._reference import CellRef, RangeRef
 from pyofficeeditor.excel._sort import check_movable, move_rows, row_values
+from pyofficeeditor.excel._tableshrink import shrink_table
 from pyofficeeditor.excel._tokens import TokenKind, tokenize
 from pyofficeeditor.excel._values import CellError, CellValue
 
 if TYPE_CHECKING:
+    from pyofficeeditor.excel._tables import Table
     from pyofficeeditor.excel.worksheet import Worksheet
 
 #: What a value compares as, before the value itself.
@@ -71,7 +80,19 @@ def remove_duplicate_rows(sheet: Worksheet, block: RangeRef, columns: Sequence[i
         bottom -= 1
     if top > bottom:
         return 0
-    rows = range(top, bottom + 1)
+    data = RangeRef(CellRef(top, block.left), CellRef(bottom, block.right))
+    kept, removed = find_duplicate_rows(sheet, data, columns)
+    if not removed:
+        return 0
+    _drop(sheet, data, kept, removed)
+    sheet.invalidate()
+    return len(removed)
+
+
+def find_duplicate_rows(sheet: Worksheet, data: RangeRef, columns: Sequence[int]) -> tuple[list[int], list[int]]:
+    """The rows of ``data`` to keep, the first of each set of duplicates in
+    ``columns``, and the rows that duplicate one of them, each in order."""
+    rows = range(data.top, data.bottom + 1)
     kept: list[int] = []
     removed: list[int] = []
     seen: set[tuple[tuple[object, ...], ...]] = set()
@@ -85,17 +106,35 @@ def remove_duplicate_rows(sheet: Worksheet, block: RangeRef, columns: Sequence[i
         else:
             seen.add(key)
             kept.append(row)
-    if not removed:
-        return 0
-    data = RangeRef(CellRef(top, block.left), CellRef(bottom, block.right))
-    move_rows(sheet, {row: top + place for place, row in enumerate(kept + removed) if row != top + place}, data)
-    cleared = RangeRef(CellRef(top + len(kept), block.left), CellRef(bottom, block.right))
+    return kept, removed
+
+
+def remove_table_rows(sheet: Worksheet, table: Table, kept: Sequence[int], removed: Sequence[int]) -> None:
+    """Remove a table's duplicate data rows, ``kept`` and ``removed`` as
+    :func:`find_duplicate_rows` found them over its data rows, and let the
+    table give up every row below those kept, as Excel's Remove Duplicates
+    does: the rows go as they go from a range, and the table shrinks as
+    :func:`~pyofficeeditor.excel._tableshrink.shrink_table` shrinks one.
+    The caller has refused what Excel refuses."""
+    data = table.data_range
+    if data is None or not removed:
+        return
+    _drop(sheet, data, kept, removed)
+    shrink_table(sheet, table, data.top + len(kept) - 1)
+    sheet.invalidate()
+
+
+def _drop(sheet: Worksheet, data: RangeRef, kept: Sequence[int], removed: Sequence[int]) -> None:
+    """Move the rows kept up, as a sort moves rows, and clear the rows
+    removed below them of all but their notes, cutting validation and
+    conditional formats back from them."""
+    top = data.top
+    move_rows(sheet, {row: top + place for place, row in enumerate([*kept, *removed]) if row != top + place}, data)
+    cleared = RangeRef(CellRef(top + len(kept), data.left), CellRef(data.bottom, data.right))
     sheet.remove_cells(cleared)
     sheet.remove_hyperlink(cleared)
     _cut_validations(sheet.document.root, cleared)
     _cut_conditional_formats(sheet.document.root, cleared)
-    sheet.invalidate()
-    return len(removed)
 
 
 def _is_number(value: CellValue) -> bool:
@@ -216,4 +255,4 @@ def _columns_first(area: RangeRef, hole: RangeRef) -> list[RangeRef]:
     return pieces
 
 
-__all__ = ["duplicate_key", "remove_duplicate_rows"]
+__all__ = ["duplicate_key", "find_duplicate_rows", "remove_duplicate_rows", "remove_table_rows"]

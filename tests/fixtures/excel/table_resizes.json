@@ -1,0 +1,2058 @@
+{
+ "measured": "2026-09-26",
+ "table": {
+  "columns": "A:C",
+  "first": 2,
+  "last": 8,
+  "kept": 5,
+  "totals": 9
+ },
+ "formulas": [
+  {
+   "totals": false,
+   "before": "B2",
+   "after": "B2"
+  },
+  {
+   "totals": false,
+   "before": "B3",
+   "after": "B3"
+  },
+  {
+   "totals": false,
+   "before": "B4",
+   "after": "B4"
+  },
+  {
+   "totals": false,
+   "before": "B5",
+   "after": "B5"
+  },
+  {
+   "totals": false,
+   "before": "B6",
+   "after": "B6"
+  },
+  {
+   "totals": false,
+   "before": "B7",
+   "after": "B7"
+  },
+  {
+   "totals": false,
+   "before": "B8",
+   "after": "B8"
+  },
+  {
+   "totals": false,
+   "before": "B9",
+   "after": "B9"
+  },
+  {
+   "totals": false,
+   "before": "B10",
+   "after": "B10"
+  },
+  {
+   "totals": false,
+   "before": "C8",
+   "after": "C8"
+  },
+  {
+   "totals": false,
+   "before": "A6",
+   "after": "A6"
+  },
+  {
+   "totals": false,
+   "before": "D8",
+   "after": "D8"
+  },
+  {
+   "totals": false,
+   "before": "D9",
+   "after": "D9"
+  },
+  {
+   "totals": false,
+   "before": "C9",
+   "after": "C9"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B3:B8)",
+   "after": "SUM(B3:B8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B5:B8)",
+   "after": "SUM(B5:B8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A2:B8)",
+   "after": "SUM(A2:B5)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B8:B10)",
+   "after": "SUM(B8:B10)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B2:B7)",
+   "after": "SUM(B2:B7)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A2:E8)",
+   "after": "SUM(A2:E8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B6:B8)",
+   "after": "SUM(B6:B8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B2:B8)",
+   "after": "SUM(B2:B5)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B7:B8)",
+   "after": "SUM(B7:B8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B8:B9)",
+   "after": "SUM(B8:B9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B9:B10)",
+   "after": "SUM(B9:B10)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B9:B12)",
+   "after": "SUM(B9:B12)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B7:B9)",
+   "after": "SUM(B7:B9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B5:B9)",
+   "after": "SUM(B5:B9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B2:B9)",
+   "after": "SUM(B2:B9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A1:C9)",
+   "after": "SUM(A1:C9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B6:B9)",
+   "after": "SUM(B6:B9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B3:B6)",
+   "after": "SUM(B3:B6)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A1:C8)",
+   "after": "SUM(A1:C5)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B4:B10)",
+   "after": "SUM(B4:B10)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(C2:C8)",
+   "after": "SUM(C2:C5)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B1:B8)",
+   "after": "SUM(B1:B5)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A8:C8)",
+   "after": "SUM(A8:C8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B$2:B$8)",
+   "after": "SUM(B$2:B$5)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A8:E8)",
+   "after": "SUM(A8:E8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A6:E6)",
+   "after": "SUM(A6:E6)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A9:E9)",
+   "after": "SUM(A9:E9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A6:E9)",
+   "after": "SUM(A6:E9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A5:E9)",
+   "after": "SUM(A5:E9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A7:D7)",
+   "after": "SUM(A7:D7)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B8:D8)",
+   "after": "SUM(B8:D8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(C6:D9)",
+   "after": "SUM(C6:D9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A6:D8)",
+   "after": "SUM(A6:D8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A10:E10)",
+   "after": "SUM(A10:E10)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A1:E9)",
+   "after": "SUM(A1:E9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A1:E12)",
+   "after": "SUM(A1:E12)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B6:E6)",
+   "after": "SUM(B6:E6)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(C9:D9)",
+   "after": "SUM(C9:D9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A8:D9)",
+   "after": "SUM(A8:D9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A7:E9)",
+   "after": "SUM(A7:E9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A5:E8)",
+   "after": "SUM(A5:E8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A7:C9)",
+   "after": "SUM(A7:C9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A6:C9)",
+   "after": "SUM(A6:C9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A5:C9)",
+   "after": "SUM(A5:C9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A9:C12)",
+   "after": "SUM(A9:C12)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A2:D8)",
+   "after": "SUM(A2:D8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(C2:D8)",
+   "after": "SUM(C2:D8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A6:A8)",
+   "after": "SUM(A6:A8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A1:D8)",
+   "after": "SUM(A1:D8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A9:C9)",
+   "after": "SUM(A9:C9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B9:B9)",
+   "after": "SUM(B9:B9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A8:C9)",
+   "after": "SUM(A8:C9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A2:C9)",
+   "after": "SUM(A2:C9)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A9:C10)",
+   "after": "SUM(A9:C10)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(A5:C6)",
+   "after": "SUM(A5:C6)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B8:B8)",
+   "after": "SUM(B8:B8)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(3:4)",
+   "after": "SUM(3:4)"
+  },
+  {
+   "totals": false,
+   "before": "SUM(B:B)",
+   "after": "SUM(B:B)"
+  },
+  {
+   "totals": false,
+   "before": "$B$9",
+   "after": "$B$9"
+  },
+  {
+   "totals": false,
+   "before": "SUM($B$2:$B$8)",
+   "after": "SUM($B$2:$B$5)"
+  },
+  {
+   "totals": true,
+   "before": "B2",
+   "after": "B2"
+  },
+  {
+   "totals": true,
+   "before": "B3",
+   "after": "B3"
+  },
+  {
+   "totals": true,
+   "before": "B4",
+   "after": "B4"
+  },
+  {
+   "totals": true,
+   "before": "B5",
+   "after": "B5"
+  },
+  {
+   "totals": true,
+   "before": "B6",
+   "after": "B7"
+  },
+  {
+   "totals": true,
+   "before": "B7",
+   "after": "B8"
+  },
+  {
+   "totals": true,
+   "before": "B8",
+   "after": "B9"
+  },
+  {
+   "totals": true,
+   "before": "B9",
+   "after": "B6"
+  },
+  {
+   "totals": true,
+   "before": "B10",
+   "after": "B10"
+  },
+  {
+   "totals": true,
+   "before": "C8",
+   "after": "C9"
+  },
+  {
+   "totals": true,
+   "before": "A6",
+   "after": "A7"
+  },
+  {
+   "totals": true,
+   "before": "D8",
+   "after": "D8"
+  },
+  {
+   "totals": true,
+   "before": "D9",
+   "after": "D9"
+  },
+  {
+   "totals": true,
+   "before": "C9",
+   "after": "C6"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B3:B8)",
+   "after": "SUM(B3:B9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B5:B8)",
+   "after": "SUM(B5:B9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A2:B8)",
+   "after": "SUM(A2:B5)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B8:B10)",
+   "after": "SUM(B9:B10)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B2:B7)",
+   "after": "SUM(B2:B8)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A2:E8)",
+   "after": "SUM(A2:E8)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B6:B8)",
+   "after": "SUM(B7:B9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B2:B8)",
+   "after": "SUM(B2:B5)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B7:B8)",
+   "after": "SUM(B8:B9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B8:B9)",
+   "after": "SUM(B6:B6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B9:B10)",
+   "after": "SUM(B6:B10)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B9:B12)",
+   "after": "SUM(B6:B12)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B7:B9)",
+   "after": "SUM(B6:B6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B5:B9)",
+   "after": "SUM(B5:B6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B2:B9)",
+   "after": "SUM(B2:B6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A1:C9)",
+   "after": "SUM(A1:C6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B6:B9)",
+   "after": "SUM(B6:B6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B3:B6)",
+   "after": "SUM(B3:B7)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A1:C8)",
+   "after": "SUM(A1:C5)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B4:B10)",
+   "after": "SUM(B4:B10)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(C2:C8)",
+   "after": "SUM(C2:C5)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B1:B8)",
+   "after": "SUM(B1:B5)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A8:C8)",
+   "after": "SUM(A9:C9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B$2:B$8)",
+   "after": "SUM(B$2:B$5)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A8:E8)",
+   "after": "SUM(D8:E8)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A6:E6)",
+   "after": "SUM(D6:E6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A9:E9)",
+   "after": "SUM(A9:E9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A6:E9)",
+   "after": "SUM(A6:E9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A5:E9)",
+   "after": "SUM(A5:E9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A7:D7)",
+   "after": "SUM(D7:D7)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B8:D8)",
+   "after": "SUM(D8:D8)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(C6:D9)",
+   "after": "SUM(C6:D9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A6:D8)",
+   "after": "SUM(D6:D8)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A10:E10)",
+   "after": "SUM(A10:E10)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A1:E9)",
+   "after": "SUM(A1:E9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A1:E12)",
+   "after": "SUM(A1:E12)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B6:E6)",
+   "after": "SUM(D6:E6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(C9:D9)",
+   "after": "SUM(C9:D9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A8:D9)",
+   "after": "SUM(A8:D9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A7:E9)",
+   "after": "SUM(A7:E9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A5:E8)",
+   "after": "SUM(A5:E8)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A7:C9)",
+   "after": "SUM(A6:C6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A6:C9)",
+   "after": "SUM(A6:C6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A5:C9)",
+   "after": "SUM(A5:C6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A9:C12)",
+   "after": "SUM(A6:C12)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A2:D8)",
+   "after": "SUM(A2:D8)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(C2:D8)",
+   "after": "SUM(C2:D8)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A6:A8)",
+   "after": "SUM(A7:A9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A1:D8)",
+   "after": "SUM(A1:D8)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A9:C9)",
+   "after": "SUM(A6:C6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B9:B9)",
+   "after": "SUM(B6:B6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A8:C9)",
+   "after": "SUM(A6:C6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A2:C9)",
+   "after": "SUM(A2:C6)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A9:C10)",
+   "after": "SUM(A6:C10)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(A5:C6)",
+   "after": "SUM(A5:C7)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B8:B8)",
+   "after": "SUM(B9:B9)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(3:4)",
+   "after": "SUM(3:4)"
+  },
+  {
+   "totals": true,
+   "before": "SUM(B:B)",
+   "after": "SUM(B:B)"
+  },
+  {
+   "totals": true,
+   "before": "$B$9",
+   "after": "$B$6"
+  },
+  {
+   "totals": true,
+   "before": "SUM($B$2:$B$8)",
+   "after": "SUM($B$2:$B$5)"
+  }
+ ],
+ "formats": [
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B1",
+   "after": "B1"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B1:B2",
+   "after": "B1:B2"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B1:B3",
+   "after": "B1:B3"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B1:B4",
+   "after": "B1:B4"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B1:B5",
+   "after": "B1:B5"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B1:B6",
+   "after": "B1:B5 B7"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B1:B7",
+   "after": "B1:B5 B7:B8"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B1:B8",
+   "after": "B1:B5 B7:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B1:B9",
+   "after": "B1:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B1:B10",
+   "after": "B1:B10"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B1:B11",
+   "after": "B1:B11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B2",
+   "after": "B2"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B2:B3",
+   "after": "B2:B3"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B2:B4",
+   "after": "B2:B4"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B2:B5",
+   "after": "B2:B5"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B2:B6",
+   "after": "B2:B5 B7"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B2:B7",
+   "after": "B2:B5 B7:B8"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B2:B8",
+   "after": "B2:B5 B7:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B2:B9",
+   "after": "B2:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B2:B10",
+   "after": "B2:B10"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B2:B11",
+   "after": "B2:B11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B3",
+   "after": "B3"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B3:B4",
+   "after": "B3:B4"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B3:B5",
+   "after": "B3:B5"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B3:B6",
+   "after": "B3:B5 B7"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B3:B7",
+   "after": "B3:B5 B7:B8"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B3:B8",
+   "after": "B3:B5 B7:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B3:B9",
+   "after": "B3:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B3:B10",
+   "after": "B3:B10"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B3:B11",
+   "after": "B3:B11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B4",
+   "after": "B4"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B4:B5",
+   "after": "B4:B5"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B4:B6",
+   "after": "B4:B5 B7"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B4:B7",
+   "after": "B4:B5 B7:B8"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B4:B8",
+   "after": "B4:B5 B7:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B4:B9",
+   "after": "B4:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B4:B10",
+   "after": "B4:B10"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B4:B11",
+   "after": "B4:B11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B5",
+   "after": "B5"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B5:B6",
+   "after": "B5 B7"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B5:B7",
+   "after": "B5 B7:B8"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B5:B8",
+   "after": "B5 B7:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B5:B9",
+   "after": "B5:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B5:B10",
+   "after": "B5:B10"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B5:B11",
+   "after": "B5:B11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B6",
+   "after": "B7"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B6:B7",
+   "after": "B7:B8"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B6:B8",
+   "after": "B7:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B6:B9",
+   "after": "B6:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B6:B10",
+   "after": "B6:B10"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B6:B11",
+   "after": "B6:B11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B7",
+   "after": "B8"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B7:B8",
+   "after": "B8:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B7:B9",
+   "after": "B6 B8:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B7:B10",
+   "after": "B6 B8:B10"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B7:B11",
+   "after": "B6 B8:B11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B8",
+   "after": "B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B8:B9",
+   "after": "B6 B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B8:B10",
+   "after": "B6 B9:B10"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B8:B11",
+   "after": "B6 B9:B11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B9",
+   "after": "B6:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B9:B10",
+   "after": "B6:B10"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B9:B11",
+   "after": "B6:B11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B10",
+   "after": "B10"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B10:B11",
+   "after": "B10:B11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B11",
+   "after": "B11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "A9:C9",
+   "after": "A6:C9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "B9",
+   "after": "B6:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "100"
+   ],
+   "before": "A9:C11",
+   "after": "A6:C11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "$B9"
+   ],
+   "before": "A9:C9",
+   "after": "A6:C6"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "$B9"
+   ],
+   "before": "B9",
+   "after": "B6"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "$B9"
+   ],
+   "before": "A9:C11",
+   "after": "A6:C6 A10:C11"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "$B$9"
+   ],
+   "before": "A9:C9",
+   "after": "A6:C9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "$B$9"
+   ],
+   "before": "B9",
+   "after": "B6:B9"
+  },
+  {
+   "type": "cellIs",
+   "formulas": [
+    "$B$9"
+   ],
+   "before": "A9:C11",
+   "after": "A6:C11"
+  },
+  {
+   "type": "expression",
+   "formulas": [
+    "$B9>0"
+   ],
+   "before": "A9:C9",
+   "after": "A6:C6"
+  },
+  {
+   "type": "expression",
+   "formulas": [
+    "$B9>0"
+   ],
+   "before": "B9",
+   "after": "B6"
+  },
+  {
+   "type": "expression",
+   "formulas": [
+    "$B9>0"
+   ],
+   "before": "A9:C11",
+   "after": "A6:C6 A10:C11"
+  },
+  {
+   "type": "expression",
+   "formulas": [
+    "$B$9>0"
+   ],
+   "before": "A9:C9",
+   "after": "A6:C9"
+  },
+  {
+   "type": "expression",
+   "formulas": [
+    "$B$9>0"
+   ],
+   "before": "B9",
+   "after": "B6:B9"
+  },
+  {
+   "type": "expression",
+   "formulas": [
+    "$B$9>0"
+   ],
+   "before": "A9:C11",
+   "after": "A6:C11"
+  },
+  {
+   "type": "expression",
+   "formulas": [
+    "TRUE"
+   ],
+   "before": "A9:C9",
+   "after": "A6:C9"
+  },
+  {
+   "type": "expression",
+   "formulas": [
+    "TRUE"
+   ],
+   "before": "B9",
+   "after": "B6:B9"
+  },
+  {
+   "type": "expression",
+   "formulas": [
+    "TRUE"
+   ],
+   "before": "A9:C11",
+   "after": "A6:C11"
+  },
+  {
+   "type": "colorScale",
+   "formulas": [],
+   "before": "A9:C9",
+   "after": "A6:C6"
+  },
+  {
+   "type": "colorScale",
+   "formulas": [],
+   "before": "B9",
+   "after": "B6"
+  },
+  {
+   "type": "colorScale",
+   "formulas": [],
+   "before": "A9:C11",
+   "after": "A6:C6 A10:C11"
+  },
+  {
+   "type": "top10",
+   "formulas": [],
+   "before": "A9:C9",
+   "after": "A6:C6"
+  },
+  {
+   "type": "top10",
+   "formulas": [],
+   "before": "B9",
+   "after": "B6"
+  },
+  {
+   "type": "top10",
+   "formulas": [],
+   "before": "A9:C11",
+   "after": "A6:C6 A10:C11"
+  }
+ ],
+ "validations": [
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B1",
+   "after": "B1"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B1:B2",
+   "after": "B1:B2"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B1:B3",
+   "after": "B1:B3"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B1:B4",
+   "after": "B1:B4"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B1:B5",
+   "after": "B1:B5"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B1:B6",
+   "after": "B1:B5 B7"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B1:B7",
+   "after": "B1:B5 B7:B8"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B1:B8",
+   "after": "B1:B5 B7:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B1:B9",
+   "after": "B1:B5 B6:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B1:B10",
+   "after": "B1:B5 B6:B10"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B1:B11",
+   "after": "B1:B5 B6:B11"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B2",
+   "after": "B2"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B2:B3",
+   "after": "B2:B3"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B2:B4",
+   "after": "B2:B4"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B2:B5",
+   "after": "B2:B5"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B2:B6",
+   "after": "B2:B5 B7"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B2:B7",
+   "after": "B2:B5 B7:B8"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B2:B8",
+   "after": "B2:B5 B7:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B2:B9",
+   "after": "B2:B5 B6:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B2:B10",
+   "after": "B2:B5 B6:B10"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B2:B11",
+   "after": "B2:B5 B6:B11"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B3",
+   "after": "B3"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B3:B4",
+   "after": "B3:B4"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B3:B5",
+   "after": "B3:B5"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B3:B6",
+   "after": "B3:B5 B7"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B3:B7",
+   "after": "B3:B5 B7:B8"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B3:B8",
+   "after": "B3:B5 B7:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B3:B9",
+   "after": "B3:B5 B6:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B3:B10",
+   "after": "B3:B5 B6:B10"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B3:B11",
+   "after": "B3:B5 B6:B11"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B4",
+   "after": "B4"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B4:B5",
+   "after": "B4:B5"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B4:B6",
+   "after": "B4:B5 B7"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B4:B7",
+   "after": "B4:B5 B7:B8"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B4:B8",
+   "after": "B4:B5 B7:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B4:B9",
+   "after": "B4:B5 B6:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B4:B10",
+   "after": "B4:B5 B6:B10"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B4:B11",
+   "after": "B4:B5 B6:B11"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B5",
+   "after": "B5"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B5:B6",
+   "after": "B5 B7"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B5:B7",
+   "after": "B5 B7:B8"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B5:B8",
+   "after": "B5 B7:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B5:B9",
+   "after": "B5 B6:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B5:B10",
+   "after": "B5 B6:B10"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B5:B11",
+   "after": "B5 B6:B11"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B6",
+   "after": "B7"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B6:B7",
+   "after": "B7:B8"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B6:B8",
+   "after": "B7:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B6:B9",
+   "after": "B6:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B6:B10",
+   "after": "B6:B10"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B6:B11",
+   "after": "B6:B11"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B7",
+   "after": "B8"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B7:B8",
+   "after": "B8:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B7:B9",
+   "after": "B6 B8:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B7:B10",
+   "after": "B6 B8:B10"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B7:B11",
+   "after": "B6 B8:B11"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B8",
+   "after": "B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B8:B9",
+   "after": "B6 B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B8:B10",
+   "after": "B6 B9:B10"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B8:B11",
+   "after": "B6 B9:B11"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B9",
+   "after": "B6:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B9:B10",
+   "after": "B6:B10"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B9:B11",
+   "after": "B6:B11"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B10",
+   "after": "B10"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B10:B11",
+   "after": "B10:B11"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B11",
+   "after": "B11"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "A9:C9",
+   "after": "A6:C9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "B9",
+   "after": "B6:B9"
+  },
+  {
+   "formulas": [
+    "0",
+    "9"
+   ],
+   "before": "A9:C11",
+   "after": "A6:C11"
+  },
+  {
+   "formulas": [
+    "$B9>0"
+   ],
+   "before": "A9:C9",
+   "after": "A6:C6"
+  },
+  {
+   "formulas": [
+    "$B9>0"
+   ],
+   "before": "B9",
+   "after": "B6"
+  },
+  {
+   "formulas": [
+    "$B9>0"
+   ],
+   "before": "A9:C11",
+   "after": "A6:C6 A10:C11"
+  },
+  {
+   "formulas": [
+    "$B$9>0"
+   ],
+   "before": "A9:C9",
+   "after": "A6:C9"
+  },
+  {
+   "formulas": [
+    "$B$9>0"
+   ],
+   "before": "B9",
+   "after": "B6:B9"
+  },
+  {
+   "formulas": [
+    "$B$9>0"
+   ],
+   "before": "A9:C11",
+   "after": "A6:C11"
+  }
+ ]
+}

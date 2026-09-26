@@ -102,8 +102,10 @@ from pyofficeeditor.excel._conditional import (
 from pyofficeeditor.excel._dimensions import sheet_standard_width
 from pyofficeeditor.excel._formulas import (
     Deletion,
+    Remap,
     Shift,
     delete_in_formula,
+    reads_relatively,
     shift_formula,
     shift_range,
 )
@@ -246,6 +248,24 @@ def delete_columns(sheet: Worksheet, at: int, count: int) -> None:
     sheet.invalidate()
 
 
+def remap_references(sheet: Worksheet, remap: Remap) -> None:
+    """Rewrite the references into ``sheet`` as ``remap`` moves them, for an
+    edit that moves no cell itself: formulas anywhere in the workbook, the
+    sheet's validation, conditional formats and other stored ranges,
+    charts, and defined names. A table giving up rows is one such edit.
+
+    Only a group's first cell carries a shared formula's text, so a remap
+    that would move a reference in some of a group's cells and not others
+    has to be given groups with their own text first.
+    """
+    _delete_formulas(sheet, remap)
+    _delete_sheet_addresses(sheet, remap)
+    _delete_conditional_formats(sheet, remap)
+    _move_charts(sheet, shift=None, deletion=remap)
+    _delete_defined_names(sheet, remap)
+    sheet.invalidate()
+
+
 def _check_table_headers(sheet: Worksheet, deletion: Deletion) -> None:
     """Refuse a deletion that would take a table's header row away.
 
@@ -339,7 +359,7 @@ def _expand_orphaned_shared_formulas(sheet: Worksheet, deletion: Deletion) -> No
     sheet.invalidate()
 
 
-def _delete_formulas(sheet: Worksheet, deletion: Deletion) -> None:
+def _delete_formulas(sheet: Worksheet, deletion: Remap) -> None:
     """Rewrite every formula in the workbook for the deletion."""
     for other in sheet.workbook.sheets:
         data = other.document.root.child("sheetData")
@@ -456,7 +476,7 @@ def _swap(parent: Element, old: Element, new: Element) -> None:
     parent.remove(old)
 
 
-def _delete_conditional_formats(sheet: Worksheet, deletion: Deletion) -> None:
+def _delete_conditional_formats(sheet: Worksheet, deletion: Remap) -> None:
     """Shrink each block's ranges, and drop a block with nothing left.
 
     A range that only partly overlaps the deletion shrinks, exactly as a
@@ -469,22 +489,40 @@ def _delete_conditional_formats(sheet: Worksheet, deletion: Deletion) -> None:
         block = ConditionalFormatting.read(element)
         if not block.ranges:
             continue
-        moved = tuple(
-            survivor
-            for area in block.ranges
-            if (survivor := deletion.moved_range(area)) is not None
-        )
+        moved = deletion.moved_areas(block.ranges, joined=True, stretched=_reads_absolutely(block))
         if not moved:
             root.remove(element)
             continue
         rules = tuple(_delete_in_rule(rule, deletion, sheet=sheet) for rule in block.rules)
+        if moved == block.ranges and rules == block.rules:
+            continue
         rebuilt = ConditionalFormatting(ranges=moved, rules=rules)
         anchored = tuple(rule.anchored_at(rebuilt.anchor) for rule in rebuilt.rules)
         _swap(root, element, ConditionalFormatting(ranges=moved, rules=anchored).write())
 
 
+def _reads_absolutely(block: ConditionalFormatting) -> bool:
+    """Whether a block's rules each compare a cell by a formula reading no
+    cell relative to where it applies. Measured, such a block's range
+    stretches when a table's totals row moves up, where one with a relative
+    reference, or a scale, a top ten or another rule reading its whole
+    range, moves with its cells alone."""
+    return all(
+        rule.kind in ("cellIs", "expression") and not any(reads_relatively(escape(text)) for text in rule.formulas)
+        for rule in block.rules
+    )
+
+
+def _bounds_read_absolutely(element: Element) -> bool:
+    """The same for a validation, by its bounds; true of anything else."""
+    return not any(
+        (bound := element.child(name)) is not None and bound.text and reads_relatively(bound.text)
+        for name in ("formula1", "formula2")
+    )
+
+
 def _delete_in_rule(
-    rule: ConditionalRule, deletion: Deletion, *, sheet: Worksheet
+    rule: ConditionalRule, deletion: Remap, *, sheet: Worksheet
 ) -> ConditionalRule:
     """Break or shrink the references inside a rule's own condition.
 
@@ -760,7 +798,7 @@ def chart_parts(package: OpcPackage) -> list[str]:
     return [name for name in package.part_names() if types.of(name) in (CT_CHART, CT_CHART_EX)]
 
 
-def _move_charts(sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | None) -> None:
+def _move_charts(sheet: Worksheet, *, shift: Shift | None, deletion: Remap | None) -> None:
     """Move the references in every chart that reads from this sheet.
 
     Measured, a chart's references behave as a cell's: a series grows with
@@ -786,7 +824,7 @@ def _move_charts(sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | 
                 element.set_text(moved)
 
 
-def _delete_defined_names(sheet: Worksheet, deletion: Deletion) -> None:
+def _delete_defined_names(sheet: Worksheet, deletion: Remap) -> None:
     workbook = sheet.workbook
     container = workbook.package.xml(workbook.workbook_part).root.child("definedNames")
     if container is None:
@@ -1160,6 +1198,7 @@ __all__ = [
     "delete_rows",
     "insert_columns",
     "insert_rows",
+    "remap_references",
 ]
 
 
@@ -1223,7 +1262,7 @@ def _shift_sheet_addresses(sheet: Worksheet, shift: Shift) -> None:
     _move_validation_formulas(sheet, shift=shift, deletion=None)
 
 
-def _delete_sheet_addresses(sheet: Worksheet, deletion: Deletion) -> None:
+def _delete_sheet_addresses(sheet: Worksheet, deletion: Remap) -> None:
     """Shrink every stored address, and drop what is left with nothing."""
     root = sheet.document.root
     for container, entry, attribute, notation in SHEET_ADDRESSES:
@@ -1232,7 +1271,7 @@ def _delete_sheet_addresses(sheet: Worksheet, deletion: Deletion) -> None:
             if raw is None:
                 continue
             moved = (
-                delete_sqref(raw, deletion)
+                delete_sqref(raw, deletion, stretched=_bounds_read_absolutely(element))
                 if notation == "sqref"
                 else delete_ref(raw, deletion)
             )
@@ -1499,7 +1538,7 @@ def _move_vml_owner(
 
 
 def _move_validation_formulas(
-    sheet: Worksheet, *, shift: Shift | None, deletion: Deletion | None
+    sheet: Worksheet, *, shift: Shift | None, deletion: Remap | None
 ) -> None:
     """Move the references inside ``<formula1>`` and ``<formula2>``.
 

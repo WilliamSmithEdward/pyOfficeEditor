@@ -2572,8 +2572,10 @@ def _vba_text(text: str) -> str:
 #: kept row and what the cleared rows lose, a note among what they keep;
 #: validation and conditional formats cut back; no header; hidden rows;
 #: array formulas; a last row taken for a total, and one that is not; a
-#: range running past the data; and the merged cells and arrays Excel
-#: refuses. The workbook is saved as it stands, then each range's
+#: range running past the data; the merged cells and arrays Excel refuses;
+#: and tables, which Excel cleans whole and shrinks, with references,
+#: names and a chart reading them from beside them and from sheet Reader.
+#: The workbook is saved as it stands, then each range's
 #: duplicates removed and the workbook saved again as
 #: ``duplicates_removed.xlsx``, which the library's own removal is held to.
 #: The reply is one line per range: the sheet, range, columns compared,
@@ -2611,6 +2613,7 @@ Public Function Build(ByVal Target As String) As String
     FillRows Page(wb), "EmptyBelow", "k|a|b|a|c|b", "n|1|2|3|4|5"
     wb.Worksheets("EmptyBelow").Range("B2:B12").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="9"
     wb.Worksheets("EmptyBelow").Range("A11").Interior.Color = RGB(0, 200, 0)
+    FillTables wb
     wb.Worksheets(1).Activate
     Application.DisplayAlerts = False
     wb.RemovePersonalInformation = True
@@ -2632,6 +2635,24 @@ Public Function Build(ByVal Target As String) As String
     out = out & Dedupe(wb, "TotalAway", "A1:C5", "1", True)
     out = out & Dedupe(wb, "NotTotal", "A1:C5", "1", True)
     out = out & Dedupe(wb, "EmptyBelow", "A1:B12", "1", True)
+    out = out & Dedupe(wb, "Table", "A1:C8", "1", True)
+    out = out & Dedupe(wb, "TableTotals", "A1:C8", "1", True)
+    out = out & Dedupe(wb, "TableTotalsShapes", "A1:C8", "1", True)
+    out = out & Dedupe(wb, "TableInner", "B1:C8", "1", True)
+    out = out & Dedupe(wb, "TableCell", "B3", "1", True)
+    out = out & Dedupe(wb, "TableNoHeaderAsked", "A1:C8", "1", False)
+    out = out & Dedupe(wb, "TableTotalsRow", "A9:C9", "1", True)
+    out = out & Dedupe(wb, "TableCalc", "A1:D8", "1", True)
+    out = out & Dedupe(wb, "TableHidden", "A1:C8", "1", True)
+    out = out & Dedupe(wb, "TableFiltered", "A1:C8", "1", True)
+    out = out & Dedupe(wb, "TableFilteredTotals", "A1:C8", "1", True)
+    out = out & Dedupe(wb, "TableHeadless", "A2:C8", "1", False)
+    out = out & Dedupe(wb, "TableEmptyRows", "A1:B10", "1", True)
+    out = out & Dedupe(wb, "TableLastSum", "A1:B6", "1", True)
+    out = out & Dedupe(wb, "TableSorted", "A1:C8", "1", True)
+    out = out & Dedupe(wb, "TableUnique", "A1:C8", "2", True)
+    out = out & Dedupe(wb, "TableWider", "A1:E8", "1", True)
+    out = out & Dedupe(wb, "TableLonger", "A1:C10", "1", True)
     wb.SaveAs Filename:=Replace(Target, ".xlsx", "_removed.xlsx"), FileFormat:=51
     Application.DisplayAlerts = True
     Build = out
@@ -2744,9 +2765,169 @@ Private Sub FillPartial(ws As Worksheet)
     ws.Range("A4:A7").FormatConditions.Add Type:=1, Operator:=3, Formula1:="=""a"""
     ws.Range("A2:E7").FormatConditions.Add Type:=1, Operator:=5, Formula1:="100"
 End Sub
+
+' A table over A1:C8 whose first column holds three duplicates, so rows 2, 4,
+' 6 and 8 stay and it gives up rows 6 to 8; a column beside it, and cells
+' below it reading into it.
+Private Function FillTable(wb As Workbook, ByVal Name As String, ByVal Totals As Boolean) As ListObject
+    Dim ws As Worksheet, lo As ListObject
+    Set ws = Page(wb)
+    ws.Name = Name
+    Down ws, 1, "k|a|a|b|a|c|b|d"
+    Down ws, 2, "n|1|2|3|4|5|6|7"
+    Down ws, 3, "m|m1|m2|m3|m4|m5|m6|m7"
+    Down ws, 5, "out|o1|o2|o3|o4|o5|o6|o7"
+    Set lo = ws.ListObjects.Add(1, ws.Range("A1:C8"), , 1)
+    lo.Name = "T" & Name
+    If Totals Then
+        lo.ShowTotals = True
+        lo.ListColumns("n").TotalsCalculation = 1
+    End If
+    ws.Range("A12").Value = "below"
+    ws.Range("B12").Formula = "=SUM(B2:B8)"
+    ws.Range("C12").Formula = "=SUM(" & lo.Name & "[n])"
+    ws.Range("D12").Formula = "=B5"
+    Set FillTable = lo
+End Function
+
+' What hangs on a table's rows: a formula moving with its row, notes,
+' links, fills and formats on a row removed and a row kept, validation and
+' conditional formats of every shape over the rows it gives up, a list
+' reading a column of it, and a chart.
+Private Sub Dress(ws As Worksheet)
+    Dim ch As ChartObject
+    ws.Range("C8").Formula = "=B8*10"
+    ws.Range("C3").AddComment "note on a removed row"
+    ws.Range("C8").AddComment "note on a row that moves"
+    ws.Hyperlinks.Add ws.Range("A5"), "https://example.com/removed"
+    ws.Hyperlinks.Add ws.Range("A6"), "https://example.com/moves"
+    ws.Range("A3").Interior.Color = RGB(200, 0, 0)
+    ws.Range("A8").Interior.Color = RGB(0, 200, 0)
+    ws.Range("A10").Interior.Color = RGB(0, 0, 200)
+    ws.Range("B7").NumberFormat = "0.00"
+    ws.Range("B8").NumberFormat = "0.000"
+    ws.Range("B4:B8").FormatConditions.Add Type:=1, Operator:=5, Formula1:="3"
+    ws.Range("B2:B6").FormatConditions.Add Type:=1, Operator:=5, Formula1:="4"
+    ws.Range("A6:A8").FormatConditions.Add Type:=1, Operator:=3, Formula1:="=""a"""
+    ws.Range("C2:C8").FormatConditions.Add Type:=2, Formula1:="=$B2>3"
+    ws.Range("A2:E8").FormatConditions.Add Type:=1, Operator:=5, Formula1:="100"
+    ws.Range("A8:E8").FormatConditions.Add Type:=1, Operator:=5, Formula1:="200"
+    ws.Range("B2:B8").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="9"
+    ws.Range("C4:C8").Validation.Add Type:=6, AlertStyle:=1, Operator:=8, Formula1:="9"
+    ws.Range("E2:E8").Validation.Add Type:=3, AlertStyle:=1, Formula1:="=$A$2:$A$8"
+    Set ch = ws.ChartObjects.Add(420, 10, 200, 120)
+    ch.Chart.ChartType = 51
+    ch.Chart.SetSourceData ws.Range("B2:B8")
+End Sub
+
+Private Sub FillTables(wb As Workbook)
+    ' Remove Duplicates on a table works on the whole table, whatever part
+    ' of it the range is, and the table gives up the rows it no longer
+    ' needs at its bottom as a resize does: references shaped like a part of
+    ' the table shrink with it, and a totals row moves up under the rows
+    ' kept, the rows between moving down a row. Formulas beside each table
+    ' and on Reader, and defined names, read the table every way that
+    ' tells those apart.
+    Dim lo As ListObject, ws As Worksheet, reader As Worksheet
+    Set lo = FillTable(wb, "Table", False)
+    Set ws = lo.Parent
+    Dress ws
+    Down ws, 8, "=B7|=SUM(B2:B8)|=SUM(B3:B8)|=SUM(A2:B8)|=SUM(A1:C8)|=SUM(B1:B8)|=SUM(B$2:B$8)|=SUM(A2:E8)|" & _
+        "=SUM(B6:B8)|=SUM(B4:B10)|=SUM(A8:E8)|=SUM(B8:B9)|=$B$5"
+
+    Set lo = FillTable(wb, "TableTotals", True)
+    Set ws = lo.Parent
+    Dress ws
+    ws.Range("C9").AddComment "note on the totals row"
+    ws.Range("B9").NumberFormat = "0.0"
+    ws.Range("A9:C9").FormatConditions.Add Type:=1, Operator:=5, Formula1:="1000"
+    Down ws, 8, "=B6|=B7|=B8|=B9|=SUM(B2:B8)|=SUM(B3:B8)|=SUM(A1:C8)|=SUM(B2:B9)|=SUM(A1:C9)|=SUM(B8:B9)|" & _
+        "=SUM(B7:B9)|=SUM(B6:B9)|=SUM(B9:B12)|=SUM(B8:B10)|=SUM(B4:B10)|=SUM(A8:E8)|=SUM(A6:D8)|=SUM(A9:E9)|" & _
+        "=SUM(A6:E9)|=SUM(A8:C8)|=SUM(A7:C9)|=SUM(A5:C9)"
+
+    ' Conditional formats and validation over the totals row and across
+    ' it, which the totals row takes up with it.
+    Set lo = FillTable(wb, "TableTotalsShapes", True)
+    Set ws = lo.Parent
+    ws.Range("A2:C9").FormatConditions.Add Type:=1, Operator:=5, Formula1:="100"
+    ws.Range("B9").FormatConditions.Add Type:=1, Operator:=5, Formula1:="200"
+    ws.Range("A8:C9").FormatConditions.Add Type:=1, Operator:=5, Formula1:="300"
+    ws.Range("A9:E9").FormatConditions.Add Type:=1, Operator:=5, Formula1:="400"
+    ws.Range("A1:C9").FormatConditions.Add Type:=1, Operator:=5, Formula1:="500"
+    ws.Range("A9:C9").FormatConditions.Add Type:=2, Formula1:="=$B9>0"
+    ws.Range("A2:A9").Validation.Add Type:=6, AlertStyle:=1, Operator:=8, Formula1:="9"
+    ws.Range("B1:B9").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="99"
+    ws.Range("C9").Validation.Add Type:=6, AlertStyle:=1, Operator:=8, Formula1:="20"
+
+    Set reader = Page(wb)
+    reader.Name = "Reader"
+    Down reader, 1, "=SUM(Table!B2:B8)|=Table!B7|=SUM(TableTotals!B2:B8)|=TableTotals!B9|=SUM(TableTotals!A1:C9)|" & _
+        "=TableTotals!B7"
+    wb.Names.Add Name:="TableSpan", RefersTo:="=Table!$B$2:$B$8"
+    wb.Names.Add Name:="TableGone", RefersTo:="=Table!$B$7"
+    wb.Names.Add Name:="TotalsSpan", RefersTo:="=TableTotals!$B$2:$B$8"
+    wb.Names.Add Name:="TotalsCell", RefersTo:="=TableTotals!$B$9"
+
+    ' The range in a table stands for all of it: part of its columns, one
+    ' cell, the header row handed over as data, and the totals row.
+    FillTable wb, "TableInner", False
+    FillTable wb, "TableCell", False
+    FillTable wb, "TableNoHeaderAsked", False
+    FillTable wb, "TableTotalsRow", True
+
+    ' A calculated column.
+    Set lo = FillTable(wb, "TableCalc", False)
+    lo.ListColumns.Add
+    lo.ListColumns(4).Name = "calc"
+    lo.ListColumns("calc").DataBodyRange.Formula = "=[@k]&[@n]"
+
+    ' Rows hidden by hand, and by the table's filter, one hiding the row the
+    ' totals row moves to.
+    Set lo = FillTable(wb, "TableHidden", False)
+    lo.Parent.Rows(3).Hidden = True
+    lo.Parent.Rows(6).Hidden = True
+    lo.Parent.Rows(8).Hidden = True
+    Set lo = FillTable(wb, "TableFiltered", False)
+    lo.Range.AutoFilter Field:=2, Criteria1:=">3"
+    Set lo = FillTable(wb, "TableFilteredTotals", True)
+    lo.Range.AutoFilter Field:=2, Criteria1:="<5"
+
+    ' No header row, and a row of it hidden by hand.
+    Set lo = FillTable(wb, "TableHeadless", False)
+    lo.ShowHeaders = False
+    lo.Parent.Rows(3).Hidden = True
+
+    ' Empty rows at the bottom, with no cells in them; a last row holding a
+    ' formula over a range, which a table does not take for a total.
+    Set ws = Page(wb)
+    ws.Name = "TableEmptyRows"
+    Down ws, 1, "k|a|b|a|c"
+    Down ws, 2, "n|1|2|3|4"
+    ws.ListObjects.Add(1, ws.Range("A1:B10"), , 1).Name = "TTableEmptyRows"
+    Set ws = Page(wb)
+    ws.Name = "TableLastSum"
+    Down ws, 1, "k|a|b|a|c|z"
+    Down ws, 2, "n|1|2|3|4|=SUM(B2:B5)"
+    ws.ListObjects.Add(1, ws.Range("A1:B6"), , 1).Name = "TTableLastSum"
+
+    ' A sort the table records, which keeps its condition's rows.
+    Set lo = FillTable(wb, "TableSorted", False)
+    With lo.Sort
+        .SortFields.Clear
+        .SortFields.Add Key:=lo.ListColumns("n").DataBodyRange, SortOn:=0, Order:=1
+        .Header = 1
+        .Apply
+    End With
+
+    ' Nothing to remove; and ranges running past a table, which Excel
+    ' refuses.
+    FillTable wb, "TableUnique", False
+    FillTable wb, "TableWider", False
+    FillTable wb, "TableLonger", False
+End Sub
 '''
 
-_BUILD_DUPLICATES = _DUPLICATES_TEMPLATE.replace("%COUNT%", str(len(_DUPLICATE_PAIRS))).replace(
+_BUILD_DUPLICATES =_DUPLICATES_TEMPLATE.replace("%COUNT%", str(len(_DUPLICATE_PAIRS))).replace(
     "    ' The pairs\n",
     "".join(
         f"    Pair ws, {index}, {', '.join(_vba_text(field) for field in pair)}\n"

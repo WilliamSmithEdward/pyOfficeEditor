@@ -77,6 +77,8 @@ Each layer knows the layer below it and not the layer above.
 |                 range, a table or a filter                |
 |   _duplicates   rows removed as Excel's Remove            |
 |                 Duplicates removes them                   |
+|   _tableshrink  a table giving up the rows at its bottom, |
+|                 as Excel's Resize does                    |
 |   _shapes       shapes, and the grid a form control needs |
 |   _comments     notes and threads, and the box each gets  |
 |   _pictures     images, sized as Excel sizes them         |
@@ -402,12 +404,14 @@ tests/
   test_excel_duplicates.py      removing duplicates, against the ranges
                                 Excel cleaned in duplicates_removed.xlsx
   sheet_state.py                a sheet's state, as those two compare it
+  test_excel_table_resize.py    a table giving up rows, against the
+                                resizes of table_resizes.json
   test_excel_collate.py         the collation, against what a filter and
                                 a sort answered
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               twenty-seven Excel-authored packages:
                                 three sourced, twenty-four scripted, and
-                                seven measured corpora; see its README
+                                eight measured corpora; see its README
 ```
 
 - **Always** run pytest with `-p no:randomly` to keep ordering reproducible.
@@ -422,12 +426,12 @@ tests/
   rules.
 - Richer Excel-authored fixtures come from
   `scripts/build_excel_fixtures.py`, which drives real Excel through
-  `pyvbaharness`. Tests needing them skip when they are absent. The seven
+  `pyvbaharness`. Tests needing them skip when they are absent. The eight
   measured corpora come from `scripts/measure_number_formats.py`,
   `scripts/measure_filters.py`, `scripts/measure_formulas.py`,
   `scripts/measure_text_checks.py`, `scripts/measure_date_texts.py`,
-  `scripts/measure_ignored_errors.py` and `scripts/measure_sheet_names.py`
-  the same way.
+  `scripts/measure_ignored_errors.py`, `scripts/measure_sheet_names.py`
+  and `scripts/measure_table_resize.py` the same way.
 
 ### 8.1 The fidelity gate
 

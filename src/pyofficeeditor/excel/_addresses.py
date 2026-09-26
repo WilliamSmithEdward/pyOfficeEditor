@@ -36,7 +36,7 @@ on the placement of the object it places, which
 
 from __future__ import annotations
 
-from pyofficeeditor.excel._formulas import Deletion, Shift, shift_range
+from pyofficeeditor.excel._formulas import Deletion, Remap, Shift, shift_range
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef
 
 
@@ -53,8 +53,10 @@ def shift_sqref(raw: str, shift: Shift) -> str:
     return " ".join(moved)
 
 
-def delete_sqref(raw: str, deletion: Deletion) -> str | None:
-    """Shrink every range in an ``sqref``.
+def delete_sqref(raw: str, deletion: Remap, *, stretched: bool = True) -> str | None:
+    """Shrink every range in an ``sqref``, or move it as another remap
+    does; ``stretched`` is for a validation whose formulas read no cell
+    relative to where it applies (see :meth:`Remap.moved_areas`).
 
     ``None`` when nothing survives, which means the element itself should
     go: an empty ``sqref`` is not something Excel accepts.
@@ -66,9 +68,7 @@ def delete_sqref(raw: str, deletion: Deletion) -> str | None:
         except ValueError:
             kept.append(piece)
             continue
-        survivor = deletion.moved_range(block)
-        if survivor is not None:
-            kept.append(survivor.a1)
+        kept.extend(survivor.a1 for survivor in deletion.moved_areas((block,), stretched=stretched))
     return " ".join(kept) if kept else None
 
 
@@ -81,7 +81,7 @@ def shift_ref(raw: str, shift: Shift) -> str:
     return shift_range(block, shift).a1
 
 
-def delete_ref(raw: str, deletion: Deletion) -> str | None:
+def delete_ref(raw: str, deletion: Remap) -> str | None:
     """Shrink one range, or ``None`` when it is wholly deleted."""
     try:
         block = RangeRef.parse(raw)
@@ -101,7 +101,7 @@ def shift_cell(raw: str, shift: Shift) -> str:
     return raw if moved is None else moved.a1
 
 
-def delete_cell(raw: str, deletion: Deletion) -> str | None:
+def delete_cell(raw: str, deletion: Remap) -> str | None:
     """Move one cell address, or ``None`` when its cell is deleted."""
     try:
         cell = CellRef.parse(raw)

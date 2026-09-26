@@ -42,7 +42,8 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > range's rows sort as Excel's Sort sorts them, their formulas, notes and
 > links going with them, and so do a table's and a filter's, as their
 > dropdowns sort them. Duplicate rows are removed as Excel's Remove
-> Duplicates removes them.
+> Duplicates removes them, from a range or a whole table, which then gives
+> up the rows it no longer needs.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Validation, protected ranges, sorts, scenarios and comments move

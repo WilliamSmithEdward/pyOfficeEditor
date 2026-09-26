@@ -145,9 +145,19 @@ anything trailing the file is swept into the oldest release's notes. -->
   cut back from them. The range stops at the sheet's last cell, and a
   last row holding a formula over a range is taken for a total and left
   alone, as Excel leaves it. Merged cells and an array formula the move
-  would split are refused, as Excel refuses them, and a table is refused
-  for now. Held to 106 removals Excel made, 92 of them pairs of values,
-  cell for cell once calculated.
+  would split are refused, as Excel refuses them. A range in a table
+  stands for all of it, as in Excel, its columns counted from its first,
+  and no last row taken for a total. The table then gives up the rows it
+  no longer needs as Excel's Resize gives them up. A reference shaped like
+  a part of it, such as `B2:B8` for a table over `A1:C8`, shrinks with it,
+  in formulas, names, validation and charts; a totals row moves up under
+  the rows kept, and what reads it follows; and the table's filter is
+  applied again. A range running past a table is refused, and so is a
+  table with a totals row while its filter hides rows by a criterion,
+  which Excel refuses only once it has moved the rows it keeps. Held to
+  124 removals Excel made, 92 of them pairs of values and 18 on tables,
+  cell for cell once calculated, and the resize to 313 references and
+  ranges Excel moved.
 
 - **Formulas that read another workbook calculate.** They used to keep
   the values Excel cached. Excel keeps a copy of every linked cell a

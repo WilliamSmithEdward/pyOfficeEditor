@@ -42,8 +42,9 @@ def rows(sheet: Worksheet) -> dict[int, dict[str, str]]:
 
 
 def attached(sheet: Worksheet) -> dict[str, object]:
-    """Notes and their boxes, links, validation, conditional formats,
-    merged cells, the filter and the tables, each as its ranges."""
+    """Notes and their boxes, links, validation and conditional formats
+    with their formulas, merged cells, the filter and the tables, each as
+    its ranges."""
     package = sheet.workbook.package
     boxes = [
         re.findall(r"<x:(Row|Column|Anchor)>([^<]*)</x:", package.read(name).decode("utf-8"))
@@ -54,8 +55,13 @@ def attached(sheet: Worksheet) -> dict[str, object]:
         "notes": {note.ref: note.text for note in sheet.comments},
         "note boxes": boxes,
         "links": {link.ref.a1: link.target for link in sheet.hyperlinks},
-        "validations": [[block.a1 for block in rule.ranges] for rule in sheet.data_validations],
-        "conditional formats": [[block.a1 for block in rule.ranges] for rule in sheet.conditional_formats],
+        "validations": [
+            ([block.a1 for block in rule.ranges], rule.formula1, rule.formula2) for rule in sheet.data_validations
+        ],
+        "conditional formats": [
+            ([area.a1 for area in formatting.ranges], [list(rule.formulas) for rule in formatting.rules])
+            for formatting in sheet.conditional_formats
+        ],
         "merged": [block.a1 for block in sheet.merged_ranges],
         "filter": None if filtered is None else filtered.to_xml(),
         "tables": {table.name: table_state(table) for table in sheet.tables},
