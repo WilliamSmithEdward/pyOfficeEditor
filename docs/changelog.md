@@ -383,6 +383,26 @@ anything trailing the file is swept into the oldest release's notes. -->
   cached value and was reported circular. Only the cells on the loop are
   now, and the rest calculate.
 
+- **Renaming a sheet left the 3D references naming it behind.** Renaming
+  Jan kept `Jan` in `=SUM(Jan:Mar!B3)`, renaming Mar to `Q1 End` wrote
+  `Jan:'Q1 End'!B3`, which is not a formula, and a quoted span such as
+  `'Jan 1:Mar'!` was never repointed. Measured in Excel, either end of a
+  span is repointed and a sheet in its middle leaves it alone, and a span
+  is quoted whole when either end needs quotes: `'Jan:Q1 End'!B3`, and
+  `Start:Mar!B3` once `Jan 1` is `Start`. Another workbook's sheet of the
+  same name, as in `[1]Data!A1`, was renamed too, and is left alone now.
+
+- **Sheet names were quoted where Excel does not quote them, and not
+  where it does.** Measured on 1,246 names, Excel quotes `TRUE` and
+  `FALSE`, and a name that starts as an R1C1 reference, as `R2D2` does,
+  which were written bare. It writes bare a name of letters past ASCII,
+  as `Mär`, and one starting with `LOG10`, a function's name, which were
+  quoted. A renamed sheet's name is now spelled as Excel spells it in
+  formulas, charts and defined names. A name written bare past ASCII, as
+  in `Mär!B3`, is read as the sheet it names, so inserting rows in Mär
+  moves the reference, and `ber1` in a name such as `Über1` is no longer
+  taken for a cell and moved.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added

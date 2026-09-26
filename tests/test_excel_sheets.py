@@ -8,6 +8,7 @@ open, so each is asserted separately rather than trusting a round trip.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,9 @@ from pyofficeeditor.excel.workbook import (
     RT_WORKSHEET,
     check_sheet_name,
 )
+
+#: How Excel spells sheets' names in formulas, measured.
+SHEET_NAMES = Path(__file__).parent / "fixtures" / "excel" / "sheet_names.json"
 
 
 @pytest.fixture()
@@ -119,6 +123,39 @@ class TestRenamingInsideAFormula:
 
     def test_renaming_to_itself_changes_nothing(self) -> None:
         assert rename_sheet_in_formula("Data!A1", "Data", "Data") == "Data!A1"
+
+    def test_another_workbooks_sheet_of_the_same_name_is_not_this_one(self) -> None:
+        assert rename_sheet_in_formula("[1]Data!A1+Data!A1", "Data", "Q1 Data") == "[1]Data!A1+'Q1 Data'!A1"
+        assert rename_sheet_in_formula("'[1]Data'!A1", "Data", "Q1 Data") == "'[1]Data'!A1"
+
+
+class TestAgainstExcel:
+    """``sheet_names.json`` is measured by ``scripts/measure_sheet_names.py``:
+    for each name, what Excel wrote for ``=S!B3`` and ``=SUM(S:T!B3)`` once
+    sheet S took that name, and for each rename, what a sheet's formulas
+    and a defined name read before and after it."""
+
+    def test_each_name_is_spelled_as_excel_spells_it(self) -> None:
+        corpus = json.loads(SHEET_NAMES.read_text(encoding="utf-8"))
+        wrong = [
+            name
+            for name, alone, span in corpus["quoting"]
+            if "=" + rename_sheet_in_formula("S!B3", "S", name) != alone
+            or "=" + rename_sheet_in_formula("SUM(S:T!B3)", "S", name) != span
+        ]
+        assert len(corpus["quoting"]) > 1200
+        assert wrong == []
+
+    def test_each_rename_writes_what_excel_writes(self) -> None:
+        corpus = json.loads(SHEET_NAMES.read_text(encoding="utf-8"))
+        wrong = [
+            (case["old"], case["new"], before, after)
+            for case in corpus["renames"]
+            for before, after in zip(case["entered"], case["after"], strict=True)
+            if "=" + rename_sheet_in_formula(before[1:], case["old"], case["new"]) != after
+        ]
+        assert len(corpus["renames"]) == 23
+        assert wrong == []
 
 
 class TestSchemaOrder:

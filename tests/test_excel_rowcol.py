@@ -113,6 +113,26 @@ class TestTokenizer:
         assert [(t.raw, t.sheet) for t in tokens if t.kind is TokenKind.REFERENCE] == [("B3", span)]
         assert render(tokens) == formula
 
+    @pytest.mark.parametrize(
+        ("formula", "sheet"),
+        [
+            ("M\u00e4r!B3", "M\u00e4r"),
+            ("SUM(Jan:M\u00e4r!B3)", "Jan:M\u00e4r"),
+            ("\u65e5\u672c!B3", "\u65e5\u672c"),
+        ],
+    )
+    def test_a_name_past_ascii_goes_bare(self, formula: str, sheet: str) -> None:
+        """Measured, Excel writes a name of letters past ASCII without
+        quotes, so the tokenizer has to take it for a qualifier."""
+        tokens = tokenize(formula)
+        assert [(t.raw, t.sheet) for t in tokens if t.kind is TokenKind.REFERENCE] == [("B3", sheet)]
+        assert render(tokens) == formula
+
+    def test_a_name_past_ascii_is_not_read_as_a_reference(self) -> None:
+        """A letter past ASCII continues a name, so ``ber1`` in ``\u00dcber1``
+        is not a cell."""
+        assert [t.raw for t in tokenize("\u00dcber1+B1") if t.kind is TokenKind.REFERENCE] == ["B1"]
+
     def test_a_3d_reference_is_left_alone_by_an_insert(self) -> None:
         """It reads several sheets, so the sheet its formula is on is not
         one of them, and columns inserted there do not reach it: read as

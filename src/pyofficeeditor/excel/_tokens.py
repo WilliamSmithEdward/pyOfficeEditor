@@ -60,10 +60,13 @@ _AXIS = re.compile(
     """,
     re.VERBOSE,
 )
+#: A name as a formula writes it without quotes. It may run past ASCII:
+#: measured, Excel writes ``Mär!B3`` and ``日本!B3`` bare.
+_NAME = r"[A-Za-z_\\\x80-\U0010ffff][A-Za-z0-9_.\\\x80-\U0010ffff]*"
 #: An unquoted sheet name in front of ``!``, or the span of sheets a 3D
 #: reference reads, ``Jan:Dec``, which would otherwise pass for the column
 #: range ``Jan:Dec`` followed by a bare reference.
-_BARE_SHEET = re.compile(r"[A-Za-z_\\][A-Za-z0-9_.\\]*(?::[A-Za-z_\\][A-Za-z0-9_.\\]*)?(?=!)")
+_BARE_SHEET = re.compile(rf"{_NAME}(?::{_NAME})?(?=!)")
 #: Characters that may not sit just before a reference, because a reference
 #: never continues an identifier.
 _IDENTIFIER = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.$[")
@@ -184,8 +187,13 @@ def _continues_identifier(formula: str, position: int) -> bool:
     """Whether the character before ``position`` makes this a continuation.
 
     ``LOG10``'s ``G10`` is rejected here, and so is the ``A1`` in ``MyA1``.
+    A character past ASCII continues a name as a letter does, so the
+    ``ber1`` in a name such as ``Über1`` is rejected too.
     """
-    return position > 0 and formula[position - 1] in _IDENTIFIER
+    if position == 0:
+        return False
+    previous = formula[position - 1]
+    return previous in _IDENTIFIER or not previous.isascii()
 
 
 def _end_of_quoted(formula: str, start: int, quote: str) -> int:

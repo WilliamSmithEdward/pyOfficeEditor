@@ -129,83 +129,166 @@ def _end_of_literal(formula: str, start: int, quote: str) -> int:
     return len(formula)
 
 
-#: How a sheet name is written inside a formula.  It is quoted with
-#: apostrophes when it is not a bare identifier, and an apostrophe inside it
-#: is doubled.
-_BARE_SHEET_NAME = re.compile(r"^[A-Za-z_\\][A-Za-z0-9_.\\]*$")
+#: Past ASCII, the characters Excel quotes a sheet's name for wherever they
+#: stand in it. Measured a character at a time over Latin-1, general
+#: punctuation, currency signs, letterlike symbols, the first arrows and
+#: operators, CJK punctuation and the full-width forms; every other
+#: character past ASCII reads as a letter, as every letter measured did.
+_QUOTED_ANYWHERE: tuple[tuple[int, int], ...] = (
+    (0x00A0, 0x00A0), (0x00A2, 0x00A3), (0x00A5, 0x00A6), (0x00A9, 0x00A9), (0x00AB, 0x00AC),
+    (0x00AE, 0x00AE), (0x00BB, 0x00BB), (0x2011, 0x2012), (0x2017, 0x2017), (0x201A, 0x201B),
+    (0x201E, 0x201F), (0x2022, 0x2024), (0x2031, 0x2031), (0x2034, 0x2034), (0x2036, 0x203A),
+    (0x203C, 0x2043), (0x2045, 0x2051), (0x2053, 0x205E), (0x2065, 0x2069), (0x20B6, 0x20C0),
+    (0x3018, 0x301C), (0x3030, 0x3030), (0x303D, 0x303D), (0xFF5F, 0xFF60),
+)  # fmt: skip
+#: Those it quotes a name for only when the name starts with them.
+_QUOTED_FIRST: tuple[tuple[int, int], ...] = (
+    (0x2000, 0x200F), (0x2028, 0x202F), (0x2044, 0x2044), (0x2052, 0x2052), (0x205F, 0x2064),
+    (0x206A, 0x206F), (0x20A0, 0x20B5), (0x2100, 0x2101), (0x2104, 0x2104), (0x2106, 0x2106),
+    (0x2108, 0x2108), (0x2114, 0x2114), (0x2117, 0x2118), (0x211E, 0x2120), (0x2123, 0x2123),
+    (0x2125, 0x2125), (0x2127, 0x2127), (0x2129, 0x2129), (0x212E, 0x212E), (0x213A, 0x213B),
+    (0x2140, 0x2144), (0x214A, 0x214D), (0x214F, 0x214F), (0x219A, 0x219F), (0x2201, 0x2201),
+    (0x2204, 0x2206), (0x2209, 0x220A), (0x220C, 0x220E), (0x2210, 0x2210), (0x2212, 0x2214),
+    (0x2216, 0x2219), (0x221B, 0x221C), (0x3004, 0x3004), (0x3020, 0x3020), (0x302A, 0x302F),
+    (0x3036, 0x3037), (0x303E, 0x303F),
+)  # fmt: skip
+
+#: A name made of one to three letters and a number, which may read as a
+#: cell in A1 notation.
+_A1_NAME = re.compile(r"([A-Za-z]{1,3})([0-9]+)")
+#: The highest number an R1C1 reference's row or column may carry for Excel
+#: to quote a name that starts with one: measured, a column's is the row's,
+#: not the sheet's last column.
+_R1C1_LIMIT = MAX_ROW
 
 
 def quote_sheet_name(name: str) -> str:
-    """A sheet name as a formula must spell it.
+    """A sheet name as a formula must spell it: in apostrophes, with an
+    apostrophe inside it doubled, when Excel would quote it.
 
-    Excel quotes a name that is not a bare identifier, and doubles any
-    apostrophe inside it. A name that looks like a cell reference has to be
-    quoted too, or ``=A1!B2`` would read as a reference to column A.
+    Measured in Excel, a name is quoted when it holds a character other
+    than a letter, a digit, ``_`` and ``.``, or starts with a digit or
+    ``.``; when it is ``TRUE`` or ``FALSE``; when it reads as a cell, as
+    ``A1`` and ``ZZ99`` do; and when it starts as an R1C1 reference, as
+    ``R2D2`` does. Past ASCII, a letter of any script is a letter, and some
+    symbols are quoted, as ``©`` is anywhere and ``€`` at the start.
     """
-    if _BARE_SHEET_NAME.match(name) and not _looks_like_a_reference(name):
-        return name
-    return "'" + name.replace("'", "''") + "'"
+    if _needs_quotes(name):
+        return "'" + name.replace("'", "''") + "'"
+    return name
 
 
-def _looks_like_a_reference(name: str) -> bool:
-    try:
-        CellRef.parse(name)
-    except ValueError:
+def _needs_quotes(name: str) -> bool:
+    if not name or not _may_start(name[0]) or not all(_may_follow(char) for char in name[1:]):
+        return True
+    return name.upper() in ("TRUE", "FALSE") or _reads_as_a1(name) or _starts_as_r1c1(name)
+
+
+def _may_start(char: str) -> bool:
+    if char.isascii():
+        return char.isalpha() or char in "_\\"
+    point = ord(char)
+    return not _within(point, _QUOTED_ANYWHERE) and not _within(point, _QUOTED_FIRST)
+
+
+def _may_follow(char: str) -> bool:
+    if char.isascii():
+        return char.isalnum() or char in "_.\\"
+    return not _within(ord(char), _QUOTED_ANYWHERE)
+
+
+def _within(point: int, spans: tuple[tuple[int, int], ...]) -> bool:
+    return any(low <= point <= high for low, high in spans)
+
+
+def _reads_as_a1(name: str) -> bool:
+    """Whether the whole name is a cell: ``A1`` and ``A01`` are, ``A0``,
+    ``XFE1`` and ``A1B`` are not. Measured, a name starting with ``LOG10``,
+    a function's name, never is, though ``LOG100`` would be a cell."""
+    match = _A1_NAME.fullmatch(name)
+    if match is None or name.upper().startswith("LOG10"):
         return False
-    return True
+    column = 0
+    for letter in match.group(1).upper():
+        column = column * 26 + ord(letter) - ord("A") + 1
+    return column <= MAX_COLUMN and 1 <= int(match.group(2)) <= MAX_ROW
+
+
+def _starts_as_r1c1(name: str) -> bool:
+    """Whether the name starts as an R1C1 reference, measured: ``R`` or
+    ``C`` with a number in range, whatever follows, as ``R2D2`` and ``C1X``
+    do; ``RC`` with one; or ``R``, ``C`` or ``RC`` alone. ``Rx``, ``RCX``
+    and ``R0`` do not."""
+    rest = name.upper()
+    if rest.startswith("R"):
+        number = _leading_number(rest[1:])
+        if number:
+            return 1 <= int(number) <= _R1C1_LIMIT
+        rest = rest[1:]
+        if not rest:
+            return True
+        if not rest.startswith("C"):
+            return False
+    if rest.startswith("C"):
+        number = _leading_number(rest[1:])
+        if number:
+            return 1 <= int(number) <= _R1C1_LIMIT
+        return rest == "C"
+    return False
+
+
+def _leading_number(text: str) -> str:
+    match = re.match(r"[0-9]*", text)
+    return "" if match is None else match.group()
 
 
 def rename_sheet_in_formula(formula: str, old: str, new: str) -> str:
     """``formula`` with references to one sheet repointed at another.
 
-    A sheet reference is a name followed by ``!``, and the name may be bare
-    or apostrophe-quoted. Both spellings are rewritten, and the result is
-    quoted according to the new name rather than the old one, because
-    renaming ``Data`` to ``Q1 Data`` turns a bare reference into a quoted
-    one.
+    ``old`` and ``new`` are spelled as a formula stores a name. A sheet is
+    named bare or quoted, alone or as an end of a 3D reference's span of
+    sheets, and each is repointed; a name inside a span is not, since the
+    span still runs between the same two ends. Measured in Excel, a span is
+    quoted whole when either end needs quotes, so renaming ``Mar`` to
+    ``Q1 End`` turns ``Jan:Mar!B3`` into ``'Jan:Q1 End'!B3``, and each name
+    is quoted as it needs rather than as the old one was.
 
-    Text is left alone: a string literal that happens to contain the sheet's
-    name is not a reference to it.
+    Text is left alone, and so is another workbook's sheet of the same
+    name: ``[1]Data!A1`` is not this workbook's ``Data``.
     """
     if old == new:
         return formula
-
-    replacement = quote_sheet_name(new) + "!"
-    bare = quote_sheet_name(old)
-    quoted = "'" + old.replace("'", "''") + "'"
-
-    out: list[str] = []
-    parts = _split_literals(formula)
-    index = 0
-    while index < len(parts):
-        chunk, is_literal = parts[index]
-        if is_literal:
-            # A quoted sheet name is a literal run, and it is a reference
-            # only when a '!' follows it.
-            follows = parts[index + 1][0] if index + 1 < len(parts) else ""
-            if chunk == quoted and follows.startswith("!"):
-                out.append(replacement)
-                parts[index + 1] = (follows[1:], parts[index + 1][1])
-                index += 1
-                continue
-            out.append(chunk)
-            index += 1
+    tokens = tokenize(formula)
+    changed = False
+    for index, token in enumerate(tokens):
+        if token.kind is not TokenKind.SHEET or (index and tokens[index - 1].raw.endswith("]")):
             continue
-        out.append(_rename_bare(chunk, bare, replacement))
-        index += 1
-    return "".join(out)
+        names = _qualifier_names(token.raw)
+        if names is None or old not in names:
+            continue
+        token.raw = _qualifier([new if name == old else name for name in names]) + "!"
+        changed = True
+    return render(tokens) if changed else formula
 
 
-def _rename_bare(text: str, bare: str, replacement: str) -> str:
-    """Rewrite ``Name!`` where the name is unquoted.
+def _qualifier_names(raw: str) -> list[str] | None:
+    """The names a qualifier such as ``'Jan 1:Mar'!`` gives, as stored, or
+    ``None`` for another workbook's."""
+    body = raw[:-1]
+    if len(body) >= 2 and body[0] == body[-1] == "'":
+        body = body[1:-1].replace("''", "'")
+    if "[" in body:
+        return None
+    return body.split(":")
 
-    The boundary check keeps ``MyData!A1`` from matching a rename of
-    ``Data``, which a plain substring replacement would corrupt.
-    """
-    if "!" not in text:
-        return text
-    pattern = re.compile(r"(?<![A-Za-z0-9_.'])" + re.escape(bare) + r"!")
-    return pattern.sub(replacement, text)
+
+def _qualifier(names: list[str]) -> str:
+    """Names as a qualifier spells them before its ``!``: measured, a span
+    is quoted whole when either end would be quoted alone."""
+    joined = ":".join(names)
+    if any(_needs_quotes(name) for name in names):
+        return "'" + joined.replace("'", "''") + "'"
+    return joined
 
 
 @dataclass(frozen=True)

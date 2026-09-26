@@ -345,7 +345,9 @@ tests/
   test_excel_styles.py          number formats and date classification
   test_excel_sharedstrings.py   the string table, whitespace, rich text
   test_excel_workbook.py        the Excel surface end to end
-  test_excel_sheets.py          adding, removing, renaming, reordering
+  test_excel_sheets.py          adding, removing, renaming, reordering,
+                                and names in formulas, against
+                                sheet_names.json
   test_excel_formats.py         fonts, fills, borders, alignment
   test_excel_merges.py          merged ranges and range intersection
   test_excel_tables.py          ListObjects: parts, columns, wiring
@@ -405,7 +407,7 @@ tests/
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               twenty-seven Excel-authored packages:
                                 three sourced, twenty-four scripted, and
-                                six measured corpora; see its README
+                                seven measured corpora; see its README
 ```
 
 - **Always** run pytest with `-p no:randomly` to keep ordering reproducible.
@@ -420,11 +422,12 @@ tests/
   rules.
 - Richer Excel-authored fixtures come from
   `scripts/build_excel_fixtures.py`, which drives real Excel through
-  `pyvbaharness`. Tests needing them skip when they are absent. The six
+  `pyvbaharness`. Tests needing them skip when they are absent. The seven
   measured corpora come from `scripts/measure_number_formats.py`,
   `scripts/measure_filters.py`, `scripts/measure_formulas.py`,
-  `scripts/measure_text_checks.py`, `scripts/measure_date_texts.py` and
-  `scripts/measure_ignored_errors.py` the same way.
+  `scripts/measure_text_checks.py`, `scripts/measure_date_texts.py`,
+  `scripts/measure_ignored_errors.py` and `scripts/measure_sheet_names.py`
+  the same way.
 
 ### 8.1 The fidelity gate
 
