@@ -60,8 +60,10 @@ _AXIS = re.compile(
     """,
     re.VERBOSE,
 )
-#: An unquoted sheet name in front of ``!``.
-_BARE_SHEET = re.compile(r"[A-Za-z_\\][A-Za-z0-9_.\\]*(?=!)")
+#: An unquoted sheet name in front of ``!``, or the span of sheets a 3D
+#: reference reads, ``Jan:Dec``, which would otherwise pass for the column
+#: range ``Jan:Dec`` followed by a bare reference.
+_BARE_SHEET = re.compile(r"[A-Za-z_\\][A-Za-z0-9_.\\]*(?::[A-Za-z_\\][A-Za-z0-9_.\\]*)?(?=!)")
 #: Characters that may not sit just before a reference, because a reference
 #: never continues an identifier.
 _IDENTIFIER = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.$[")

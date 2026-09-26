@@ -99,6 +99,29 @@ class TestTokenizer:
     def test_a_table_reference_is_not_a_cell_reference(self) -> None:
         assert [t for t in tokenize("SUM(Table1[Amount])") if t.kind is TokenKind.REFERENCE] == []
 
+    @pytest.mark.parametrize(
+        ("formula", "span"),
+        [
+            ("SUM(Jan:Mar!B3)", "Jan:Mar"),  # was the columns JAN to MAR
+            ("SUM(Jan:Dec!B3)", "Jan:Dec"),  # was a cell on Dec alone
+            ("SUM('Jan 1:Dec'!B3)", "Jan 1:Dec"),
+        ],
+    )
+    def test_a_3d_reference_is_qualified_by_its_span_of_sheets(self, formula: str, span: str) -> None:
+        tokens = tokenize(formula)
+        assert [t.kind for t in tokens if t.kind is not TokenKind.TEXT] == [TokenKind.SHEET, TokenKind.REFERENCE]
+        assert [(t.raw, t.sheet) for t in tokens if t.kind is TokenKind.REFERENCE] == [("B3", span)]
+        assert render(tokens) == formula
+
+    def test_a_3d_reference_is_left_alone_by_an_insert(self) -> None:
+        """It reads several sheets, so the sheet its formula is on is not
+        one of them, and columns inserted there do not reach it: read as
+        columns, ``Jan:Mar!B3`` became ``JAP:MAT!D3``."""
+        shift = Shift(columns_at=1, column_count=2)
+        assert shift_formula("SUM(Jan:Mar!B3)+B3", shift, formula_sheet="Summary", target_sheet="Summary") == (
+            "SUM(Jan:Mar!B3)+D3"
+        )
+
 
 class TestWholeAxisTokens:
     """``A:A`` and ``2:4`` are references too, and they move.

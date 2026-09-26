@@ -318,6 +318,15 @@ anything trailing the file is swept into the oldest release's notes. -->
   all three functions, 4,945 of them random ones measured only after the
   rules were found, and 35 more in the 1904 date system.
 
+- **A 3D reference was read as a column range.** In `=SUM(Jan:Mar!B3)`,
+  `Jan:Mar` passed for the columns JAN to MAR and `B3` for a cell on the
+  formula's own sheet, so inserting two columns there wrote
+  `=SUM(JAP:MAT!D3)`, and error checking compared the formula with its
+  neighbours as if it read columns beside it. In `=SUM(Jan:Dec!B3)`, whose
+  names are the wrong way round for columns, `B3` was read as a cell on
+  Dec alone. Unquoted, a span of sheets now qualifies its reference, as a
+  quoted one did.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added
