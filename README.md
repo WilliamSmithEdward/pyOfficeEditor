@@ -33,7 +33,7 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > added in eight kinds as Excel's Insert Chart writes them; their
 > references move with the cells they read, and so do pivot tables and
 > their caches, refusing the edits Excel refuses. Formulas calculate:
-> 499 of Excel's 525 functions, held to 10,958 formulas Excel
+> 500 of Excel's 525 functions, held to 10,958 formulas Excel
 > calculated and thousands more, to the last bit for all but a few, with
 > the results written into the cells as Excel's recalculation would
 > write them.

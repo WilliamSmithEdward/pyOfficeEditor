@@ -1154,6 +1154,23 @@ def test_trimrange_trims_an_array_of_its_blank_edges(book: Workbook) -> None:
     assert sheet.evaluate("TRIMRANGE(VSTACK(Z1,Z2))") == CellError("#VALUE!")
 
 
+def test_bahttext_spells_an_amount_as_excel_does(book: Workbook) -> None:
+    sheet = book["Data"]
+    # A 1 in the ones is "et" after any other digit, those before a
+    # million included; a million's multiple is spelled on its own.
+    assert sheet.evaluate("BAHTTEXT(21)") == "ยี่สิบเอ็ดบาทถ้วน"
+    assert sheet.evaluate("BAHTTEXT(1000001)") == "หนึ่งล้านเอ็ดบาทถ้วน"
+    assert sheet.evaluate("BAHTTEXT(1000001000000)") == "หนึ่งล้านเอ็ดล้านบาทถ้วน"
+    assert sheet.evaluate("BAHTTEXT(1E+100)") == "หนึ่งหมื่น" + "ล้าน" * 16 + "บาทถ้วน"
+    # Satang are rounded as ROUND rounds, and stand alone below a baht.
+    assert sheet.evaluate("BAHTTEXT(1.005)") == "หนึ่งบาทหนึ่งสตางค์"
+    assert sheet.evaluate("BAHTTEXT(0.995)") == "หนึ่งบาทถ้วน"
+    assert sheet.evaluate("BAHTTEXT(0.21)") == "ยี่สิบเอ็ดสตางค์"
+    # A negative amount keeps its minus even when it rounds to nothing.
+    assert sheet.evaluate("BAHTTEXT(-0.004)") == "ลบศูนย์บาทถ้วน"
+    assert sheet.evaluate("BAHTTEXT(Z99)") == CellError("#VALUE!")
+
+
 def test_sheet_and_sheets_given_what_is_not_a_range(book: Workbook) -> None:
     sheet = book["Data"]
     assert sheet.evaluate('SHEET("Data")') == 1

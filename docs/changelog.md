@@ -74,6 +74,12 @@ anything trailing the file is swept into the oldest release's notes. -->
   Excel puts them in, which are the wrong ones, by the rule measured for
   where each lands.
 
+- **BAHTTEXT**, an amount in Thai words, measured against Excel on 284
+  amounts and matching every one. A 1 in the ones reads et after any
+  other digit, those before a million included; satang are rounded as
+  ROUND rounds, from the fifteen significant digits the words also
+  spell; and a negative amount that rounds to nothing keeps its minus.
+
 - **A function passed by name, and optional LAMBDA parameters.** A file
   writes `=BYROW(A1:B9,SUM)` as `_xleta.SUM`, and a LAMBDA's `[y]` as
   `_xlop.y`; both now calculate, ISOMITTED telling an optional parameter

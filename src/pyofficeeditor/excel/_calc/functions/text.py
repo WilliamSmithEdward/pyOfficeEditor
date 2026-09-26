@@ -16,7 +16,7 @@ from decimal import ROUND_HALF_UP
 from urllib.parse import quote
 
 from pyofficeeditor.excel._calc.evaluator import Context
-from pyofficeeditor.excel._calc.functions.arithmetic import rounded
+from pyofficeeditor.excel._calc.functions.arithmetic import fifteen, rounded
 from pyofficeeditor.excel._calc.functions.common import matrix
 from pyofficeeditor.excel._calc.registry import A, R, V, function
 from pyofficeeditor.excel._calc.values import (
@@ -388,6 +388,58 @@ def FIXED(context: Context, number: Scalar, decimals: Scalar | None = None, no_c
     grouping = not (no_commas is not None and context.logical(no_commas))
     value = rounded(value, places, ROUND_HALF_UP)
     return format_value(value, _fixed_code(max(places, 0), grouping), epoch_1904=context.epoch_1904)
+
+
+#: Thai digits, zero to nine, and the places within a million: ones, tens
+#: (sip), hundreds (roi), thousands (phan), ten thousands (muen) and hundred
+#: thousands (saen).
+_THAI_DIGITS = ("ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า")
+_THAI_PLACES = ("", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน")
+
+
+def _thai(number: int, *, after: bool = False) -> str:
+    """A whole number in Thai words, millions (lan) spelled on their own
+    and then the rest. A 1 in the tens is sip alone and a 2 there yi sip;
+    a 1 in the ones is et after any other digit, those before the million
+    included, as ``after`` says."""
+    if number >= 1_000_000:
+        return _thai(number // 1_000_000) + "ล้าน" + _thai(number % 1_000_000, after=True)
+    words: list[str] = []
+    digits = str(number)
+    for place, digit in zip(range(len(digits) - 1, -1, -1), map(int, digits), strict=True):
+        if digit == 0:
+            continue
+        if place == 1:
+            words.append("สิบ" if digit == 1 else "ยี่สิบ" if digit == 2 else _THAI_DIGITS[digit] + "สิบ")
+        elif place == 0 and digit == 1 and (after or number > 9):
+            words.append("เอ็ด")
+        else:
+            words.append(_THAI_DIGITS[digit] + _THAI_PLACES[place])
+    return "".join(words)
+
+
+@function("BAHTTEXT", V)
+def BAHTTEXT(context: Context, number: Scalar) -> Value:
+    """An amount in Thai words, baht and satang, a satang a hundredth, or
+    baht and "exactly" (thuan) when there are none; a negative amount
+    starts with "minus" (lop).
+
+    Measured: the satang are rounded as ROUND rounds, from the fifteen
+    significant digits that are also what the words spell, so 1.005 is one
+    baht one satang and 1E+100 ten thousand, then million sixteen times.
+    A negative amount that rounds to nothing keeps its minus, and a blank
+    cell is ``#VALUE!``.
+    """
+    if isinstance(number, Empty):
+        return VALUE
+    value = context.number(number)
+    amount = fifteen(abs(rounded(value, 2, ROUND_HALF_UP)))
+    baht = int(amount)
+    satang = int((amount - baht) * 100)
+    words = "ลบ" if value < 0 else ""
+    if baht or not satang:
+        words += (_thai(baht) or _THAI_DIGITS[0]) + "บาท"
+    return words + (_thai(satang) + "สตางค์" if satang else "ถ้วน")
 
 
 @function("ASC", V)
