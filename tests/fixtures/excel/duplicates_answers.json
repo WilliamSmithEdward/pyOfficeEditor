@@ -1,0 +1,745 @@
+{
+  "ArrayMoves!A1:C5": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "ArrayRemoved!A1:C5": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "ArrayRows!A1:C4": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": "You can't change part of an array."
+  },
+  "ArrayStays!A1:C5": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "EmptyBelow!A1:B12": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Hidden!A1:B7": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Keys!A1:C7": {
+    "columns": [
+      1,
+      2
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Merged!A1:B4": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": "To do this, all the merged cells need to be the same size."
+  },
+  "Moves!A1:C8": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "NoHeader!A1:B5": {
+    "columns": [
+      1
+    ],
+    "header": false,
+    "refused": ""
+  },
+  "NotTotal!A1:C5": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A101:B103": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A105:B107": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A109:B111": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A113:B115": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A117:B119": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A121:B123": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A125:B127": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A129:B131": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A133:B135": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A137:B139": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A13:B15": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A141:B143": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A145:B147": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A149:B151": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A153:B155": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A157:B159": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A161:B163": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A165:B167": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A169:B171": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A173:B175": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A177:B179": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A17:B19": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A181:B183": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A185:B187": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A189:B191": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A193:B195": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A197:B199": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A1:B3": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A201:B203": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A205:B207": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A209:B211": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A213:B215": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A217:B219": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A21:B23": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A221:B223": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A225:B227": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A229:B231": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A233:B235": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A237:B239": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A241:B243": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A245:B247": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A249:B251": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A253:B255": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A257:B259": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A25:B27": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A261:B263": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A265:B267": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A269:B271": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A273:B275": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A277:B279": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A281:B283": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A285:B287": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A289:B291": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A293:B295": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A297:B299": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A29:B31": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A301:B303": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A305:B307": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A309:B311": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A313:B315": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A317:B319": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A321:B323": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A325:B327": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A329:B331": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A333:B335": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A337:B339": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A33:B35": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A341:B343": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A345:B347": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A349:B351": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A353:B355": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A357:B359": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A361:B363": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A365:B367": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A37:B39": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A41:B43": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A45:B47": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A49:B51": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A53:B55": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A57:B59": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A5:B7": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A61:B63": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A65:B67": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A69:B71": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A73:B75": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A77:B79": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A81:B83": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A85:B87": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A89:B91": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A93:B95": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A97:B99": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Pairs!A9:B11": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Partial!A1:C7": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "Total!A1:C5": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  },
+  "TotalAway!A1:C5": {
+    "columns": [
+      1
+    ],
+    "header": true,
+    "refused": ""
+  }
+}

@@ -16,15 +16,14 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+import sheet_state
 
-from pyofficeeditor.excel import CellValue, SortKey, Table, Workbook, Worksheet
+from pyofficeeditor.excel import SortKey, Workbook, Worksheet
 from pyofficeeditor.excel._formulas import sorted_formula
-from pyofficeeditor.excel._rowcol import RT_VML, related_parts
 
 FIXTURES = Path(__file__).parent / "fixtures" / "excel"
 WORKBOOK = FIXTURES / "sorts.xlsx"
@@ -99,76 +98,17 @@ def by_excel() -> Workbook:
     return Workbook.from_bytes(SORTED.read_bytes())
 
 
-#: Row attributes Excel works out again whenever it saves, as hints for
-#: drawing: which columns hold cells, and the descent of the row's font.
-_ROW_HINTS = frozenset({"r", "spans", "x14ac:dyDescent"})
-
-
-def _cells(sheet: Worksheet) -> dict[str, tuple[str | None, CellValue, str | None]]:
-    return {
-        reference.a1: (sheet.get_formula(reference), sheet.get_value(reference), element.get("s"))
-        for reference, element in sheet.cell_elements()
-    }
-
-
-def _rows(sheet: Worksheet) -> dict[int, dict[str, str]]:
-    """Each row's own attributes: its height, style, and whether it is
-    hidden. A row with no cell and nothing of its own is left out, as Excel
-    leaves it out of the file."""
-    found: dict[int, dict[str, str]] = {}
-    for number, row in sheet.rows_by_number().items():
-        own = {name: value for name, value in row.attributes.items() if name not in _ROW_HINTS}
-        if own or next(row.children_named("c"), None) is not None:
-            found[number] = own
-    return found
-
-
-def _attached(sheet: Worksheet) -> dict[str, object]:
-    package = sheet.workbook.package
-    boxes = [
-        re.findall(r"<x:(Row|Column|Anchor)>([^<]*)</x:", package.read(name).decode("utf-8"))
-        for name in related_parts(sheet, RT_VML)
-    ]
-    filtered = sheet.document.root.child("autoFilter")
-    return {
-        "notes": {note.ref: note.text for note in sheet.comments},
-        "note boxes": boxes,
-        "links": {link.ref.a1: link.target for link in sheet.hyperlinks},
-        "validations": [[block.a1 for block in rule.ranges] for rule in sheet.data_validations],
-        "conditional formats": [[block.a1 for block in rule.ranges] for rule in sheet.conditional_formats],
-        "merged": [block.a1 for block in sheet.merged_ranges],
-        "filter": None if filtered is None else filtered.to_xml(),
-        "tables": {table.name: _table_state(table) for table in sheet.tables},
-    }
-
-
-def _table_state(table: Table) -> tuple[str, str | None, str | None]:
-    """Where a table is, its filter and the sort it records."""
-    root = table.document.root
-    filtered, state = root.child("autoFilter"), root.child("sortState")
-    return (
-        table.ref.a1,
-        None if filtered is None else filtered.to_xml(),
-        None if state is None else state.to_xml(),
-    )
-
-
-def _sort_state(sheet: Worksheet) -> str | None:
-    state = sheet.document.root.child("sortState")
-    return None if state is None else state.to_xml()
-
-
 @needs_workbook
 @pytest.mark.parametrize("name", sorted(SORTS))
 def test_a_sort_leaves_the_sheet_as_excel_leaves_it(name: str, by_library: Workbook, by_excel: Workbook) -> None:
     mine, excel = by_library[name], by_excel[name]
-    assert _cells(mine) == _cells(excel)
-    assert _rows(mine) == _rows(excel)
-    assert _attached(mine) == _attached(excel)
+    assert sheet_state.cells(mine) == sheet_state.cells(excel)
+    assert sheet_state.rows(mine) == sheet_state.rows(excel)
+    assert sheet_state.attached(mine) == sheet_state.attached(excel)
     # Excel keeps the settings of a sort it refused, as the dialog left
     # them; the library changes nothing when it refuses one.
     if not SORTS[name].refused:
-        assert _sort_state(mine) == _sort_state(excel)
+        assert sheet_state.sort_state(mine) == sheet_state.sort_state(excel)
 
 
 @needs_workbook
@@ -266,7 +206,7 @@ def test_a_sort_is_saved(sheet: Worksheet) -> None:
     sheet.sort("A1:B4", SortKey("A", descending=True), header=True, match_case=True)
     reopened = Workbook.from_bytes(sheet.workbook.to_bytes()).sheets[0]
     assert [reopened[f"A{row}"].value for row in range(2, 5)] == ["c", "b", "a"]
-    assert _sort_state(reopened) == (
+    assert sheet_state.sort_state(reopened) == (
         '<sortState caseSensitive="1" ref="A2:B4" '
         'xmlns:xlrd2="http://schemas.microsoft.com/office/spreadsheetml/2017/richdata2">'
         '<sortCondition descending="1" ref="A2:A4"/></sortState>'

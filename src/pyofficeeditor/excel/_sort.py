@@ -180,26 +180,39 @@ def _arrange(
 ) -> None:
     """Put the shown rows of ``data`` in order, refusing what Excel refuses
     in ``block``, the range the sort was asked over."""
-    _refuse(sheet, block)
-    elements = sheet.rows_by_number()
+    check_movable(sheet, block)
     # A row past the last that holds a cell is blank in every key, so it
     # sorts after the rest in its place and stays there.
     rows = [row for row in range(data.top, min(data.bottom, sheet.max_row) + 1) if not sheet.row_hidden(row)]
+    values = row_values(sheet, rows, columns)
+    permutation = order(values, [key.descending for key in keys], match_case=match_case)
+    move_rows(sheet, {rows[source]: rows[target] for target, source in enumerate(permutation) if source != target}, data)
+
+
+def row_values(sheet: Worksheet, rows: Sequence[int], columns: Sequence[int]) -> list[list[CellValue]]:
+    """Each row's values in ``columns``, raw, as a sort compares them."""
+    elements = sheet.rows_by_number()
     strings = sheet.workbook.shared_strings
     values: list[list[CellValue]] = []
     for row in rows:
         cells = _cells_by_column(elements.get(row))
         values.append([_raw(cells.get(column), strings) for column in columns])
-    permutation = order(values, [key.descending for key in keys], match_case=match_case)
-    moves = {rows[source]: rows[target] for target, source in enumerate(permutation) if source != target}
-    if moves:
-        _unshare(sheet, moves, data)
-        _move_cells(sheet, moves, data)
-        _move_attached(sheet, moves, data)
-        sheet.workbook.mark_values_changed()
+    return values
 
 
-def _refuse(sheet: Worksheet, block: RangeRef) -> None:
+def move_rows(sheet: Worksheet, moves: dict[int, int], block: RangeRef) -> None:
+    """Move the cells of ``block``'s rows as ``moves`` says, each row to its
+    new place, with their formulas, notes, threads and links, as Excel's
+    Sort moves them. ``moves`` is a permutation of the rows it names."""
+    if not moves:
+        return
+    _unshare(sheet, moves, block)
+    _move_cells(sheet, moves, block)
+    _move_attached(sheet, moves, block)
+    sheet.workbook.mark_values_changed()
+
+
+def check_movable(sheet: Worksheet, block: RangeRef) -> None:
     """Measured: Excel refuses to sort merged cells, or to split an array
     formula, and moves nothing."""
     for merged in sheet.merged_ranges:
@@ -412,4 +425,17 @@ def _record(parent: Element, state: Element, child_order: tuple[str, ...]) -> No
     insert_in_schema_order(parent, state, child_order)
 
 
-__all__ = ["MAX_SORT_KEYS", "Rank", "SortKey", "order", "rank", "sort_filter", "sort_keys", "sort_rows", "sort_table"]
+__all__ = [
+    "MAX_SORT_KEYS",
+    "Rank",
+    "SortKey",
+    "check_movable",
+    "move_rows",
+    "order",
+    "rank",
+    "row_values",
+    "sort_filter",
+    "sort_keys",
+    "sort_rows",
+    "sort_table",
+]

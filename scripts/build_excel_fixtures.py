@@ -2441,6 +2441,320 @@ End Sub
 '''
 
 
+#: Pairs of values Remove Duplicates takes for one or tells apart, each
+#: written as a formula with a number format: the first, its format, the
+#: second, its format. "~" leaves a cell blank, and "@after" formats the
+#: cell as text once its value is in.
+_DUPLICATE_PAIRS: list[tuple[str, str, str, str]] = [
+    # Numbers: the value and the text shown both count.
+    ("1", "", "1", ""),
+    ("1", "", "=1+2^-52", ""),
+    ("0.1", "", "=0.3-0.2", ""),
+    ("1", "", "1", "0.00"),
+    ("43845", "m/d/yyyy", "43845", ""),
+    ("43845", "m/d/yyyy", "43845", "d-mmm-yy"),
+    ("1.23456789012345", "", "1.23456789012346", ""),
+    ("12345678901", "", "12345678902", ""),
+    ("123456789012", "", "123456789013", ""),
+    ("1.5", "0", "2", ""),
+    ("2", "0", "2", ""),
+    ("1.5", "0", "1.5", "0.0"),
+    ("1E+20", "", "100000000000000000000", ""),
+    ("0.5", "0%", "0.5", ""),
+    ("0.5", "0%", "0.5", "0%"),
+    ("0.5", "0%", "0.5", "0.0%"),
+    ("43845", "m/d/yyyy", "43845.5", "m/d/yyyy"),
+    ("0.5", "h:mm", "0.5000001", "h:mm"),
+    ("1", "", "1", "@after"),
+    ("1", "0", "1", ""),
+    ("-1", "0;0", "1", ""),
+    ("-1", "0;0", "-1", ""),
+    ("1234", "#,##0", "1234", "0"),
+    ("1234", '"a"0', "1234", '"A"0'),
+    ("=1", "", "1", ""),
+    ("0", "", "=0*-1", ""),
+    # Numbers against text and logicals.
+    ("1", "", '="1"', ""),
+    ("1", "", "'1", ""),
+    ("1", "", "1", "@"),
+    ("1", "", "TRUE", ""),
+    ("0", "", "FALSE", ""),
+    ("'1/15/2020", "", "43845", "m/d/yyyy"),
+    ("'43845.00", "", "43845", "0.00"),
+    # Text, compared as a filter compares it.
+    ("a", "", "A", ""),
+    ("a", "", '="a"', ""),
+    ("'x", "", '="X"', ""),
+    ("'stra\u00dfe", "", "'strasse", ""),
+    ("'stra\u00dfe", "", "'STRASSE", ""),
+    ("'\u00e9", "", "'e", ""),
+    ("'a-b", "", "'ab", ""),
+    ("'co-op", "", "'coop", ""),
+    ("'a ", "", "'a", ""),
+    ("'\uff21\uff22\uff23", "", "'ABC", ""),
+    ("'1.0", "", "'1", ""),
+    ("'\u00e6", "", "'ae", ""),
+    ("'\u00c6", "", "'AE", ""),
+    ("'\u0153uvre", "", "'oeuvre", ""),
+    ("'\u01c5", "", "'d\u017e", ""),
+    ("'\ufb01", "", "'fi", ""),
+    ("'a\u00adb", "", "'ab", ""),
+    ("'a\u200bb", "", "'ab", ""),
+    ("'a'b", "", "'ab", ""),
+    ("'a\u2013b", "", "'a-b", ""),
+    ("'\u00e1", "", "'a\u0301", ""),
+    ("'\u03a3", "", "'\u03c2", ""),
+    ("'\u03c3", "", "'\u03c2", ""),
+    ("'\u0130", "", "'i", ""),
+    ("'\u0131", "", "'I", ""),
+    ("'\u3042", "", "'\u30a2", ""),
+    ("'\uff11", "", "'1", ""),
+    ("'\u00b2", "", "'2", ""),
+    ("'\u2160", "", "'I", ""),
+    ("'\u00bd", "", "'1/2", ""),
+    ("'\u00ff", "", "'\u0178", ""),
+    ("'\u01c4", "", "'\u01c6", ""),
+    ("'a b", "", "'a\u00a0b", ""),
+    ("'a\tb", "", "'a b", ""),
+    ("'ss", "", "'\u00df", ""),
+    ("'SS", "", "'\u1e9e", ""),
+    ("'\u00f6", "", "'oe", ""),
+    ("'\u00e5", "", "'aa", ""),
+    ("'\u00f8", "", "'o", ""),
+    ("'\u0111", "", "'d", ""),
+    ("'\u0142", "", "'l", ""),
+    ("'a", '@"!"', "'a", ""),
+    ("'a", '@"!"', "'a", '@"!"'),
+    ("'a", '@" "', "'a ", ""),
+    # Logicals are their text.
+    ("TRUE", "", "'TRUE", ""),
+    ("TRUE", "", "'true", ""),
+    ("FALSE", "", "'FALSE", ""),
+    ("TRUE", "", "TRUE", ""),
+    ("TRUE", "0.00", "TRUE", ""),
+    # Errors, blanks and empty text.
+    ("#N/A", "", "'#N/A", ""),
+    ("#N/A", "", "=NA()", ""),
+    ("#N/A", "", "#DIV/0!", ""),
+    ("=1/0", "", "#DIV/0!", ""),
+    ("~", "", "~", ""),
+    ("~", "", '=""', ""),
+    ('=""', "", '=""', ""),
+    ("~", "", "' ", ""),
+    ("~", "", "0", ""),
+    ("~", "", "'", ""),
+]
+
+
+def _vba_text(text: str) -> str:
+    """``text`` as a VBA expression: VBA source holds no character past
+    ASCII, so each of those is written by its code."""
+    parts: list[str] = []
+    run = ""
+    for char in text:
+        if 32 <= ord(char) < 127:
+            run += '""' if char == '"' else char
+            continue
+        if run:
+            parts.append(f'"{run}"')
+            run = ""
+        parts.append(f"ChrW({ord(char)})")
+    if run or not parts:
+        parts.append(f'"{run}"')
+    return " & ".join(parts)
+
+
+#: Remove Duplicates as Excel does it. Sheet Pairs holds each pair above in
+#: a range of its own, a header, the two values in column A and a marker
+#: beside each, so a duplicate shows by its marker going. The other sheets
+#: are one each for what else was measured: keys over two columns with
+#: cells outside the range and formulas reading into it; what moves with a
+#: kept row and what the cleared rows lose, a note among what they keep;
+#: validation and conditional formats cut back; no header; hidden rows;
+#: array formulas; a last row taken for a total, and one that is not; a
+#: range running past the data; and the merged cells and arrays Excel
+#: refuses. The workbook is saved as it stands, then each range's
+#: duplicates removed and the workbook saved again as
+#: ``duplicates_removed.xlsx``, which the library's own removal is held to.
+#: The reply is one line per range: the sheet, range, columns compared,
+#: header flag, and the error Excel refused it with, if it did.
+_DUPLICATES_TEMPLATE = r'''
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook, ws As Worksheet, out As String, i As Long
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Pairs"
+    FillPairs ws
+    FillKeys Page(wb)
+    FillMoves Page(wb)
+    FillPartial Page(wb)
+    FillRows Page(wb), "NoHeader", "a|b|a|c|b", "1|2|3|4|5"
+    FillRows Page(wb), "Hidden", "k|a|b|a|c|b|a", "n|1|2|3|4|5|6"
+    wb.Worksheets("Hidden").Rows(3).Hidden = True
+    wb.Worksheets("Hidden").Rows(5).Hidden = True
+    FillRows Page(wb), "Merged", "k|a|a|b", "n|1|2|3"
+    wb.Worksheets("Merged").Range("B3:C3").Merge
+    FillRows Page(wb), "ArrayRows", "k|a|a|b", "n|1|2|3"
+    wb.Worksheets("ArrayRows").Range("C2:C3").FormulaArray = "=B2:B3*2"
+    FillRows Page(wb), "ArrayStays", "k|a|a|b|c", "n|1|2|3|4"
+    wb.Worksheets("ArrayStays").Range("C2").FormulaArray = "=SUM(B2:B5*1)"
+    FillRows Page(wb), "ArrayRemoved", "k|a|a|b|c", "n|1|2|3|4"
+    wb.Worksheets("ArrayRemoved").Range("C3").FormulaArray = "=SUM(B2:B5*1)"
+    FillRows Page(wb), "ArrayMoves", "k|a|a|b|c", "n|1|2|3|4"
+    wb.Worksheets("ArrayMoves").Range("C4").FormulaArray = "=SUM(B2:B5*1)"
+    FillRows Page(wb), "Total", "k|a|a|b|c", "n|1|2|3|4"
+    wb.Worksheets("Total").Range("C5").Formula = "=SUM(B2:B5)"
+    FillRows Page(wb), "TotalAway", "k|a|a|b|c", "n|1|2|3|4"
+    wb.Worksheets("TotalAway").Range("C5").Formula = "=SUM(D1:D2)"
+    FillRows Page(wb), "NotTotal", "k|a|a|b|c", "n|1|2|3|4"
+    wb.Worksheets("NotTotal").Range("C5").Formula = "=B5*2"
+    FillRows Page(wb), "EmptyBelow", "k|a|b|a|c|b", "n|1|2|3|4|5"
+    wb.Worksheets("EmptyBelow").Range("B2:B12").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="9"
+    wb.Worksheets("EmptyBelow").Range("A11").Interior.Color = RGB(0, 200, 0)
+    wb.Worksheets(1).Activate
+    Application.DisplayAlerts = False
+    wb.RemovePersonalInformation = True
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    For i = 0 To %COUNT% - 1
+        out = out & Dedupe(wb, "Pairs", "A" & (1 + 4 * i) & ":B" & (3 + 4 * i), "1", True)
+    Next i
+    out = out & Dedupe(wb, "Keys", "A1:C7", "1,2", True)
+    out = out & Dedupe(wb, "Moves", "A1:C8", "1", True)
+    out = out & Dedupe(wb, "Partial", "A1:C7", "1", True)
+    out = out & Dedupe(wb, "NoHeader", "A1:B5", "1", False)
+    out = out & Dedupe(wb, "Hidden", "A1:B7", "1", True)
+    out = out & Dedupe(wb, "Merged", "A1:B4", "1", True)
+    out = out & Dedupe(wb, "ArrayRows", "A1:C4", "1", True)
+    out = out & Dedupe(wb, "ArrayStays", "A1:C5", "1", True)
+    out = out & Dedupe(wb, "ArrayRemoved", "A1:C5", "1", True)
+    out = out & Dedupe(wb, "ArrayMoves", "A1:C5", "1", True)
+    out = out & Dedupe(wb, "Total", "A1:C5", "1", True)
+    out = out & Dedupe(wb, "TotalAway", "A1:C5", "1", True)
+    out = out & Dedupe(wb, "NotTotal", "A1:C5", "1", True)
+    out = out & Dedupe(wb, "EmptyBelow", "A1:B12", "1", True)
+    wb.SaveAs Filename:=Replace(Target, ".xlsx", "_removed.xlsx"), FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+
+Private Function Page(wb As Workbook) As Worksheet
+    Set Page = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+End Function
+
+Private Function Dedupe(wb As Workbook, ByVal Name As String, ByVal Area As String, ByVal Columns As String, _
+                        ByVal Header As Boolean) As String
+    Dim parts() As String, compared() As Variant, i As Long
+    parts = Split(Columns, ",")
+    ReDim compared(0 To UBound(parts))
+    For i = 0 To UBound(parts)
+        compared(i) = CLng(parts(i))
+    Next i
+    Dedupe = Name & "|" & Area & "|" & Columns & "|" & IIf(Header, "1", "0") & "|"
+    On Error GoTo Refused
+    ' The parentheses hand over the array itself, which RemoveDuplicates
+    ' needs; without them it refuses a Variant.
+    wb.Worksheets(Name).Range(Area).RemoveDuplicates Columns:=(compared), Header:=IIf(Header, 1, 2)
+    Dedupe = Dedupe & vbLf
+    Exit Function
+Refused:
+    Dedupe = Dedupe & Err.Description & vbLf
+End Function
+
+Private Sub Down(ws As Worksheet, ByVal col As Long, ByVal texts As String)
+    Dim parts() As String, i As Long
+    parts = Split(texts, "|")
+    For i = 0 To UBound(parts)
+        If parts(i) <> "~" Then ws.Cells(i + 1, col).Formula = parts(i)
+    Next i
+End Sub
+
+Private Sub FillRows(ws As Worksheet, ByVal Name As String, ByVal Keys As String, ByVal Numbers As String)
+    ws.Name = Name
+    Down ws, 1, Keys
+    Down ws, 2, Numbers
+End Sub
+
+Private Sub Pair(ws As Worksheet, ByVal i As Long, ByVal First As String, ByVal FirstFormat As String, _
+                 ByVal Second As String, ByVal SecondFormat As String)
+    Dim top As Long
+    top = 1 + 4 * i
+    ws.Cells(top, 1).Value = "v"
+    ws.Cells(top, 2).Value = "m"
+    If FirstFormat <> "" Then ws.Cells(top + 1, 1).NumberFormat = FirstFormat
+    If SecondFormat <> "" And SecondFormat <> "@after" Then ws.Cells(top + 2, 1).NumberFormat = SecondFormat
+    If First <> "~" Then ws.Cells(top + 1, 1).Formula = First
+    If Second <> "~" Then ws.Cells(top + 2, 1).Formula = Second
+    If SecondFormat = "@after" Then ws.Cells(top + 2, 1).NumberFormat = "@"
+    ws.Cells(top + 1, 2).Value = "first"
+    ws.Cells(top + 2, 2).Value = "second"
+End Sub
+
+Private Sub FillPairs(ws As Worksheet)
+    ' The pairs
+End Sub
+
+Private Sub FillKeys(ws As Worksheet)
+    ' Two columns compared, one beside them carried along, one outside the
+    ' range left alone, and formulas below reading into the range.
+    ws.Name = "Keys"
+    Down ws, 1, "k|x|x|y|x|y|z"
+    Down ws, 2, "n|1|2|1|1|1|3"
+    Down ws, 3, "c|c1|c2|c3|c4|c5|c6"
+    Down ws, 5, "out|o1|o2|o3|o4|o5|o6"
+    ws.Range("A10").Formula = "=A5&B5&C5"
+    ws.Range("A11").Formula = "=SUM(B2:B7)"
+    ws.Range("E10").Formula = "=COUNTA(A2:A7)"
+End Sub
+
+Private Sub FillMoves(ws As Worksheet)
+    ' The rows kept are 2, 4, 6 and 8, moving to 2 to 5; 6 to 8 are cleared.
+    ' Formulas, fills, notes and links go with their rows; validation and
+    ' conditional formats stay, and those in the cleared rows go, but a
+    ' note on a row removed stays with it.
+    Dim r As Long
+    ws.Name = "Moves"
+    Down ws, 1, "k|a|a|b|a|c|b|d"
+    For r = 2 To 8
+        ws.Cells(r, 2).Formula = "=ROW()&A" & r
+        ws.Cells(r, 3).Value = r * 10
+        ws.Cells(r, 3).Interior.Color = RGB(r * 30, 0, 0)
+        ws.Rows(r).RowHeight = 12 + r
+    Next r
+    ws.Range("B1:C1").Value = Array("f", "fmt")
+    ws.Range("C4").AddComment "note on a kept row"
+    ws.Range("C5").AddComment "note on a removed row"
+    ws.Hyperlinks.Add ws.Range("A6"), "https://example.com/kept"
+    ws.Hyperlinks.Add ws.Range("A7"), "https://example.com/removed"
+    ws.Range("C3").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="1", Formula2:="9"
+    ws.Range("C8").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="1", Formula2:="9"
+    ws.Range("A5").FormatConditions.Add Type:=1, Operator:=3, Formula1:="=""a"""
+    ws.Range("A7").FormatConditions.Add Type:=1, Operator:=3, Formula1:="=""b"""
+    ws.Range("A12").Formula = "=C3"
+End Sub
+
+Private Sub FillPartial(ws As Worksheet)
+    ' Two rows go, so A6:C7 is cleared, and each rule runs into it.
+    ws.Name = "Partial"
+    Down ws, 1, "k|a|b|a|c|b|d"
+    Down ws, 2, "n|1|2|3|4|5|6"
+    Down ws, 3, "m|m1|m2|m3|m4|m5|m6"
+    ws.Range("C2:D7").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="9"
+    ws.Range("B5:B7").Validation.Add Type:=2, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="9"
+    ws.Range("A7,A9").Validation.Add Type:=3, AlertStyle:=1, Operator:=1, Formula1:="x,y"
+    ws.Range("A4:A7").FormatConditions.Add Type:=1, Operator:=3, Formula1:="=""a"""
+    ws.Range("A2:E7").FormatConditions.Add Type:=1, Operator:=5, Formula1:="100"
+End Sub
+'''
+
+_BUILD_DUPLICATES = _DUPLICATES_TEMPLATE.replace("%COUNT%", str(len(_DUPLICATE_PAIRS))).replace(
+    "    ' The pairs\n",
+    "".join(
+        f"    Pair ws, {index}, {', '.join(_vba_text(field) for field in pair)}\n"
+        for index, pair in enumerate(_DUPLICATE_PAIRS)
+    ),
+)
+
+
 #: What a measured fixture's reply turns into: an entry per thing measured.
 Answers = dict[str, dict[str, object]]
 
@@ -2503,6 +2817,23 @@ def error_check_answers(reply: str) -> Answers:
             continue
         cell, flags = line.split("\t")
         answers[cell] = {"rules": [rule for rule, flag in zip(_ERROR_RULES, flags, strict=True) if flag == "1"]}
+    return answers
+
+
+def duplicate_answers(reply: str) -> Answers:
+    """One line per range, named ``Sheet!A1:B3``: the columns compared,
+    counted from the range's first, whether its first row is a header, and
+    the error Excel refused it with, if it did."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        sheet, area, columns, header, refused = line.split("|", 4)
+        answers[f"{sheet}!{area}"] = {
+            "columns": [int(column) for column in columns.split(",")],
+            "header": header == "1",
+            "refused": refused,
+        }
     return answers
 
 
@@ -2854,12 +3185,13 @@ def main() -> int:
         ("chartkinds.xlsx", _BUILD_CHART_KINDS, chart_kind_answers),
         ("errorchecks.xlsx", _BUILD_ERROR_CHECKS, error_check_answers),
         ("sorts.xlsx", _BUILD_SORTS, sort_answers),
+        ("duplicates.xlsx", _BUILD_DUPLICATES, duplicate_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]
     everything += [f"{Path(name).stem}_answers.json" for name, _, _ in measured]
-    # The sort recipe saves the workbook again once Excel has sorted it.
-    everything.append("sorts_sorted.xlsx")
+    # These recipes save the workbook again once Excel has changed it.
+    everything += ["sorts_sorted.xlsx", "duplicates_removed.xlsx"]
     if not force and all((FIXTURES / name).exists() for name in everything):
         print("every fixture is already there; nothing to do (pass --force to rebuild)")
         return 0

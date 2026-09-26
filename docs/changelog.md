@@ -131,6 +131,24 @@ anything trailing the file is swept into the oldest release's notes. -->
   measured in Excel, three of them refused, cell for cell once
   calculated.
 
+- **Removing duplicates.** `Worksheet.remove_duplicates(cells, columns,
+  header=)` removes the rows that repeat an earlier row in the columns
+  named, every column when none are, as Excel's Remove Duplicates does,
+  and reports how many went. Measured, text compares as a filter compares
+  it, case aside; a number matches only the same number shown the same,
+  so `2` in a whole-number format matches `2` but `1` does not match `1`
+  shown `1.00`, nor `0.1` match `0.3-0.2`, and never text; a logical
+  matches its text; an error matches the same error, and a blank only a
+  blank. The first of each set of rows stays, hidden rows among them. The
+  rows kept move up as a sort moves rows, and the rows removed are cleared
+  below them of all but their notes, validation and conditional formats
+  cut back from them. The range stops at the sheet's last cell, and a
+  last row holding a formula over a range is taken for a total and left
+  alone, as Excel leaves it. Merged cells and an array formula the move
+  would split are refused, as Excel refuses them, and a table is refused
+  for now. Held to 106 removals Excel made, 92 of them pairs of values,
+  cell for cell once calculated.
+
 - **Formulas that read another workbook calculate.** They used to keep
   the values Excel cached. Excel keeps a copy of every linked cell a
   formula read, in the link's own part, and calculates with it while the

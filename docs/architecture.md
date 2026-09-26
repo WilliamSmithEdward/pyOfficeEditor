@@ -75,6 +75,8 @@ Each layer knows the layer below it and not the layer above.
 |                 equality a filter compares text by        |
 |   _sort         rows sorted as Excel's Sort sorts a       |
 |                 range, a table or a filter                |
+|   _duplicates   rows removed as Excel's Remove            |
+|                 Duplicates removes them                   |
 |   _shapes       shapes, and the grid a form control needs |
 |   _comments     notes and threads, and the box each gets  |
 |   _pictures     images, sized as Excel sizes them         |
@@ -395,11 +397,14 @@ tests/
                                 ignored_errors.json
   test_excel_sort.py            sorting, against the sheets Excel sorted
                                 and saved in sorts_sorted.xlsx
+  test_excel_duplicates.py      removing duplicates, against the ranges
+                                Excel cleaned in duplicates_removed.xlsx
+  sheet_state.py                a sheet's state, as those two compare it
   test_excel_collate.py         the collation, against what a filter and
                                 a sort answered
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               twenty-five Excel-authored packages:
-                                three sourced, twenty-two scripted, and
+  fixtures/excel/               twenty-seven Excel-authored packages:
+                                three sourced, twenty-four scripted, and
                                 six measured corpora; see its README
 ```
 
@@ -408,7 +413,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against twenty-seven committed
+- The suite needs no Office installation. It runs against twenty-nine committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as

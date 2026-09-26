@@ -73,6 +73,7 @@ from pyofficeeditor.excel._dimensions import (
     says_nothing,
     sheet_standard_width,
 )
+from pyofficeeditor.excel._duplicates import remove_duplicate_rows
 from pyofficeeditor.excel._dxf import Dxf
 from pyofficeeditor.excel._errorchecks import ErrorCheck, check_errors
 from pyofficeeditor.excel._filters import (
@@ -626,6 +627,21 @@ class Worksheet:
             reference = CellRef(number, self._column_of(end))
             self._widen_spans(row, reference.column)
             self._widen_dimension(reference)
+
+    def remove_cells(self, block: RangeRef) -> None:
+        """Remove every cell in ``block``, as :meth:`clear_cell` removes one,
+        a row at a time: a row left with nothing of its own goes."""
+        for number in [number for number in self._rows if block.top <= number <= block.bottom]:
+            row = self._rows[number]
+            for cell in list(row.children_named("c")):
+                if block.left <= self._column_of(cell) <= block.right:
+                    row.remove(cell)
+            if next(row.children_named("c"), None) is None and set(row.attributes) <= {"r", "spans"}:
+                self._data.remove(row)
+                del self._rows[number]
+        self._highest_row = max(self._rows, default=0)
+        self._workbook.mark_values_changed()
+        self._invalidate()
 
     def set_formula(self, reference: CellRef, formula: str | None) -> None:
         """Put a formula in a cell, or remove the one it has.
@@ -1669,6 +1685,45 @@ class Worksheet:
         Excel records it, rather than in the sheet.
         """
         sort_filter(self, sort_keys(by), match_case=match_case)
+
+    def remove_duplicates(
+        self,
+        cells: str | RangeRef,
+        columns: str | Sequence[str] | None = None,
+        *,
+        header: bool = False,
+    ) -> int:
+        """Remove the rows of ``cells`` that repeat an earlier row, as Excel's
+        Remove Duplicates does, and report how many went. ``columns`` names
+        the columns compared by their letters, every column of the range
+        when left out; ``header`` leaves the first row where it is.
+
+        As measured in Excel: text compares as a filter compares it, case
+        aside; a number matches only the same number shown the same, never
+        text; a logical matches its text; a blank matches only a blank. The
+        first of each set of rows stays, hidden rows among them. The rows
+        kept move up as a sort moves rows, and the rows removed are cleared
+        below them of all but their notes. The range stops at the sheet's
+        last cell, and a last row holding a formula over a range is taken
+        for a total and left alone. Merged cells and an array formula the
+        move would split are refused with a ``ValueError`` and nothing
+        changed, as Excel refuses them, and so is a table, which Excel
+        shrinks and this does not do yet.
+        """
+        block = (RangeRef.parse(cells) if isinstance(cells, str) else cells).normalized
+        names = [columns] if isinstance(columns, str) else columns
+        compared = list(range(block.left, block.right + 1)) if names is None else [column_index(name) for name in names]
+        if not compared:
+            raise ValueError("removing duplicates needs at least one column to compare.")
+        for name, column in zip(names or (), compared, strict=False):
+            if not block.left <= column <= block.right:
+                raise ValueError(f"the column {name!r} is not a column of {block.a1}.")
+        if header and block.top == block.bottom:
+            raise ValueError(f"{block.a1} is one row, so there is nothing below its header.")
+        for table in self.tables:
+            if table.ref.intersects(block):
+                raise ValueError(f"{block.a1} meets the table {table.name!r}; removing duplicates from a table is not supported yet.")
+        return remove_duplicate_rows(self, block, compared, header=header)
 
     def clear_auto_filter(self, *, show_rows: bool = True) -> None:
         """Take the filter off, and show the rows it was hiding.
