@@ -707,6 +707,59 @@ def test_yield_with_one_coupon_left(book: Workbook) -> None:
     assert sheet.evaluate(f"YIELD({args})") == -1.5102748190150097
 
 
+def test_oddlprice_steps_quasi_coupon_dates_from_the_last_interest_date(book: Workbook) -> None:
+    sheet = book["Data"]
+    last = "DATE(2021,8,31)"
+    # Each date a quarter after the one before: 30 November, 28 February,
+    # then 28 May. From a month end, that last covers any maturity in May.
+    assert sheet.evaluate(f"ODDLPRICE(DATE(2021,9,10),DATE(2022,5,30),{last},0.1,0.1,100,4,1)") == 100.0338820483653
+    assert sheet.evaluate(f"ODDLPRICE(DATE(2021,9,10),DATE(2022,5,27),{last},0.1,0.1,100,4,1)") == 99.98155503258074
+    assert sheet.evaluate("ODDLPRICE(DATE(2011,10,26),DATE(2012,7,17),DATE(2010,12,31),0.05,0.06,100,2,1)") == 99.13490142042163
+
+
+def test_oddlprice_on_basis_0_counts_month_ends_as_the_30th_in_dc(book: Workbook) -> None:
+    sheet = book["Data"]
+    # 13 October to 31 March is 167 days, where YEARFRAC's rules count 168;
+    # the quasi period from 28 February is 178 days long, not 180.
+    assert sheet.evaluate("ODDLPRICE(DATE(2032,11,19),DATE(2033,3,31),DATE(2032,10,13),0.1,0,100,2,0)") == 103.63888888888889
+    assert sheet.evaluate("ODDLPRICE(DATE(2018,4,2),DATE(2018,5,14),DATE(2018,2,28),0.1,0.1,100,2,0)") == 99.9895189314301
+
+
+def test_oddlyield(book: Workbook) -> None:
+    sheet = book["Data"]
+    assert sheet.evaluate("ODDLYIELD(DATE(2021,2,3),DATE(2021,7,23),DATE(2021,1,1),0.05,98,100,2,0)") == 0.0938122427300492
+    # 30/360 counts no days from 30 July to 31 July: the yield is 0.
+    assert sheet.evaluate("ODDLYIELD(DATE(2021,7,30),DATE(2021,7,31),DATE(2021,6,15),0.05,98,100,2,0)") == 0
+
+
+def test_oddfprice_with_a_short_or_long_first_period(book: Workbook) -> None:
+    sheet = book["Data"]
+    short = "DATE(2021,2,3),DATE(2023,6,30),DATE(2021,1,1),DATE(2021,6,30)"
+    assert sheet.evaluate(f"ODDFPRICE({short},0.05,0.06,100,2,0)") == 97.78308404154141
+    assert sheet.evaluate(f"ODDFYIELD({short},0.05,98,100,2,0)") == 0.059007229164258115
+    # The coupon period comes from the first coupon's schedule, 30 November
+    # to 28 February, not the maturity's 29 November.
+    assert sheet.evaluate("ODDFPRICE(DATE(2019,2,5),DATE(2023,11,29),DATE(2018,12,1),DATE(2019,2,28),0.1,0,100,4,1)") == 148.13888888888889
+    # A long first period to a month-end first coupon discounts one period
+    # more, unless settlement shares its month with a quasi-coupon date.
+    long = "DATE(2027,4,30),DATE(2021,10,29),DATE(2023,4,30),0.1,0.1,100,1,0"
+    assert sheet.evaluate(f"ODDFPRICE(DATE(2021,11,3),{long})") == 90.60114237553395
+    assert sheet.evaluate(f"ODDFPRICE(DATE(2022,4,12),{long})") == 99.54578216866932
+    mid_month = "DATE(2022,4,12),DATE(2027,6,15),DATE(2021,10,29),DATE(2023,6,15),0.1"
+    assert sheet.evaluate(f"ODDFPRICE({mid_month},0.1,100,1,0)") == 99.43079730491951
+    assert sheet.evaluate(f"ODDFYIELD({mid_month},90,100,1,0)") == 0.12551573318812853
+
+
+def test_oddfprice_refusals(book: Workbook) -> None:
+    sheet = book["Data"]
+    # An odd first period exactly one period long.
+    odd = "DATE(2021,2,1),DATE(2023,6,30),DATE(2020,12,31),DATE(2021,6,30)"
+    assert sheet.evaluate(f"ODDFPRICE({odd},0.05,0.06,100,2,0)") == CellError("#NUM!")
+    # A first coupon that is not one of the maturity's coupon dates.
+    off = "DATE(2021,2,3),DATE(2023,6,30),DATE(2021,1,1),DATE(2021,6,29)"
+    assert sheet.evaluate(f"ODDFPRICE({off},0.05,0.06,100,2,0)") == CellError("#NUM!")
+
+
 def test_pmt_divides_by_1_less_the_discount_and_multiplies_by_the_rate(book: Workbook) -> None:
     sheet = book["Data"]
     # w = 1 - (1 + r)^-n, and -((pv + fv)/w - fv) r: the exact payment,

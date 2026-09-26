@@ -43,6 +43,22 @@ anything trailing the file is swept into the oldest release's notes. -->
   `Shape.Type` 7, and `remove_shape` and `update_shape` refuse it too. A
   Forms control inside a group now reads as a control.
 
+- **ODDFPRICE, ODDFYIELD, ODDLPRICE and ODDLYIELD**, the prices and yields
+  of bonds with an odd first or last period, measured against Excel on
+  1,500 random bonds of each kind and a few hundred designed ones.
+  Microsoft's formulas hold, with Excel's own quasi-coupon dates and day
+  counts: each date a period after the one before, so one clipped to the
+  28th stays there; on basis 0 an odd last period's lengths count every
+  month end as the 30th; a first coupon has to be one of the maturity's
+  coupon dates, and an odd first period exactly one period long is
+  refused; a long one to a month-end first coupon is discounted a period
+  more, unless settlement falls on a month end too or shares its month
+  with a quasi-coupon date.
+  ODDLPRICE and ODDLYIELD give Excel's bits on every bond, ODDFPRICE on
+  all but four a unit in the last place away. ODDFYIELD does on all but
+  216 bonds with a long odd first period, and comes within 1e-10 of
+  Excel's answer on those.
+
 ### Changed
 
 - **An inserted row is formatted like the row above it, and an inserted

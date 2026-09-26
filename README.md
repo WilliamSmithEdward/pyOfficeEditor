@@ -33,10 +33,10 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > added in eight kinds as Excel's Insert Chart writes them; their
 > references move with the cells they read, and so do pivot tables and
 > their caches, refusing the edits Excel refuses. Formulas calculate:
-> 493 of Excel's 525 functions, held to 10,958 formulas Excel
-> calculated, to the last bit for all but the few functions the tests
-> name, with the results written into the cells as Excel's
-> recalculation would write them.
+> 497 of Excel's 525 functions, held to 10,958 formulas Excel
+> calculated and thousands more, to the last bit for all but a few, with
+> the results written into the cells as Excel's recalculation would
+> write them.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Validation, protected ranges, sorts, scenarios and comments move
