@@ -32,7 +32,7 @@ fixtures to refresh.
 
 `scripts/build_excel_fixtures.py` drives real Excel through
 [pyvbaharness](https://github.com/WilliamSmithEdward/pyVBAharness) to author
-seventeen more. These are committed like the rest: the script exists so a
+eighteen more. These are committed like the rest: the script exists so a
 fixture's *content* can be changed deliberately and reproduced, not so the
 suite rebuilds them. Run it on a Windows machine with Excel; tests that need
 a fixture skip when it is absent.
@@ -56,6 +56,7 @@ a fixture skip when it is absent.
 | `charts.xlsx` | A column chart with a typed title and a line chart over two areas on the data sheet, a pie whose title is linked to a cell and a scatter chart on a second sheet, and a bar chart on a chart sheet. `charts_answers.json` records each chart's series formulas as Excel reported them, and every reference in each chart part as Excel wrote it, in the file as built and in the file Excel saved after each of nine edits: rows and columns inserted and deleted, and the data sheet renamed. |
 | `chartkinds.xlsx` | One chart of each kind Excel's Insert Chart makes, added with `Shapes.AddChart2` and its default style from `Data!A1:C6`: column, bar, line, line with markers, pie, doughnut, scatter and area, and a column chart with a title typed in. `chartkinds_answers.json` records each chart's series formulas. The parts are what a chart added here is compared with. |
 | `pivots.xlsx` | Two pivot tables reading `Data!A1:C11` through caches of their own, one on a sheet of its own and one on the data sheet where edits reach it. `pivots_answers.json` records, for the file as built and after each of nineteen edits Excel made, where each pivot table was, what its cache read and how many caches the workbook kept, read from the file Excel saved, or that Excel refused the edit. |
+| `pivotdata.xlsx` | Twenty-six pivot tables in each layout Excel offers, over `Data!A1:F13` and `Data!H1:J5`: nested, across, tabular, outline, filtered, without totals or subtotals, with values down the side, renamed items and fields, hidden items, dates grouped by years and months, numbers in bins, a calculated field and a share of the total. Sheet Q holds 147 GETPIVOTDATA formulas reading them, each with Excel's answer cached beside it. Excel removed personal information as it saved. |
 
 `shapes.xlsm` is committed but has no recipe here: it predates the script.
 It carries one of every shape a sheet can hold, with `shapes_answers.json`

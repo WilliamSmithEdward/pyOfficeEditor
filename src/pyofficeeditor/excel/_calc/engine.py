@@ -40,6 +40,8 @@ from pyofficeeditor.excel._calc.lexer import FormulaSyntaxError
 from pyofficeeditor.excel._calc.nodes import Call, Node, walk
 from pyofficeeditor.excel._calc.parser import parse
 from pyofficeeditor.excel._calc.values import EMPTY, Area, Array, Empty, Reference, Scalar, Value
+from pyofficeeditor.excel._numfmt import BUILTIN_DISPLAY_CODES
+from pyofficeeditor.excel._pivots import PivotReport, read_pivot_report
 from pyofficeeditor.excel._reference import CellRef, RangeRef
 from pyofficeeditor.excel._values import CellError, datetime_to_serial, read_value, write_cached
 
@@ -150,6 +152,7 @@ class Engine:
         #: The rows an active filter decides, below its header, per sheet.
         self._filters: dict[str, tuple[int, int]] = {}
         self._subtotals: dict[CellKey, bool] = {}
+        self._pivots: dict[str, list[PivotReport]] = {}
         self._reading_tainted = False
         for sheet in workbook.sheets:
             self._load(sheet)
@@ -358,6 +361,25 @@ class Engine:
         row counts as one the filter left out."""
         span = self._filters.get(sheet)
         return span is not None and span[0] <= row <= span[1] and self._sheets[sheet].row_hidden(row)
+
+    def pivot_reports(self, sheet: str) -> list[PivotReport]:
+        """The sheet's pivot tables, read once. Reading one Excel wrote in a
+        way this does not follow is left to the formulas that need it."""
+        found = self._pivots.get(sheet)
+        if found is None:
+            styles = self._workbook.styles
+            custom = {} if styles is None else styles.custom_formats
+
+            def formats(format_id: int) -> str:
+                return custom.get(format_id) or BUILTIN_DISPLAY_CODES.get(format_id, "General")
+
+            package = self._workbook.package
+            reports = (
+                read_pivot_report(package, table.part_name, formats, epoch_1904=self._epoch_1904)
+                for table in self._sheets[sheet].pivot_tables
+            )
+            found = self._pivots[sheet] = [report for report in reports if report is not None]
+        return found
 
     def spill(self, sheet: str, row: int, column: int) -> Area | None:
         """A dynamic-array formula's block: an array formula whose cell

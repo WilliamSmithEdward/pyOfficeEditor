@@ -74,6 +74,19 @@ anything trailing the file is swept into the oldest release's notes. -->
   Excel puts them in, which are the wrong ones, by the rule measured for
   where each lands.
 
+- **GETPIVOTDATA**, which reads a value from a pivot table's report, held
+  to Excel by 147 formulas in a fixture Excel authored, over pivot tables
+  in each layout it offers. The report is read from the pivot table's
+  definition, row by row and column by column, and the value is the cell
+  Excel wrote there. Measured: a value answers to its own name or the
+  field it summarizes, a field to the name the report gives it, and an
+  item to its given name or the text it is shown as, or, as a number, to
+  its value. A field left out means its total, where the report shows
+  one; failing that, the only line at the items named. A filter can be
+  named only as the item it is set to. An empty cell is 0 and a cell the
+  report does not show is `#REF!`. Dates grouped by years or months take
+  a number's whole part, and bins take a number at or below their start.
+
 - **BAHTTEXT**, an amount in Thai words, measured against Excel on 284
   amounts and matching every one. A 1 in the ones reads et after any
   other digit, those before a million included; satang are rounded as

@@ -20,10 +20,10 @@ from __future__ import annotations
 
 import datetime as dt
 import math
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from pyofficeeditor.excel._calc import registry
 from pyofficeeditor.excel._calc.catalog import is_excel_function
@@ -82,6 +82,9 @@ from pyofficeeditor.excel._calc.values import (
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW
 from pyofficeeditor.excel._values import CellError
 from pyofficeeditor.exceptions import UnsupportedFormulaError
+
+if TYPE_CHECKING:
+    from pyofficeeditor.excel._pivots import PivotReport
 
 CellKey = tuple[str, int, int]
 
@@ -171,6 +174,10 @@ class Book(Protocol):
     def spill(self, sheet: str, row: int, column: int) -> Area | None:
         """The block a dynamic-array formula in a cell spilled into, as the
         file records it, or ``None`` when the cell holds no such formula."""
+        ...
+
+    def pivot_reports(self, sheet: str) -> Sequence[PivotReport]:
+        """The pivot tables on a sheet, as their reports show them."""
         ...
 
 

@@ -1300,6 +1300,358 @@ Public Function Build(ByVal Target As String) As String
 End Function
 '''
 
+#: GETPIVOTDATA's measurements, on sheet Q: each formula below with Excel's
+#: answer cached beside it, which is what the engine is held to. They read
+#: pivot tables in each layout Excel offers, over Data!A1:F13 and the small
+#: table in Data!H1:J5: nested, across, with two values, tabular, outline
+#: with subtotals at the bottom or none, filtered, without totals, with
+#: values down the side, with renamed items and fields, hidden items, dates
+#: grouped by years and months, numbers in bins, a calculated field, and
+#: values shown as a share of the total. Grouping and a calculated field
+#: change a cache for every pivot table sharing it, so those tables have
+#: caches of their own. Excel removes personal information as it saves.
+_PIVOT_DATA_FORMULAS = [
+    'GETPIVOTDATA("Sales",PT1!$A$3)',
+    'GETPIVOTDATA("Sum of Sales",PT1!$A$3,"Region","East")',
+    'GETPIVOTDATA("sales",PT1!$A$3,"region","east")',
+    'GETPIVOTDATA("Sales",PT1!$A$3,"Region","Nope")',
+    'GETPIVOTDATA("Qty",PT1!$A$3)',
+    'GETPIVOTDATA("Sales",PT1!$B$5)',
+    'GETPIVOTDATA("Sales",PT1!$A$1)',
+    'GETPIVOTDATA("Sales",PT1!$A$3:$B$8,"Region","West")',
+    'GETPIVOTDATA("Sales",PT1!$E$3,"Region","East","Product","Pen")',
+    'GETPIVOTDATA("Sales",PT1!$E$3,"Product","Pen")',
+    'GETPIVOTDATA("Sales",PT1!$E$3,"Region","East")',
+    'GETPIVOTDATA("Sales",PT1!$E$3,"Product","Pen","Region","East")',
+    'GETPIVOTDATA("Sales",PT1!$J$3,"Year",2023)',
+    'GETPIVOTDATA("Sales",PT1!$J$3,"Year","2023")',
+    'GETPIVOTDATA("Sales",PT1!$J$3,"Region","East","Year",2024)',
+    'GETPIVOTDATA("Sales",PT1!$J$3,"Region","East")',
+    'GETPIVOTDATA("Sales",PT1!$J$3)',
+    'GETPIVOTDATA("Sales",PT1!$A$30,"Region","East","Year",2024)',
+    'GETPIVOTDATA("Qty",PT1!$A$30,"Region","East","Year",2024)',
+    'GETPIVOTDATA("Sum of Qty",PT1!$A$30,"Year",2023)',
+    'GETPIVOTDATA("Qty",PT1!$A$30)',
+    'GETPIVOTDATA("Sales",PT1!$J$30,"Region","East","Product","Ink")',
+    'GETPIVOTDATA("Sales",PT1!$J$30,"Region","West")',
+    'GETPIVOTDATA("Sales",PT1!$J$30)',
+    'GETPIVOTDATA("Sales",PT1!$A$62,"Product","Pen")',
+    'GETPIVOTDATA("Sales",PT1!$A$62,"Year",2023)',
+    'GETPIVOTDATA("Sales",PT1!$A$62,"Year",2024)',
+    'GETPIVOTDATA("Sales",PT1!$A$62,"Year",2023,"Product","Ink")',
+    'GETPIVOTDATA("Sales",PT1!$A$62)',
+    'GETPIVOTDATA("Sales",PT1!$J$62,"Region","East","Year",2023)',
+    'GETPIVOTDATA("Sales",PT1!$J$62,"Region","East")',
+    'GETPIVOTDATA("Sales",PT1!$J$62)',
+    'GETPIVOTDATA("Sales",PT1!$A$80,"Region","North")',
+    'GETPIVOTDATA("Count of Product",PT1!$A$80,"Region","North")',
+    'GETPIVOTDATA("Product",PT1!$A$80)',
+    'GETPIVOTDATA("Revenue",PT1!$J$80,"Region","Orient")',
+    'GETPIVOTDATA("Revenue",PT1!$J$80,"Region","East")',
+    'GETPIVOTDATA("Sales",PT1!$J$80)',
+    'GETPIVOTDATA("Sum of Sales",PT1!$J$80)',
+    'GETPIVOTDATA("Qty",PT1!$A$105,"Year",2024)',
+    'GETPIVOTDATA("Qty",PT1!$A$105,"Year","2024")',
+    'GETPIVOTDATA("Qty",PT1!$A$105,"Year",2024.0)',
+    'GETPIVOTDATA("Qty",PT1!$A$105,"Year",TRUE)',
+    'GETPIVOTDATA("Sales",PT2!$A$3,"Product","Ink","Region","South")',
+    'GETPIVOTDATA("Sales",PT2!$A$3,"Product","Ink","Region","East")',
+    'GETPIVOTDATA("Sales",PT2!$A$3,"Region","South")',
+    'GETPIVOTDATA("Sales",PT2!$J$3,"Region","East")',
+    'GETPIVOTDATA("Sales",PT2!$J$3,"Region","East","Product","Pen")',
+    'GETPIVOTDATA("Sales",PT2!$A$30,"Region","East")',
+    'GETPIVOTDATA("Sales",PT2!$A$30,"Region","East","Product","Ink")',
+    'GETPIVOTDATA("Sales",PT2!$A$30)',
+    'GETPIVOTDATA("Sales",PT2!$J$32,"Year",2023)',
+    'GETPIVOTDATA("Sales",PT2!$J$32,"Product","Pen")',
+    'GETPIVOTDATA("Sales",PT2!$J$30)',
+    'GETPIVOTDATA("Sales",PT2!$K$30)',
+    'GETPIVOTDATA("Sales",PT2!$J$31)',
+    'GETPIVOTDATA("Qty",PT2!$A$60,"Day",DATE(2023,1,15))',
+    'GETPIVOTDATA("Qty",PT2!$A$60,"Day","1/15/2023")',
+    'GETPIVOTDATA("Qty",PT2!$A$60,"Day",44941)',
+    'GETPIVOTDATA("Qty",PT2!$A$60,"Day","2023-01-15")',
+    'GETPIVOTDATA("Qty",PT2!$A$60,"Day",DATE(2024,12,13))',
+    'GETPIVOTDATA("Qty",PT2!$A$60)',
+    'GETPIVOTDATA("Sales",PT2!$J$60,"Region","East")',
+    'GETPIVOTDATA("Sum of Sales",PT2!$J$60,"Region","East")',
+    'GETPIVOTDATA("Average of Sales",PT2!$J$60,"Region","East")',
+    'GETPIVOTDATA("Sales",PT2!$A$95,"Area","East")',
+    'GETPIVOTDATA("Sales",PT2!$A$95,"Region","East")',
+    'GETPIVOTDATA("Sales",PT2!$J$95,"Region","West")',
+    'GETPIVOTDATA("Sales",PT2!$J$95,"Region","East")',
+    'GETPIVOTDATA("Sales",PT2!$J$95)',
+    'GETPIVOTDATA("Sales",PT2!$A$110,"Region","East","Product","Ink")',
+    'GETPIVOTDATA("Qty",PT2!$A$110,"Region","East","Product","Ink")',
+    'GETPIVOTDATA("Sales",PT2!$A$110,"Region","East")',
+    'GETPIVOTDATA("Qty",PT2!$A$110,"Region","East")',
+    'GETPIVOTDATA("Qty",PT2!$A$110)',
+    'GETPIVOTDATA("Sales",PT2!$A$110,"Product","Ink")',
+    'GETPIVOTDATA("Sales",PT2!$A$3,"Product","Pen","Nope","x")',
+    'GETPIVOTDATA("Sales",PT2!$A$3,"Product")',
+    'GETPIVOTDATA("Sales",PT2!$A$3,"Day",DATE(2023,1,15))',
+    'GETPIVOTDATA("Sales",PT2!$A$3:$Z$120)',
+    'GETPIVOTDATA("Sales","PT2!A3")',
+    'GETPIVOTDATA(1,PT2!$A$3)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2023)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)","2023")',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"years (day)",2024)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",DATE(2023,6,1))',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2023.5)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2024,"Months (Day)","Mar")',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2024,"Months (Day)","mar")',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2024,"Months (Day)",3)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2024,"Months (Day)","March")',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2024,"Months (Day)",DATE(2024,3,10))',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Months (Day)","Jan")',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Day",DATE(2023,1,15))',
+    'GETPIVOTDATA("Qty",PT3!$A$3)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales","0-99")',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",0)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",50)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",99)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",99.5)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",100)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",150)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",350)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",399)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",400)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",-5)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales","0")',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",TRUE)',
+    'GETPIVOTDATA("Profit",PT3!$A$40,"Region","East")',
+    'GETPIVOTDATA("Share",PT3!$J$40,"Region","East")',
+    'GETPIVOTDATA("Score",PT3!$A$60,"Person","Bob")',
+    'GETPIVOTDATA("Score",PT3!$A$60,"Person","Ann")',
+    'GETPIVOTDATA("Score",PT3!$A$60,"Person","Cat")',
+    'GETPIVOTDATA("Score",PT3!$A$60,"Team","Red")',
+    'GETPIVOTDATA("Score",PT3!$A$60,"Team","Red","Person","Ann")',
+    'GETPIVOTDATA("Score",PT3!$J$60,"Person","Bob")',
+    'GETPIVOTDATA("Score",PT3!$J$60,"Person","Ann")',
+    'GETPIVOTDATA("Score",PT3!$J$60,"Team","Blue")',
+    'GETPIVOTDATA("Score",PT3!$J$60)',
+    'GETPIVOTDATA("Score",PT3!$A$75,"Person","Bob")',
+    'GETPIVOTDATA("Score",PT3!$A$75,"Team","Red")',
+    'GETPIVOTDATA("Score",PT3!$A$75,"Team","Red","Person","Bob")',
+    'GETPIVOTDATA("Score",PT3!$A$75)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Months (Day)","Feb")',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Months (Day)",2)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2023,"Months (Day)",1)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2024,"Months (Day)",3.5)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2024,"Months (Day)",12)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2024,"Months (Day)",13)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2024,"Months (Day)",0)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2022)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2024.9)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",2025)',
+    'GETPIVOTDATA("Qty",PT3!$A$3,"Years (Day)",-2023)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",-1)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",-50)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",-99)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",-100)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",-150)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",0.5)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",1)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",10)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",100.5)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",200)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",250)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",300)',
+    'GETPIVOTDATA("Qty",PT3!$J$3,"Sales",-0.5)',
+]
+
+_PIVOT_DATA_TEMPLATE = r'''
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim sh As Worksheet
+    Dim q As Worksheet
+    Dim pc As PivotCache
+    Dim pt As PivotTable
+    Dim data As Variant
+    Dim i As Long
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Data"
+    ws.Range("A1:F1").Value = Array("Region", "Product", "Year", "Qty", "Sales", "Day")
+    data = Array( _
+        Array("East", "Pen", 2023, 3, 30, DateSerial(2023, 1, 15)), _
+        Array("East", "Ink", 2023, 5, 50, DateSerial(2023, 2, 20)), _
+        Array("East", "Pen", 2024, 2, 24, DateSerial(2024, 3, 10)), _
+        Array("West", "Pen", 2023, 4, 44, DateSerial(2023, 4, 5)), _
+        Array("West", "Book", 2024, 1, 120, DateSerial(2024, 5, 6)), _
+        Array("West", "Ink", 2024, 6, 66, DateSerial(2024, 6, 7)), _
+        Array("North", "Book", 2023, 2, 200, DateSerial(2023, 7, 8)), _
+        Array("North", "Pen", 2024, 8, 88, DateSerial(2024, 8, 9)), _
+        Array("North", "Ink", 2023, 7, 77, DateSerial(2023, 9, 10)), _
+        Array("South", "Book", 2024, 3, 330, DateSerial(2024, 10, 11)), _
+        Array("South", "Pen", 2023, 9, 99, DateSerial(2023, 11, 12)), _
+        Array("East", "Book", 2024, 2, 220, DateSerial(2024, 12, 13)))
+    For i = 0 To UBound(data)
+        ws.Range(ws.Cells(i + 2, 1), ws.Cells(i + 2, 6)).Value = data(i)
+    Next i
+    ws.Range("H1:J1").Value = Array("Team", "Person", "Score")
+    ws.Range("H2:J2").Value = Array("Red", "Ann", 1)
+    ws.Range("H3:J3").Value = Array("Red", "Bob", 2)
+    ws.Range("H4:J4").Value = Array("Blue", "Cat", 4)
+    ws.Range("H5:J5").Value = Array("Blue", "Ann", 8)
+
+    Set sh = wb.Worksheets.Add(After:=ws)
+    sh.Name = "PT1"
+    Set pc = wb.PivotCaches.Create(SourceType:=xlDatabase, SourceData:="Data!R1C1:R13C6")
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A3"), TableName:="Basic")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("E3"), TableName:="Nested")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.PivotFields("Product").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("J3"), TableName:="Cross")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.PivotFields("Year").Orientation = xlColumnField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A30"), TableName:="Two")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.PivotFields("Year").Orientation = xlColumnField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    pt.AddDataField pt.PivotFields("Qty"), "Sum of Qty", xlSum
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("J30"), TableName:="Tabular")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.PivotFields("Product").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    pt.RowAxisLayout xlTabularRow
+    pt.PivotFields("Region").LayoutSubtotalLocation = xlAtBottom
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A62"), TableName:="Filtered")
+    pt.PivotFields("Year").Orientation = xlPageField
+    pt.PivotFields("Product").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    pt.PivotFields("Year").CurrentPage = "2023"
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("J62"), TableName:="NoTotals")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.PivotFields("Year").Orientation = xlColumnField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    pt.ColumnGrand = False
+    pt.RowGrand = False
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A80"), TableName:="ValuesDown")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    pt.AddDataField pt.PivotFields("Product"), "Count of Product", xlCount
+    pt.DataPivotField.Orientation = xlRowField
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("J80"), TableName:="Renamed")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Revenue", xlSum
+    pt.PivotFields("Region").PivotItems("East").Caption = "Orient"
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A105"), TableName:="Numbers")
+    pt.PivotFields("Year").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Qty"), "Sum of Qty", xlSum
+
+    Set sh = wb.Worksheets.Add(After:=sh)
+    sh.Name = "PT2"
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A3"), TableName:="Holes")
+    pt.PivotFields("Product").Orientation = xlRowField
+    pt.PivotFields("Region").Orientation = xlColumnField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("J3"), TableName:="OutlineBottom")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.PivotFields("Product").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    pt.RowAxisLayout xlOutlineRow
+    pt.PivotFields("Region").LayoutSubtotalLocation = xlAtBottom
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A30"), TableName:="NoSubtotals")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.PivotFields("Product").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    pt.PivotFields("Region").Subtotals(1) = False
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("J32"), TableName:="AllPages")
+    pt.PivotFields("Year").Orientation = xlPageField
+    pt.PivotFields("Product").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A60"), TableName:="Dates")
+    pt.PivotFields("Day").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Qty"), "Sum of Qty", xlSum
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("J60"), TableName:="SameSource")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    pt.AddDataField pt.PivotFields("Sales"), "Average of Sales", xlAverage
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A95"), TableName:="Caption")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    pt.PivotFields("Region").Caption = "Area"
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("J95"), TableName:="Hidden")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    pt.PivotFields("Region").PivotItems("West").Visible = False
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A110"), TableName:="ValuesBottom")
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.PivotFields("Product").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Sales"), "Sum of Sales", xlSum
+    pt.AddDataField pt.PivotFields("Qty"), "Sum of Qty", xlSum
+    pt.DataPivotField.Orientation = xlRowField
+    pt.RowAxisLayout xlTabularRow
+    pt.PivotFields("Region").LayoutSubtotalLocation = xlAtBottom
+
+    Set sh = wb.Worksheets.Add(After:=sh)
+    sh.Name = "PT3"
+    Set pc = wb.PivotCaches.Create(SourceType:=xlDatabase, SourceData:="Data!R1C1:R13C6")
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A3"), TableName:="Grouped")
+    pt.PivotFields("Day").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Qty"), "Sum of Qty", xlSum
+    pt.PivotFields("Day").DataRange.Cells(1).Group Start:=True, End:=True, _
+        Periods:=Array(False, False, False, False, True, False, True)
+    Set pc = wb.PivotCaches.Create(SourceType:=xlDatabase, SourceData:="Data!R1C1:R13C6")
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("J3"), TableName:="Bins")
+    pt.PivotFields("Sales").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Qty"), "Sum of Qty", xlSum
+    pt.PivotFields("Sales").DataRange.Cells(1).Group Start:=0, End:=399, By:=100
+    Set pc = wb.PivotCaches.Create(SourceType:=xlDatabase, SourceData:="Data!R1C1:R13C6")
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A40"), TableName:="Calculated")
+    pt.CalculatedFields.Add "Profit", "=Sales*0.2"
+    pt.PivotFields("Region").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Profit"), "Sum of Profit", xlSum
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("J40"), TableName:="Percent")
+    pt.PivotFields("Region").Orientation = xlRowField
+    With pt.AddDataField(pt.PivotFields("Sales"), "Share", xlSum)
+        .Calculation = xlPercentOfTotal
+    End With
+    Set pc = wb.PivotCaches.Create(SourceType:=xlDatabase, SourceData:="Data!R1C8:R5C10")
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A60"), TableName:="Teams")
+    pt.PivotFields("Team").Orientation = xlRowField
+    pt.PivotFields("Person").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Score"), "Sum of Score", xlSum
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("J60"), TableName:="TeamsAcross")
+    pt.PivotFields("Team").Orientation = xlColumnField
+    pt.PivotFields("Person").Orientation = xlColumnField
+    pt.AddDataField pt.PivotFields("Score"), "Sum of Score", xlSum
+    pt.ColumnGrand = False
+    Set pt = pc.CreatePivotTable(TableDestination:=sh.Range("A75"), TableName:="TeamsBare")
+    pt.PivotFields("Team").Orientation = xlRowField
+    pt.PivotFields("Person").Orientation = xlRowField
+    pt.AddDataField pt.PivotFields("Score"), "Sum of Score", xlSum
+    pt.PivotFields("Team").Subtotals(1) = False
+    pt.RowGrand = False
+
+    Set q = wb.Worksheets.Add(After:=sh)
+    q.Name = "Q"
+    ' GETPIVOTDATA formulas
+    Application.CalculateFull
+    wb.RemovePersonalInformation = True
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = ""
+End Function
+'''
+
+#: The recipe, each formula written into Q's column A a row at a time.
+_BUILD_PIVOT_DATA = _PIVOT_DATA_TEMPLATE.replace(
+    "    ' GETPIVOTDATA formulas\n",
+    "".join(
+        f'    q.Cells({row}, 1).Formula2 = "={formula.replace(chr(34), chr(34) * 2)}"\n'
+        for row, formula in enumerate(_PIVOT_DATA_FORMULAS, start=1)
+    ),
+)
+
 #: One chart of each kind Excel's Insert Chart makes, added the way it adds
 #: one, with ``Shapes.AddChart2`` and its default style, all from
 #: Data!A1:C6, and a column chart with a title typed in. They are the
@@ -1718,6 +2070,7 @@ def main() -> int:
         ("settings.xlsx", _BUILD_SETTINGS),
         ("links.xlsx", _BUILD_LINKS),
         ("geometry.xlsx", _BUILD_GEOMETRY),
+        ("pivotdata.xlsx", _BUILD_PIVOT_DATA),
     ]
     #: Fixtures whose measurements are recorded beside them, each with what
     #: reads its reply back.
