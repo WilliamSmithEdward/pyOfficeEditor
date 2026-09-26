@@ -517,11 +517,15 @@ class Engine:
                 fresh = list(dict.fromkeys(cell for cell in need.cells if cell not in self._results))
                 looped = [cell for cell in fresh if cell in waiting or cell == key]
                 if looped:
-                    # Every cell on the stack from the first one asked for
-                    # again up to this one is on the loop.
-                    start = min(stack.index(cell) for cell in looped)
+                    # The loop is the cells waiting on one another, from the
+                    # first one asked for again up to this one. A cell pushed
+                    # beside one of them and not tried yet is not on it, and
+                    # is calculated in its turn. A waiting cell is never
+                    # pushed again above itself, so its last place on the
+                    # stack is its place on the loop.
+                    start = min(len(stack) - 1 - stack[::-1].index(cell) for cell in looped)
                     for cell in stack[start:]:
-                        if cell not in self._results:
+                        if (cell in waiting or cell == key) and cell not in self._results:
                             self._give_up(cell, "a circular reference")
                             self._circular.add(cell)
                     continue

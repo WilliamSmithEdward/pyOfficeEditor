@@ -327,6 +327,12 @@ anything trailing the file is swept into the oldest release's notes. -->
   Dec alone. Unquoted, a span of sheets now qualifies its reference, as a
   quoted one did.
 
+- **A cell read beside a circular reference counted as part of it.** A
+  formula reading a range of formulas asks for all of them at once, and
+  when one of them led back round, every one asked for with it kept its
+  cached value and was reported circular. Only the cells on the loop are
+  now, and the rest calculate.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added

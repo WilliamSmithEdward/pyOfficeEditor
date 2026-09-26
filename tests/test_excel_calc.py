@@ -399,6 +399,18 @@ def test_a_circular_reference_keeps_its_cached_values(book: Workbook) -> None:
     assert book.values_changed
 
 
+def test_a_cell_read_beside_a_circular_reference_is_not_on_it(book: Workbook) -> None:
+    """A1 reads B1 and C1 at once, and C1 reads A1 back: the loop is A1 and
+    C1, and B1, asked for beside C1, is calculated as usual."""
+    sheet = book["Data"]
+    sheet["A1"].formula = "SUM(B1:C1)"
+    sheet["B1"].formula = "5*2"
+    sheet["C1"].formula = "A1"
+    report = book.calculate()
+    assert sorted(report.circular) == ["Data!A1", "Data!C1"]
+    assert sheet["B1"].value == 10
+
+
 def test_an_unknown_function_is_a_name_error(book: Workbook) -> None:
     sheet = book["Data"]
     sheet["A1"].formula = "NOSUCHFUNCTION(1)"
