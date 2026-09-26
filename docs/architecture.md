@@ -394,6 +394,8 @@ tests/
                                 ignored_errors.json
   test_excel_sort.py            sorting, against the sheets Excel sorted
                                 and saved in sorts_sorted.xlsx
+  test_excel_collate.py         the collation, against what a filter and
+                                a sort answered
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               twenty-five Excel-authored packages:
                                 three sourced, twenty-two scripted, and

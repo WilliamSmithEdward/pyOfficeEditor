@@ -344,6 +344,14 @@ anything trailing the file is swept into the oldest release's notes. -->
   Dec alone. Unquoted, a span of sheets now qualifies its reference, as a
   quoted one did.
 
+- **A filter and a sort took some characters for others.** A full-width
+  digit was its plain digit, and so was a raised one, a zero-width space
+  was nothing at all, and final sigma was a letter apart from sigma.
+  Measured through a filter, a sort and Remove Duplicates, `１` is not `1`
+  and `²` is not `2`, each sorting just after its plain form; `a` and `b`
+  with a zero-width space between are not `ab`, and sort before it; and
+  `ς` is `σ`, sorting between it and `Σ` when case is matched.
+
 - **A cell read beside a circular reference counted as part of it.** A
   formula reading a range of formulas asks for all of them at once, and
   when one of them led back round, every one asked for with it kept its
