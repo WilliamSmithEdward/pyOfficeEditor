@@ -107,6 +107,7 @@ from pyofficeeditor.excel._shapes import (
     ShapeKind,
 )
 from pyofficeeditor.excel._sharedstrings import SharedStrings
+from pyofficeeditor.excel._sort import SortKey
 from pyofficeeditor.excel._styles import Styles
 from pyofficeeditor.excel._tables import Table, TableColumn, TableStyle
 from pyofficeeditor.excel._validation import DataValidation, ErrorStyle, ValidationOperator, ValidationType
@@ -180,6 +181,7 @@ __all__ = [
     "SharedStrings",
     "SheetProtection",
     "Side",
+    "SortKey",
     "Styles",
     "Table",
     "TableColumn",

@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import functools
 import unicodedata
+from collections.abc import Iterator
 
 #: Symbols in the order Excel sorts them, all below the digits. Space and
 #: the no-break space lead; the rest was measured one pair at a time.
@@ -70,16 +71,16 @@ _OTHER_LETTER = 4_000_000
 
 #: A text's place in the order: primary weights, then accents per primary,
 #: then the ignorables and where they stood.
-SortKey = tuple[tuple[int, ...], tuple[tuple[int, ...], ...], tuple[tuple[int, int], ...]]
+CollationKey = tuple[tuple[int, ...], tuple[tuple[int, ...], ...], tuple[tuple[int, int], ...]]
 
 
 @functools.lru_cache(maxsize=65536)
-def sort_key(text: str) -> SortKey:
+def sort_key(text: str) -> CollationKey:
     """The key Excel's text order sorts by; equal keys are equal texts."""
     primary: list[int] = []
     accents: list[list[int]] = []
     tail: list[tuple[int, int]] = []
-    for char in unicodedata.normalize("NFD", text):
+    for char in _characters(text):
         if char in _INVISIBLE:
             continue
         if char in _IGNORABLE:
@@ -103,6 +104,42 @@ def sort_key(text: str) -> SortKey:
         primary.append(_weight(lowered))
         accents.append([])
     return tuple(primary), tuple(tuple(marks) for marks in accents), tuple(tail)
+
+
+def _characters(text: str) -> Iterator[str]:
+    """``text`` decomposed as the order reads it: canonically, and a letter
+    that is other letters, a ligature or a digraph, as those letters.
+    Measured in Excel's sort, ``ﬁ`` is ``fi`` and ``ǅ`` is ``dž``."""
+    for char in unicodedata.normalize("NFD", text):
+        if char.isalpha() and unicodedata.decomposition(char).startswith("<compat>"):
+            yield from unicodedata.normalize("NFKD", char)
+        else:
+            yield char
+
+
+#: A text's place in the order when case matters: :data:`CollationKey`'s
+#: levels, with each letter's case between the accents and the ignorables.
+CaseCollationKey = tuple[tuple[int, ...], tuple[tuple[int, ...], ...], tuple[int, ...], tuple[tuple[int, int], ...]]
+
+
+@functools.lru_cache(maxsize=65536)
+def case_sort_key(text: str) -> CaseCollationKey:
+    """The key Excel's sort orders text by when told to match case.
+
+    Measured with Sort's MatchCase: case decides only between texts equal
+    in their letters and accents, from the left, a lowercase letter before
+    a title-case one, as ``ǅ`` is, before a capital. It decides before the
+    hyphens and apostrophes do, so ``ab < a-b < aB < Ab``.
+    """
+    primary, accents, tail = sort_key(text)
+    cases: list[int] = []
+    for char in _characters(text):
+        if char in _INVISIBLE or char in _IGNORABLE or unicodedata.combining(char):
+            continue
+        weight = 2 if char.isupper() else 1 if char.istitle() else 0
+        lowered = char.lower()[0]
+        cases.extend([weight] * len(_EXPANSIONS.get(lowered, lowered)))
+    return primary, accents, tuple(cases), tail
 
 
 def _weight(char: str) -> int:
@@ -197,4 +234,14 @@ def _pattern_tokens(pattern: str) -> list[tuple[str, str]]:
     return tokens
 
 
-__all__ = ["SortKey", "compare", "equal", "has_wildcards", "sort_key", "unescape", "wildcard_match"]
+__all__ = [
+    "CaseCollationKey",
+    "CollationKey",
+    "case_sort_key",
+    "compare",
+    "equal",
+    "has_wildcards",
+    "sort_key",
+    "unescape",
+    "wildcard_match",
+]

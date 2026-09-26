@@ -32,7 +32,7 @@ fixtures to refresh.
 
 `scripts/build_excel_fixtures.py` drives real Excel through
 [pyvbaharness](https://github.com/WilliamSmithEdward/pyVBAharness) to author
-twenty more. These are committed like the rest: the script exists so a
+twenty-two more. These are committed like the rest: the script exists so a
 fixture's *content* can be changed deliberately and reproduced, not so the
 suite rebuilds them. Run it on a Windows machine with Excel; tests that need
 a fixture skip when it is absent.
@@ -59,6 +59,7 @@ a fixture skip when it is absent.
 | `pivotdata.xlsx` | Twenty-six pivot tables in each layout Excel offers, over `Data!A1:F13` and `Data!H1:J5`: nested, across, tabular, outline, filtered, without totals or subtotals, with values down the side, renamed items and fields, hidden items, dates grouped by years and months, numbers in bins, a calculated field and a share of the total. Sheet Q holds 147 GETPIVOTDATA formulas reading them, each with Excel's answer cached beside it. Excel removed personal information as it saved. |
 | `datatables.xlsx` | What-if data tables from `Range.Table` over a small loan model: rates down a column against two formulas, years along a row, both at once, a chain through another sheet and back, a formula for an input cell, a branch the input decides, and a blank, an error, text and a formula among the values tried. The model is built twice, on Model and on Moved with other years and principal, so setting one's inputs to the other's and recalculating is held to Excel's answer. Excel removed personal information as it saved. |
 | `errorchecks.xlsx` | Cells for each of error checking's ten rules and their near misses, a sheet apiece: text that is a number or a date with a two-digit year, alone or in a formula; errors, NA() among them, unlocked formulas and misleading formats; inconsistent formulas and ranges that leave out a number, SUMIF, absolute rows and a name among them; references to empty cells in rows that store cells and rows that do not, and past the last used row; a table with a calculated column's exceptions and values its validation refuses, a blank one included, and another with a validation of every kind; and errors ignored. `errorchecks_answers.json` records every cell with the rules `Range.Errors` says catch it, ignored ones included. Excel removed personal information as it saved. |
+| `sorts.xlsx` | One sort to a sheet, saved before Excel sorted anything: values of every kind both ways, words a collation and case decide between, ties settled by a second key, a row's formulas of every reference with its formats, note and link, a validation, a conditional format and row heights that stay put, a range inside a wider table, no header, hidden and filtered rows, blanks, a range well past the data, shared formulas, and the merged cells and arrays Excel refuses. `sorts_sorted.xlsx` is the same workbook once Excel had sorted every sheet through its Sort object, and `sorts_answers.json` records each sort and the error Excel refused it with. Excel removed personal information as it saved. |
 
 `shapes.xlsm` is committed but has no recipe here: it predates the script.
 It carries one of every shape a sheet can hold, with `shapes_answers.json`

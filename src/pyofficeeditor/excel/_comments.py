@@ -546,6 +546,54 @@ def note_shapes(vml: str) -> dict[CellRef, str]:
     return found
 
 
+#: A note box's anchor: eight numbers, the third and seventh its top and
+#: bottom rows, zero-based.
+_ANCHOR = re.compile(r"(<x:Anchor>)(.*?)(</x:Anchor>)", re.DOTALL)
+_LAST_ANCHOR_ROW = 1048575
+
+
+def move_notes(vml: str, steps: dict[CellRef, int]) -> str:
+    """A VML part with each note on a cell of ``steps`` moved that many rows
+    down, or up when negative: the cell it belongs to, and its box with it,
+    as a sort moves a note with its cell. The part is rebuilt in one pass,
+    so notes trading places cannot overwrite each other."""
+    pieces: list[str] = []
+    last = 0
+    for match in _VML_SHAPES.finditer(vml):
+        shape = match.group(0)
+        if 'ObjectType="Note"' not in shape:
+            continue
+        row = re.search(r"<x:Row>\s*(\d+)\s*</x:Row>", shape)
+        column = re.search(r"<x:Column>\s*(\d+)\s*</x:Column>", shape)
+        if row is None or column is None:
+            continue
+        step = steps.get(CellRef(int(row.group(1)) + 1, int(column.group(1)) + 1), 0)
+        if not step:
+            continue
+        moved = shape[: row.start(1)] + str(int(row.group(1)) + step) + shape[row.end(1) :]
+        moved = _ANCHOR.sub(
+            lambda found, step=step: found.group(1) + _box_moved(found.group(2), step) + found.group(3), moved, 1
+        )
+        pieces += [vml[last : match.start()], moved]
+        last = match.end()
+    if not pieces:
+        return vml
+    return "".join(pieces) + vml[last:]
+
+
+def _box_moved(anchor: str, step: int) -> str:
+    """An anchor's text with its two rows moved by ``step``, its spacing
+    kept."""
+    slot = iter(range(8))
+
+    def move(number: re.Match[str]) -> str:
+        if next(slot, None) not in (2, 6):
+            return number.group(0)
+        return str(min(max(int(number.group(0)) + step, 0), _LAST_ANCHOR_ROW))
+
+    return re.sub(r"-?\d+", move, anchor)
+
+
 def shows(shape: str) -> bool:
     """Whether a note's box shows without the pointer over its cell."""
     return re.search(r"<x:Visible\s*/>", shape) is not None
@@ -604,6 +652,7 @@ __all__ = [
     "find_comment",
     "format_moment",
     "is_empty",
+    "move_notes",
     "new_id",
     "next_id",
     "note_anchor",

@@ -2061,6 +2061,255 @@ End Function
 '''
 
 
+#: One sort to a sheet, each as Excel's Sort dialog makes it: values of
+#: every kind, words a collation and case decide between, ties settled by a
+#: second key, a row's formulas, formats, note and link, hidden and
+#: filtered rows, blanks, a range past the data, shared formulas, and the
+#: merged cells and arrays Excel refuses. The workbook is saved unsorted,
+#: then sorted through the Sort object and saved again as
+#: ``sorts_sorted.xlsx``, which the library's own sort of the first is held
+#: to. The reply is one line per sort: the sheet, range, keys, header and
+#: case flags, and the error Excel refused it with, if it did.
+_BUILD_SORTS = r'''
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook, out As String
+    Set wb = ActiveWorkbook
+    FillValues wb.Worksheets(1), "Values"
+    FillValues Page(wb), "Down"
+    FillWords Page(wb), "Case"
+    FillWords Page(wb), "CaseDown"
+    FillWords Page(wb), "Words"
+    FillKeys Page(wb)
+    FillMoves Page(wb)
+    FillPlain Page(wb), "Inner", True
+    wb.Worksheets("Inner").Range("D2:D7").Formula = "=A2&C2"
+    FillPlain Page(wb), "NoHeader", False
+    FillPlain Page(wb), "Hidden", True
+    wb.Worksheets("Hidden").Rows(3).Hidden = True
+    wb.Worksheets("Hidden").Rows(6).Hidden = True
+    FillPlain Page(wb), "Filtered", True
+    wb.Worksheets("Filtered").Range("A1:C7").AutoFilter Field:=2, Criteria1:=">25"
+    FillBlanks Page(wb)
+    FillTrim Page(wb)
+    FillShared Page(wb)
+    FillPlain Page(wb), "Merged", True
+    wb.Worksheets("Merged").Range("C2:D2").Merge
+    FillPlain Page(wb), "Array", True
+    wb.Worksheets("Array").Range("D3:D4").FormulaArray = "=B3:B4*2"
+    FillPlain Page(wb), "ArrayRow", True
+    wb.Worksheets("ArrayRow").Range("C4:D4").FormulaArray = "=B4*{1,2}"
+    FillPlain Page(wb), "Spill", True
+    wb.Worksheets("Spill").Range("D2").Formula2 = "=SEQUENCE(3)"
+    FillKinds Page(wb)
+    wb.Worksheets(1).Activate
+    Application.DisplayAlerts = False
+    wb.RemovePersonalInformation = True
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    out = out & Arrange(wb, "Values", "A1:B45", "B", True, False)
+    out = out & Arrange(wb, "Down", "A1:B45", "-B", True, False)
+    out = out & Arrange(wb, "Case", "A1:B44", "B", True, True)
+    out = out & Arrange(wb, "CaseDown", "A1:B44", "-B", True, True)
+    out = out & Arrange(wb, "Words", "A1:B44", "B", True, False)
+    out = out & Arrange(wb, "Keys", "A1:C10", "B,-C", True, False)
+    out = out & Arrange(wb, "Moves", "A1:G6", "B", True, False)
+    out = out & Arrange(wb, "Inner", "B1:C7", "B", True, False)
+    out = out & Arrange(wb, "NoHeader", "A1:C6", "B", False, False)
+    out = out & Arrange(wb, "Hidden", "A1:C7", "B", True, False)
+    out = out & Arrange(wb, "Filtered", "A1:C7", "-B", True, False)
+    out = out & Arrange(wb, "Blanks", "A1:C9", "B", True, False)
+    out = out & Arrange(wb, "Trim", "A1:H20", "B", True, False)
+    out = out & Arrange(wb, "Shared", "A1:D6", "B", True, False)
+    out = out & Arrange(wb, "Merged", "A1:D7", "B", True, False)
+    out = out & Arrange(wb, "Array", "A1:D7", "B", True, False)
+    out = out & Arrange(wb, "ArrayRow", "A1:D7", "B", True, False)
+    out = out & Arrange(wb, "Spill", "A1:D7", "B", True, False)
+    out = out & Arrange(wb, "Kinds", "A1:C12", "-B", True, False)
+    wb.SaveAs Filename:=Replace(Target, ".xlsx", "_sorted.xlsx"), FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+
+Private Function Page(wb As Workbook) As Worksheet
+    Set Page = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+End Function
+
+Private Function Arrange(wb As Workbook, ByVal Name As String, ByVal Area As String, ByVal Keys As String, _
+                         ByVal Header As Boolean, ByVal MatchCase As Boolean) As String
+    Dim ws As Worksheet, block As Range, parts() As String, i As Long, column As String, direction As Long
+    Dim first As Long, last As Long
+    Set ws = wb.Worksheets(Name)
+    Set block = ws.Range(Area)
+    first = block.Row + IIf(Header, 1, 0)
+    last = block.Row + block.Rows.Count - 1
+    Arrange = Name & "|" & Area & "|" & Keys & "|" & IIf(Header, "1", "0") & "|" & IIf(MatchCase, "1", "0") & "|"
+    On Error GoTo Refused
+    With ws.Sort
+        .SortFields.Clear
+        parts = Split(Keys, ",")
+        For i = 0 To UBound(parts)
+            column = parts(i)
+            direction = 1
+            If Left$(column, 1) = "-" Then
+                column = Mid$(column, 2)
+                direction = 2
+            End If
+            .SortFields.Add Key:=ws.Range(column & first & ":" & column & last), SortOn:=0, Order:=direction
+        Next i
+        .SetRange block
+        .Header = IIf(Header, 1, 2)
+        .MatchCase = MatchCase
+        .Orientation = 1
+        .Apply
+    End With
+    Arrange = Arrange & vbLf
+    Exit Function
+Refused:
+    Arrange = Arrange & Err.Description & vbLf
+End Function
+
+Private Sub WriteDown(ws As Worksheet, ByVal col As Long, ByVal texts As String, Optional ByVal start As Long = 1)
+    Dim parts() As String, i As Long
+    parts = Split(texts, "|")
+    For i = 0 To UBound(parts)
+        If parts(i) <> "~" Then ws.Cells(start + i, col).Formula = parts(i)
+    Next i
+End Sub
+
+Private Sub Numbered(ws As Worksheet, ByVal rows As Long)
+    Dim r As Long
+    ws.Cells(1, 1).Value = "i"
+    For r = 2 To rows
+        ws.Cells(r, 1).Value = r - 2
+    Next r
+End Sub
+
+Private Sub FillValues(ws As Worksheet, ByVal Name As String)
+    ' Values of every kind, "~" an empty cell.
+    ws.Name = Name
+    Numbered ws, 45
+    WriteDown ws, 2, "v|5|-1|0|1.5|'text|'10|'2|TRUE|FALSE|=NA()|=1/0|#VALUE!|=""""|~|' |'a|'B|'b|'A|'apple|'Apple|" & _
+        "'eclair|'zebra|'-|'!|#N/A|#REF!|5|'5|=TRUE|'TRUE|1E+300|-1E+300|#NAME?|#NUM!|#NULL!|#DIV/0!|'#N/A|~|0.5|" & _
+        "=1|'|'a|'A"
+End Sub
+
+Private Sub FillWords(ws As Worksheet, ByVal Name As String)
+    ' Words a collation decides between, case and hyphens among them.
+    ws.Name = Name
+    Numbered ws, 44
+    ws.Range("B1").Value = "w"
+    ws.Range("B2:B44").NumberFormat = "@"
+    WriteDown ws, 2, "aB|Ab|ab|AB|a-b|A-b|a-B|resume|Resume|r" & ChrW(233) & "sum" & ChrW(233) & "|R" & ChrW(233) & _
+        "sum" & ChrW(233) & "|RESUME|r" & ChrW(233) & "sume|coop|co-op|Coop|Co-op|b|B|bb|Bb|bB|BB|a|A|" & ChrW(225) & "|" & _
+        ChrW(193) & "|" & ChrW(228) & "|" & ChrW(196) & "|stra" & ChrW(223) & "e|Strasse|STRASSE|strasse|x1|X1|x10|" & _
+        "X2|" & ChrW(453) & "|" & ChrW(454) & "|" & ChrW(452) & "|" & ChrW(64257) & "|fi|FI", 2
+End Sub
+
+Private Sub FillKeys(ws As Worksheet)
+    ' Ties on the first key, settled by the second, descending.
+    ws.Name = "Keys"
+    Numbered ws, 10
+    WriteDown ws, 2, "k|x|y|x|y|x|z|y|x|x"
+    WriteDown ws, 3, "n|3|1|1|2|2|9|1|3|1"
+End Sub
+
+Private Sub FillPlain(ws As Worksheet, ByVal Name As String, ByVal Header As Boolean)
+    Dim r As Long, keys As Variant, first As Long
+    ws.Name = Name
+    keys = Array(30, 10, 50, 20, 40, 60)
+    first = IIf(Header, 2, 1)
+    If Header Then ws.Range("A1:C1").Value = Array("i", "k", "c")
+    For r = 0 To 5
+        ws.Cells(first + r, 1).Value = r
+        ws.Cells(first + r, 2).Value = keys(r)
+        ws.Cells(first + r, 3).Value = "c" & r
+    Next r
+End Sub
+
+Private Sub FillMoves(ws As Worksheet)
+    ' What goes with a row and what stays: formulas of every reference,
+    ' formats, a note, a link, a validation, a conditional format and row
+    ' heights, with formulas outside the range reading into it. The rows
+    ' go 2 to 4, 3 to 2, 4 to 6, 5 to 3 and 6 to 5, and no formula ends up
+    ' reading one that reads it back.
+    Dim r As Long, keys As Variant
+    ws.Name = "Moves"
+    keys = Array(30, 10, 50, 20, 40)
+    ws.Range("A1:G1").Value = Array("i", "k", "same", "other", "fmt", "rows", "flip")
+    For r = 2 To 6
+        ws.Cells(r, 1).Value = r - 2
+        ws.Cells(r, 2).Value = keys(r - 2)
+        ws.Cells(r, 3).Formula = "=B" & r & "*2"
+        ws.Cells(r, 4).Formula = "=B" & (r - 1) & "&""|""&$B" & r & "&""|""&B$2&""|""&H" & r & "&""|""&SUM(B$2:B$6)"
+        ws.Cells(r, 5).Value = r * 1.5
+        ws.Cells(r, 5).NumberFormat = Choose(r - 1, "0.0", "0.00", "0%", "@", "0.000")
+        ws.Cells(r, 5).Interior.Color = RGB(r * 40, 0, 0)
+        ws.Cells(r, 8).Value = "h" & r
+        ws.Rows(r).RowHeight = 12 + r
+    Next r
+    ws.Range("F3").Formula = "=Values!B2&Words!B3&Moves!B3&SUM(Values:Down!B3)"
+    ws.Range("F4").Formula = "=SUM(3:3)+COUNT(B$3:B4)"
+    ws.Range("F5").Formula = "=B1+B2"
+    ws.Range("F6").Formula = "=SUM(B$3:B6)+SUM($4:5)"
+    ws.Range("G5").Formula = "=SUM(B$4:B5)+SUM($2:3)"
+    ws.Range("C3").AddComment "note on C3"
+    ws.Hyperlinks.Add ws.Range("A4"), "https://example.com/a4"
+    ws.Range("E5").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="1", Formula2:="9"
+    ws.Range("B2").FormatConditions.Add Type:=1, Operator:=5, Formula1:="25"
+    ws.Range("A9").Formula = "=C3"
+    ws.Range("A10").Formula = "=SUM(C2:C6)"
+End Sub
+
+Private Sub FillBlanks(ws As Worksheet)
+    ' Blank keys, a row with nothing in it, one with only a fill, and text
+    ' that is empty.
+    ws.Name = "Blanks"
+    Numbered ws, 9
+    WriteDown ws, 2, "k|20|~|10|~|=""""|5|~|15"
+    WriteDown ws, 3, "c|c2|c3|c4|~|c6|c7|~|c9"
+    ws.Range("A5").ClearContents
+    ws.Range("A8").ClearContents
+    ws.Range("A8:C8").Interior.Color = RGB(200, 200, 0)
+End Sub
+
+Private Sub FillTrim(ws As Worksheet)
+    ' A range well past the data, and a value far out in it.
+    ws.Name = "Trim"
+    ws.Range("B1").Value = "k"
+    WriteDown ws, 2, "5|4|3|2|1", 2
+    WriteDown ws, 4, "d2|d3|d4|d5|d6", 2
+    ws.Range("F8").Value = "f8"
+End Sub
+
+Private Sub FillShared(ws As Worksheet)
+    ' Formulas Excel shares: one group inside the range, one crossing its
+    ' bottom edge, and one beside it reading into it.
+    ws.Name = "Shared"
+    FillPlainRows ws
+    ws.Range("C2:C6").Formula = "=B2*2"
+    ws.Range("D2:D9").Formula = "=B2+A2"
+    ws.Range("E2:E6").Formula = "=B2+1"
+End Sub
+
+Private Sub FillPlainRows(ws As Worksheet)
+    Dim r As Long, keys As Variant
+    keys = Array(30, 10, 50, 20, 40)
+    ws.Range("A1:B1").Value = Array("i", "k")
+    For r = 0 To 4
+        ws.Cells(2 + r, 1).Value = r
+        ws.Cells(2 + r, 2).Value = keys(r)
+    Next r
+End Sub
+
+Private Sub FillKinds(ws As Worksheet)
+    ' Dates, times, logicals, errors and numbers written as text.
+    ws.Name = "Kinds"
+    Numbered ws, 12
+    WriteDown ws, 2, "k|1/15/2020|12:30|TRUE|#N/A|'10|9|FALSE|=DATE(1999,1,1)|0.25|'9|#DIV/0!"
+    WriteDown ws, 3, "c|a|b|c|d|e|f|g|h|i|j|k"
+End Sub
+'''
+
+
 #: What a measured fixture's reply turns into: an entry per thing measured.
 Answers = dict[str, dict[str, object]]
 
@@ -2123,6 +2372,25 @@ def error_check_answers(reply: str) -> Answers:
             continue
         cell, flags = line.split("\t")
         answers[cell] = {"rules": [rule for rule, flag in zip(_ERROR_RULES, flags, strict=True) if flag == "1"]}
+    return answers
+
+
+def sort_answers(reply: str) -> Answers:
+    """One line per sheet: its name, the range, the keys (a leading ``-``
+    for descending), whether the first row is a header, whether case
+    matters, and the error Excel refused the sort with, if it did."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        name, area, keys, header, match_case, refused = line.split("|", 5)
+        answers[name] = {
+            "range": area,
+            "keys": [[key.lstrip("-"), key.startswith("-")] for key in keys.split(",")],
+            "header": header == "1",
+            "matchCase": match_case == "1",
+            "refused": refused,
+        }
     return answers
 
 
@@ -2450,10 +2718,13 @@ def main() -> int:
         ("pivots.xlsx", _BUILD_PIVOTS, pivot_answers),
         ("chartkinds.xlsx", _BUILD_CHART_KINDS, chart_kind_answers),
         ("errorchecks.xlsx", _BUILD_ERROR_CHECKS, error_check_answers),
+        ("sorts.xlsx", _BUILD_SORTS, sort_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]
     everything += [f"{Path(name).stem}_answers.json" for name, _, _ in measured]
+    # The sort recipe saves the workbook again once Excel has sorted it.
+    everything.append("sorts_sorted.xlsx")
     if not force and all((FIXTURES / name).exists() for name in everything):
         print("every fixture is already there; nothing to do (pass --force to rebuild)")
         return 0

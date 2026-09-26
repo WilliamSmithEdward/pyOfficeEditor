@@ -73,6 +73,7 @@ Each layer knows the layer below it and not the layer above.
 |                 the fictional 1900 leap day included      |
 |   _collate      Windows word sort, the order and the      |
 |                 equality a filter compares text by        |
+|   _sort         a range's rows sorted as Excel's Sort     |
 |   _shapes       shapes, and the grid a form control needs |
 |   _comments     notes and threads, and the box each gets  |
 |   _pictures     images, sized as Excel sizes them         |
@@ -92,7 +93,8 @@ Each layer knows the layer below it and not the layer above.
 |   _cellstyles   named styles, and Excel's definitions of |
 |                 its own                                  |
 |   _formulas     reference shifting for shared formulas, |
-|                 and repointing a renamed sheet          |
+|                 repointing a renamed sheet, and a       |
+|                 sorted row's formulas                   |
 |   _errorchecks  error checking: the cells Excel marks    |
 |                 with a green triangle, and under which  |
 |                 of its ten rules                        |
@@ -268,6 +270,7 @@ The Excel surface is exported from `pyofficeeditor.excel`:
 | `FormulaSyntaxError` | `excel/_calc/lexer.py` | formula text Excel would refuse, and where |
 | `ErrorCheck`, `DEFAULT_ERROR_RULES` | `excel/_errorchecks.py` | a cell error checking catches, and the rule that catches it |
 | `ErrorRule`, `ERROR_RULES`, `IgnoredError` | `excel/_ignorederrors.py` | the rules, and the errors a sheet records as ignored |
+| `SortKey` | `excel/_sort.py` | one key of a sort: a column, and whether it runs down |
 
 `UnsupportedFormulaError`, in `exceptions.py`, is what `Worksheet.evaluate`
 raises for a formula needing something the engine does not have.
@@ -389,9 +392,11 @@ tests/
                                 and the strings of text_checks.json, and
                                 ignoring errors, against the steps of
                                 ignored_errors.json
+  test_excel_sort.py            sorting, against the sheets Excel sorted
+                                and saved in sorts_sorted.xlsx
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               twenty-three Excel-authored packages:
-                                three sourced, twenty scripted, and
+  fixtures/excel/               twenty-five Excel-authored packages:
+                                three sourced, twenty-two scripted, and
                                 six measured corpora; see its README
 ```
 
@@ -400,7 +405,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against twenty-five committed
+- The suite needs no Office installation. It runs against twenty-seven committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as

@@ -554,6 +554,109 @@ def delete_in_formula(
     return render(rebuilt) if changed else formula
 
 
+def sorted_formula(formula: str, rows: int) -> str:
+    """``formula`` as Excel's sort writes it when it moves the formula's row
+    ``rows`` down, or up when negative.
+
+    Measured in Excel's sort: a reference to the formula's own sheet moves
+    as a copy moves it, a relative row following the formula, and one moved
+    off the sheet becomes ``#REF!``, a range with it whole, so ``=B1+B2``
+    moved three rows up is ``=#REF!+#REF!``. A reference that names a sheet
+    stays as it is written, even one naming the formula's own sheet, and so
+    does a 3D range: ``=S!B3`` on sheet S is still ``=S!B3``.
+
+    :func:`translate_formula` reads a shared formula's followers instead,
+    and leaves a reference that would leave the sheet as it is written.
+    """
+    if not formula or rows == 0:
+        return formula
+    tokens = tokenize(formula)
+    rebuilt: list[Token] = []
+    index = 0
+    changed = False
+    while index < len(tokens):
+        token = tokens[index]
+        if (
+            token.kind is TokenKind.AXIS
+            and isinstance(token.value, AxisRef)
+            and token.value.is_row
+            and token.sheet is None
+        ):
+            span = _sorted_rows(token.value, rows)
+            if span is None:
+                rebuilt.append(Token(TokenKind.TEXT, REF_ERROR))
+            else:
+                rebuilt.append(Token(TokenKind.AXIS, span.a1, span))
+            changed = True
+            index += 1
+            continue
+        if token.kind is not TokenKind.REFERENCE or not isinstance(token.value, CellRef):
+            rebuilt.append(token)
+            index += 1
+            continue
+        separator = tokens[index + 1] if index + 1 < len(tokens) else None
+        far = tokens[index + 2] if index + 2 < len(tokens) else None
+        ends: list[CellRef] = [token.value]
+        if (
+            separator is not None
+            and separator.kind is TokenKind.TEXT
+            and separator.raw.strip() == ":"
+            and far is not None
+            and far.kind is TokenKind.REFERENCE
+            and isinstance(far.value, CellRef)
+        ):
+            ends.append(far.value)
+        width = 2 * len(ends) - 1
+        if token.sheet is not None:
+            rebuilt.extend(tokens[index : index + width])
+            index += width
+            continue
+        moved = [_sorted_cell(end, rows) for end in ends]
+        placed = [end for end in moved if end is not None]
+        if len(placed) < len(moved):
+            rebuilt.append(Token(TokenKind.TEXT, REF_ERROR))
+        else:
+            for position, end in enumerate(_in_order(placed)):
+                if position:
+                    rebuilt.append(Token(TokenKind.TEXT, ":"))
+                rebuilt.append(Token(TokenKind.REFERENCE, end.a1, end))
+        changed = True
+        index += width
+    return render(rebuilt) if changed else formula
+
+
+def _sorted_cell(reference: CellRef, rows: int) -> CellRef | None:
+    row = reference.row if reference.absolute_row else reference.row + rows
+    if not 1 <= row <= MAX_ROW:
+        return None
+    return CellRef(row, reference.column, reference.absolute_row, reference.absolute_column)
+
+
+def _in_order(ends: list[CellRef]) -> list[CellRef]:
+    """A range's ends with the top row first, as a moved range that turned
+    over is written. Measured: the rows change places and the ``$`` markers
+    stay where they were, so ``B$4:B5`` moved two rows up is ``B$3:B4``."""
+    if len(ends) < 2:
+        return ends
+    start, end = ends
+    if start.row <= end.row:
+        return ends
+    return [
+        CellRef(end.row, start.column, start.absolute_row, start.absolute_column),
+        CellRef(start.row, end.column, end.absolute_row, end.absolute_column),
+    ]
+
+
+def _sorted_rows(span: AxisRef, rows: int) -> AxisRef | None:
+    """Whole rows as :func:`_in_order` moves a range: ``$4:5`` moved two
+    rows up is ``$3:4``."""
+    low = span.low if span.absolute_low else span.low + rows
+    high = span.high if span.absolute_high else span.high + rows
+    if not (1 <= low <= MAX_ROW and 1 <= high <= MAX_ROW):
+        return None
+    return span.with_span(min(low, high), max(low, high))
+
+
 def shift_range(block: RangeRef, shift: Shift) -> RangeRef:
     """The same shift, applied to a stored range such as a merge or a table.
 
@@ -600,5 +703,6 @@ __all__ = [
     "shared_formula_for",
     "shift_formula",
     "shift_range",
+    "sorted_formula",
     "translate_formula",
 ]

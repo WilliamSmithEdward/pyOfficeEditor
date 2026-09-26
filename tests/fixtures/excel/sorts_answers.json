@@ -1,0 +1,234 @@
+{
+  "Array": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:D7",
+    "refused": "You can't change part of an array."
+  },
+  "ArrayRow": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:D7",
+    "refused": ""
+  },
+  "Blanks": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:C9",
+    "refused": ""
+  },
+  "Case": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": true,
+    "range": "A1:B44",
+    "refused": ""
+  },
+  "CaseDown": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        true
+      ]
+    ],
+    "matchCase": true,
+    "range": "A1:B44",
+    "refused": ""
+  },
+  "Down": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        true
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:B45",
+    "refused": ""
+  },
+  "Filtered": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        true
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:C7",
+    "refused": ""
+  },
+  "Hidden": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:C7",
+    "refused": ""
+  },
+  "Inner": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "B1:C7",
+    "refused": ""
+  },
+  "Keys": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ],
+      [
+        "C",
+        true
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:C10",
+    "refused": ""
+  },
+  "Kinds": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        true
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:C12",
+    "refused": ""
+  },
+  "Merged": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:D7",
+    "refused": "To do this, all the merged cells need to be the same size."
+  },
+  "Moves": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:G6",
+    "refused": ""
+  },
+  "NoHeader": {
+    "header": false,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:C6",
+    "refused": ""
+  },
+  "Shared": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:D6",
+    "refused": ""
+  },
+  "Spill": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:D7",
+    "refused": "You can't change part of an array."
+  },
+  "Trim": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:H20",
+    "refused": ""
+  },
+  "Values": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:B45",
+    "refused": ""
+  },
+  "Words": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        false
+      ]
+    ],
+    "matchCase": false,
+    "range": "A1:B44",
+    "refused": ""
+  }
+}

@@ -107,6 +107,23 @@ anything trailing the file is swept into the oldest release's notes. -->
   rather than adding to it, which is now also how `error_checks` decides
   what is ignored.
 
+- **Sorting.** `Worksheet.sort(cells, by, header=, match_case=)` sorts a
+  range's rows as Excel's Sort does, by up to 64 keys, each a column's
+  letter or a `SortKey` that can run down. Measured, numbers come before
+  text, text before `FALSE` and `TRUE`, and errors after, all alike, with
+  blanks last whichever way a key runs, and rows that tie keep their
+  order. Text follows Excel's collation, and with case matched a
+  lowercase letter comes first, from the left. A hidden row keeps its
+  place. A row's cells take their formulas, styles, notes and links with
+  them, and a formula moves as a copy does, but for a reference that names
+  a sheet, its own included, which stays as written. Validation,
+  conditional formats, row heights and references from outside the range
+  stay where they are. Merged cells and an array formula the sort would
+  split are refused, as Excel refuses them. The sort is recorded in the
+  sheet as Excel records it, but a refused sort changes nothing, where
+  Excel keeps its settings. Held to 19 sorts measured in Excel, three of
+  them refused, cell for cell once calculated.
+
 - **Formulas that read another workbook calculate.** They used to keep
   the values Excel cached. Excel keeps a copy of every linked cell a
   formula read, in the link's own part, and calculates with it while the

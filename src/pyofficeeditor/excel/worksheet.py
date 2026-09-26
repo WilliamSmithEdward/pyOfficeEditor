@@ -118,7 +118,7 @@ from pyofficeeditor.excel._pictures import RT_IMAGE, image_info, picture_anchor
 from pyofficeeditor.excel._pivots import PivotTable, read_pivot_tables
 from pyofficeeditor.excel._placement import swallowed_nodes
 from pyofficeeditor.excel._protection import SheetProtection
-from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef, column_letter
+from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef, column_index, column_letter
 from pyofficeeditor.excel._richtext import TextRun, completed, read_runs, rich_entry, shown
 from pyofficeeditor.excel._rowcol import (
     RT_DRAWING,
@@ -183,6 +183,7 @@ from pyofficeeditor.excel._shapes import (
     with_vml_shape,
     without_vml_shape,
 )
+from pyofficeeditor.excel._sort import MAX_SORT_KEYS, SortKey, sort_rows
 from pyofficeeditor.excel._tables import (
     CT_TABLE,
     RT_TABLE,
@@ -601,6 +602,30 @@ class Worksheet:
     def cell_element(self, reference: CellRef) -> Element:
         """The ``<c>`` element of a cell, created if the sheet has none."""
         return self._ensure_cell(reference)
+
+    def place_cells(self, number: int, cells: Sequence[Element]) -> None:
+        """Put ``cells`` into row ``number`` among the cells it holds, the row
+        created if the sheet has none. Each is addressed on that row, they
+        come in column order, and none shares a column with a cell the row
+        holds. One pass over the row places them all, where
+        :meth:`cell_element` would search it for each."""
+        if not cells:
+            return
+        row = self._ensure_row(number)
+        held = [(self._column_of(cell), cell) for cell in row.children_named("c")]
+        index = 0
+        for cell in cells:
+            column = self._column_of(cell)
+            while index < len(held) and held[index][0] < column:
+                index += 1
+            if index < len(held):
+                row.insert_before(held[index][1], cell)
+            else:
+                row.append(cell)
+        for end in (cells[0], cells[-1]):
+            reference = CellRef(number, self._column_of(end))
+            self._widen_spans(row, reference.column)
+            self._widen_dimension(reference)
 
     def set_formula(self, reference: CellRef, formula: str | None) -> None:
         """Put a formula in a cell, or remove the one it has.
@@ -1577,6 +1602,45 @@ class Worksheet:
         outcome = self._apply_filter(filters, when) if filters.filtering else FilterOutcome()
         self._invalidate()
         return outcome
+
+    def sort(
+        self,
+        cells: str | RangeRef,
+        by: str | SortKey | Sequence[str | SortKey],
+        *,
+        header: bool = False,
+        match_case: bool = False,
+    ) -> None:
+        """Sort the rows of ``cells`` by the columns ``by`` names, as Excel's
+        Sort does. A key is a column's letter, ascending, or a
+        :class:`SortKey`; a later key decides between rows the earlier ones
+        tie, and rows that tie on every key keep their order. ``header``
+        leaves the first row where it is.
+
+        As measured in Excel: numbers come first, then text in Excel's
+        collation, ``FALSE`` and ``TRUE``, then errors, and blanks last
+        either way. A hidden row keeps its place. Each row's cells move
+        whole, values, formulas, styles, notes, threads and links, a formula
+        as a copy moves it but for a reference naming a sheet, which stays;
+        conditional formats, validation and row heights stay. Merged cells,
+        or an array formula the sort would split, are refused with a
+        ``ValueError`` and nothing changed, as Excel refuses them. The sort
+        is recorded in the sheet's sort state.
+        """
+        block = (RangeRef.parse(cells) if isinstance(cells, str) else cells).normalized
+        keys = [SortKey(key) if isinstance(key, str) else key for key in ([by] if isinstance(by, (str, SortKey)) else by)]
+        if not keys or len(keys) > MAX_SORT_KEYS:
+            raise ValueError(f"a sort takes 1 to {MAX_SORT_KEYS} keys; got {len(keys)}.")
+        if header and block.top == block.bottom:
+            raise ValueError(f"{block.a1} is one row, so there is nothing below its header to sort.")
+        for key in keys:
+            column = column_index(key.column)
+            if not block.left <= column <= block.right:
+                raise ValueError(f"the sort key {key.column!r} is not a column of {block.a1}.")
+        for table in self.tables:
+            if table.ref.intersects(block):
+                raise ValueError(f"{block.a1} meets the table {table.name!r}; sorting a table is not supported yet.")
+        sort_rows(self, block, keys, header=header, match_case=match_case)
 
     def clear_auto_filter(self, *, show_rows: bool = True) -> None:
         """Take the filter off, and show the rows it was hiding.
