@@ -35,10 +35,10 @@ Measured in Excel through ``Range.RemoveDuplicates``:
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from pyofficeeditor._xml import Element
+from pyofficeeditor.excel._addresses import cut_conditional_formats, cut_validations
 from pyofficeeditor.excel._collate import sort_key
 from pyofficeeditor.excel._reference import CellRef, RangeRef
 from pyofficeeditor.excel._sort import check_movable, move_rows, row_values
@@ -133,8 +133,8 @@ def _drop(sheet: Worksheet, data: RangeRef, kept: Sequence[int], removed: Sequen
     cleared = RangeRef(CellRef(top + len(kept), data.left), CellRef(data.bottom, data.right))
     sheet.remove_cells(cleared)
     sheet.remove_hyperlink(cleared)
-    _cut_validations(sheet.document.root, cleared)
-    _cut_conditional_formats(sheet.document.root, cleared)
+    cut_validations(sheet.document.root, cleared)
+    cut_conditional_formats(sheet.document.root, cleared)
 
 
 def _is_number(value: CellValue) -> bool:
@@ -165,94 +165,6 @@ def _reads_a_range(formula: str) -> bool:
         ):
             return True
     return False
-
-
-# ----------------------------------------------------------------------
-# Cutting validation and conditional formats back
-# ----------------------------------------------------------------------
-
-
-def _cut_validations(root: Element, hole: RangeRef) -> None:
-    """Measured: a validation loses the cleared cells, its columns cut away
-    first: ``C2:D7`` less ``A6:C7`` is ``D2:D7 C2:C5``."""
-    container = root.child("dataValidations")
-    if container is None:
-        return
-    for element in list(container.children_named("dataValidation")):
-        _cut(element, hole, _columns_first)
-    remaining = list(container.children_named("dataValidation"))
-    if remaining:
-        container.set("count", str(len(remaining)))
-    else:
-        root.remove(container)
-
-
-def _cut_conditional_formats(root: Element, hole: RangeRef) -> None:
-    """Measured: a conditional format loses the cleared cells, its rows cut
-    away first: ``A2:E7`` less ``A6:C7`` is ``A2:E5 D6:E7``."""
-    for element in list(root.children_named("conditionalFormatting")):
-        _cut(element, hole, _rows_first)
-
-
-def _cut(element: Element, hole: RangeRef, pieces: Callable[[RangeRef, RangeRef], list[RangeRef]]) -> None:
-    """Take ``hole`` out of ``element``'s ``sqref``, each area it meets
-    giving way to its pieces in its place, and drop the element if nothing
-    is left of it."""
-    raw = element.get("sqref") or ""
-    try:
-        areas = [RangeRef.parse(part).normalized for part in raw.split()]
-    except ValueError:
-        return
-    if not any(area.intersects(hole) for area in areas):
-        return
-    left: list[RangeRef] = []
-    for area in areas:
-        left.extend(pieces(area, hole) if area.intersects(hole) else [area])
-    parent = element.parent
-    if not left:
-        if parent is not None:
-            parent.remove(element)
-        return
-    element.set("sqref", " ".join(area.a1 for area in left))
-
-
-def _overlap(area: RangeRef, hole: RangeRef) -> RangeRef:
-    return RangeRef(
-        CellRef(max(area.top, hole.top), max(area.left, hole.left)),
-        CellRef(min(area.bottom, hole.bottom), min(area.right, hole.right)),
-    )
-
-
-def _rows_first(area: RangeRef, hole: RangeRef) -> list[RangeRef]:
-    """``area`` less ``hole``: the rows above and below it across the whole
-    area, then the columns beside it in its rows."""
-    cut = _overlap(area, hole)
-    pieces: list[RangeRef] = []
-    if area.top < cut.top:
-        pieces.append(RangeRef(CellRef(area.top, area.left), CellRef(cut.top - 1, area.right)))
-    if cut.bottom < area.bottom:
-        pieces.append(RangeRef(CellRef(cut.bottom + 1, area.left), CellRef(area.bottom, area.right)))
-    if area.left < cut.left:
-        pieces.append(RangeRef(CellRef(cut.top, area.left), CellRef(cut.bottom, cut.left - 1)))
-    if cut.right < area.right:
-        pieces.append(RangeRef(CellRef(cut.top, cut.right + 1), CellRef(cut.bottom, area.right)))
-    return pieces
-
-
-def _columns_first(area: RangeRef, hole: RangeRef) -> list[RangeRef]:
-    """``area`` less ``hole``: the columns beside it down the whole area,
-    then the rows above and below it in its columns."""
-    cut = _overlap(area, hole)
-    pieces: list[RangeRef] = []
-    if area.left < cut.left:
-        pieces.append(RangeRef(CellRef(area.top, area.left), CellRef(area.bottom, cut.left - 1)))
-    if cut.right < area.right:
-        pieces.append(RangeRef(CellRef(area.top, cut.right + 1), CellRef(area.bottom, area.right)))
-    if area.top < cut.top:
-        pieces.append(RangeRef(CellRef(area.top, cut.left), CellRef(cut.top - 1, cut.right)))
-    if cut.bottom < area.bottom:
-        pieces.append(RangeRef(CellRef(cut.bottom + 1, cut.left), CellRef(area.bottom, cut.right)))
-    return pieces
 
 
 __all__ = ["duplicate_key", "find_duplicate_rows", "remove_duplicate_rows", "remove_table_rows"]

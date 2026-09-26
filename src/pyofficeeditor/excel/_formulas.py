@@ -31,6 +31,7 @@ goals will need one; this does the one job a shared formula requires.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -856,6 +857,99 @@ def _joined(areas: list[tuple[int, int, int, int]], *, keep_order: bool = False)
     return found if keep_order else sorted(found)
 
 
+def join_areas(areas: Sequence[RangeRef]) -> tuple[RangeRef, ...]:
+    """``areas`` with any two that make one block together made one, each
+    where the first of its parts was, as Excel joins the areas of a range
+    a paste adds cells to."""
+    found = _joined([(area.top, area.bottom, area.left, area.right) for area in areas], keep_order=True)
+    return tuple(_area(*area) for area in found)
+
+
+def copied_formula(formula: str, rows: int, columns: int) -> str:
+    """``formula`` as Excel's Copy and Paste writes it ``rows`` down and
+    ``columns`` across.
+
+    Measured: every relative reference moves, whichever sheet it names, a
+    span of sheets and whole rows and columns among them, and absolute
+    ones stay. One the copy pushes off the sheet is ``#REF!``, its sheet
+    kept, as ``Other!#REF!``, and a range with an end pushed off is
+    ``#REF!`` whole.
+    """
+    if not formula or (rows == 0 and columns == 0):
+        return formula
+    tokens = tokenize(formula)
+    rebuilt: list[Token] = []
+    changed = False
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token.kind is TokenKind.AXIS and isinstance(token.value, AxisRef):
+            span = _copied_axis(token.value, rows, columns)
+            if span is None:
+                rebuilt.append(Token(TokenKind.TEXT, REF_ERROR))
+            elif span != token.value:
+                rebuilt.append(Token(TokenKind.AXIS, span.a1, span))
+            else:
+                rebuilt.append(token)
+            changed = changed or span != token.value
+            index += 1
+            continue
+        if token.kind is not TokenKind.REFERENCE or not isinstance(token.value, CellRef):
+            rebuilt.append(token)
+            index += 1
+            continue
+        separator = tokens[index + 1] if index + 1 < len(tokens) else None
+        far = tokens[index + 2] if index + 2 < len(tokens) else None
+        is_range = (
+            separator is not None
+            and separator.kind is TokenKind.TEXT
+            and separator.raw.strip() == ":"
+            and far is not None
+            and far.kind is TokenKind.REFERENCE
+            and isinstance(far.value, CellRef)
+        )
+        ends = [token, far] if is_range and far is not None else [token]
+        moved = [_copied_cell(end.value, rows, columns) if isinstance(end.value, CellRef) else None for end in ends]
+        if any(end is None for end in moved):
+            rebuilt.append(Token(TokenKind.TEXT, REF_ERROR))
+            changed = True
+        else:
+            for position, (end, place) in enumerate(zip(ends, moved, strict=True)):
+                if position and separator is not None:
+                    rebuilt.append(separator)
+                if place is None or place == end.value:
+                    rebuilt.append(end)
+                else:
+                    rebuilt.append(Token(TokenKind.REFERENCE, place.a1, place))
+                    changed = True
+        index += 3 if len(ends) == 2 else 1
+    return render(rebuilt) if changed else formula
+
+
+def _copied_cell(reference: CellRef, rows: int, columns: int) -> CellRef | None:
+    """Where a copy puts a reference, or ``None`` off the sheet."""
+    row = reference.row if reference.absolute_row else reference.row + rows
+    column = reference.column if reference.absolute_column else reference.column + columns
+    if not (1 <= row <= MAX_ROW and 1 <= column <= MAX_COLUMN):
+        return None
+    if (row, column) == (reference.row, reference.column):
+        return reference
+    return CellRef(row, column, reference.absolute_row, reference.absolute_column)
+
+
+def _copied_axis(span: AxisRef, rows: int, columns: int) -> AxisRef | None:
+    """Where a copy puts whole rows or columns, or ``None`` off the sheet."""
+    step, limit = (rows, MAX_ROW) if span.is_row else (columns, MAX_COLUMN)
+    low = span.low if span.absolute_low else span.low + step
+    high = span.high if span.absolute_high else span.high + step
+    low, high = min(low, high), max(low, high)
+    if low < 1 or high > limit:
+        return None
+    if (low, high) == (span.low, span.high):
+        return span
+    return span.with_span(low, high)
+
+
 def sorted_formula(formula: str, rows: int) -> str:
     """``formula`` as Excel's sort writes it when it moves the formula's row
     ``rows`` down, or up when negative.
@@ -1001,7 +1095,9 @@ __all__ = [
     "Remap",
     "Shift",
     "TableShrink",
+    "copied_formula",
     "delete_in_formula",
+    "join_areas",
     "quote_sheet_name",
     "rename_sheet_in_formula",
     "shared_formula_for",

@@ -44,17 +44,23 @@ from pyofficeeditor.excel._comments import (
     RT_COMMENTS,
     RT_THREADED_COMMENTS,
     Comment,
+    CopiedNote,
     ThreadedComment,
+    box_size,
     delete_comment,
     delete_thread,
+    find_comment,
     is_empty,
     note_anchor,
+    note_corners,
     note_shapes,
     note_vml,
+    paste_comment,
     person_id,
     placeholder_text,
     read_comments,
     read_threads,
+    rehomed_note,
     set_resolved,
     shape_count,
     shown_as,
@@ -65,6 +71,7 @@ from pyofficeeditor.excel._comments import (
     write_thread,
 )
 from pyofficeeditor.excel._conditional import ConditionalFormatting, ConditionalRule
+from pyofficeeditor.excel._copy import copy_cells
 from pyofficeeditor.excel._dimensions import (
     Freeze,
     column_entry,
@@ -1686,6 +1693,36 @@ class Worksheet:
         """
         sort_filter(self, sort_keys(by), match_case=match_case)
 
+    def copy_range(
+        self,
+        cells: str | RangeRef,
+        destination: str | RangeRef,
+        *,
+        to: Worksheet | None = None,
+    ) -> RangeRef:
+        """Copy ``cells`` and paste them at ``destination``, on this sheet or
+        on ``to``, as Excel's Copy and Paste does, and return the block
+        pasted. ``cells`` may be whole rows, as ``"1:3"``, or whole columns,
+        as ``"A:C"``; ``destination`` is a cell, or a block the copy is
+        repeated over when it is a whole number of copies both ways.
+
+        As measured in Excel: each cell comes with its value, formula and
+        format, and a blank one clears the cell it lands on. A formula
+        moves as a copy does, its relative references whichever sheet they
+        name, and one pushed off the sheet is ``#REF!``. Merged cells,
+        notes, threads, links, validation and conditional formats come too,
+        and those at the destination give way. On a sheet whose filter
+        hides rows by a criterion, only the rows and columns showing come.
+        Whole rows bring their heights and whole columns their widths.
+
+        A paste over part of merged cells or of an array formula is refused
+        with a ``ValueError`` and nothing changed, as Excel refuses it. So
+        are, for now, a copy of a whole table, a paste over a table's header
+        or totals row, across its edge or just past it, shapes inside the
+        source, pivot tables and what-if data tables.
+        """
+        return copy_cells(self, cells, to if to is not None else self, destination)
+
     def remove_duplicates(
         self,
         cells: str | RangeRef,
@@ -2184,6 +2221,48 @@ class Worksheet:
             vml = vml.replace(box, shown_as(box, visible), 1)
         package.write(vml_part, vml.encode("utf-8"))
 
+    def copied_note(self, reference: CellRef) -> CopiedNote | None:
+        """What :meth:`paste_note` needs to put a cell's note on another
+        cell, or ``None`` when the cell has no note of its own: a thread's
+        placeholder is not one."""
+        part = self._comments_part()
+        if part is None or reference.a1 in self._thread_ids():
+            return None
+        package = self._workbook.package
+        root = package.xml(part).root
+        element = find_comment(root, reference.a1)
+        if element is None:
+            return None
+        authors = [decode(entry.text) for entry in root.descendants("author")]
+        index = int(element.get("authorId") or 0)
+        author = authors[index] if 0 <= index < len(authors) else ""
+        for vml_part in self._legacy_vml_parts():
+            shape = note_shapes(package.read(vml_part).decode("utf-8")).get(reference)
+            corners = None if shape is None else note_corners(shape)
+            if shape is None or corners is None:
+                return None
+            columns, rows = self._pixels(max(corners[0], corners[4]) + 1, max(corners[2], corners[6]) + 1)
+            return CopiedNote(element, author, shape, box_size(corners, columns, rows))
+        return None
+
+    def paste_note(self, reference: CellRef, note: CopiedNote) -> None:
+        """Put a copy of a note on a cell, as Excel's Paste puts one: its
+        text and runs as they were, and its box where a new note's box goes
+        but at the size it had. Measured, a note's box keeps its size and
+        not its place."""
+        paste_comment(self._comments_root(), note.element, reference.a1, note.author)
+        package = self._workbook.package
+        vml_part = self._vml_part()
+        vml = package.read(vml_part).decode("utf-8")
+        anchor, left, top = note_anchor(reference, *self._pixel_grid(reference), size=note.size)
+        markup = rehomed_note(note.shape, self._next_control_id(), reference, anchor, left, top)
+        package.write(vml_part, with_vml_shape(with_note_shape_type(vml), markup).encode("utf-8"))
+        self._invalidate()
+
+    def row_element(self, number: int) -> Element:
+        """The ``<row>`` element of a row, created if the sheet has none."""
+        return self._ensure_row(number)
+
     def remove_comment(self, reference: str | CellRef) -> bool:
         """Take a cell's note or thread off, box and all; whether it had
         one.
@@ -2349,15 +2428,14 @@ class Worksheet:
     def _pixel_grid(self, cell: CellRef) -> tuple[list[int], list[int]]:
         """Column widths and row heights in pixels, from the first to far
         enough past a cell to hold a note's box, at 96 pixels an inch."""
+        return self._pixels(min(cell.column + 40, MAX_COLUMN), min(cell.row + 40, MAX_ROW))
+
+    def _pixels(self, column_count: int, row_count: int) -> tuple[list[int], list[int]]:
+        """The widths of the first ``column_count`` columns and the heights
+        of the first ``row_count`` rows, in pixels."""
         grid = SheetGrid.of(self._root)
-        columns = [
-            round(grid.column_widths.get(index, grid.default_column) / 0.75)
-            for index in range(min(cell.column + 40, MAX_COLUMN))
-        ]
-        rows = [
-            round(grid.row_heights.get(index, grid.default_row) / 0.75)
-            for index in range(min(cell.row + 40, MAX_ROW))
-        ]
+        columns = [round(grid.column_widths.get(index, grid.default_column) / 0.75) for index in range(column_count)]
+        rows = [round(grid.row_heights.get(index, grid.default_row) / 0.75) for index in range(row_count)]
         return columns, rows
 
     def _legacy_vml_parts(self) -> list[str]:

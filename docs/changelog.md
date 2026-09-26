@@ -159,6 +159,29 @@ anything trailing the file is swept into the oldest release's notes. -->
   cell for cell once calculated, and the resize to 313 references and
   ranges Excel moved.
 
+- **Copying and pasting cells.** `Worksheet.copy_range(cells,
+  destination, to=)` copies a block, whole rows or whole columns and
+  pastes them on the same sheet or another, as Excel's Copy and Paste
+  does, and returns the block pasted. Measured, each cell comes with its
+  value, formula and format, and a blank one clears the cell it lands on.
+  A formula moves as a copy does: every relative reference, whichever
+  sheet it names, a span of sheets and whole rows and columns among them,
+  and one pushed off the sheet is `#REF!`, its sheet kept, as
+  `Other!#REF!`. A destination a whole number of copies both ways takes
+  that many. Merged cells, notes, threads and links come too, a note's
+  box at its size where a new note's goes; the source's validation takes
+  the pasted cells in and its conditional formats come as new blocks;
+  and what the destination held gives way. On a sheet whose filter hides
+  rows by a criterion, only the rows and columns showing come. Arrays
+  come whole or as an array over the part copied, and a spill spills
+  again. Whole rows bring their heights and whole columns their widths.
+  A paste over part of merged cells or of an array is refused, as Excel
+  refuses it, and so, for now, are whole tables and cells taken out of
+  one, pastes over a table's header or just past it, pastes onto cells a
+  formula spilled into, shapes in the source, pivot tables and what-if
+  data tables. Held to 44 copies Excel made, cell for cell once
+  calculated.
+
 - **Formulas that read another workbook calculate.** They used to keep
   the values Excel cached. Excel keeps a copy of every linked cell a
   formula read, in the link's own part, and calculates with it while the

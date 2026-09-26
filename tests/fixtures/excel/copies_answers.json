@@ -1,0 +1,310 @@
+{
+  "01": {
+    "onto": "Kinds",
+    "refused": "",
+    "sheet": "Kinds",
+    "source": "A1:B7",
+    "target": "D3"
+  },
+  "02": {
+    "onto": "Refs",
+    "refused": "",
+    "sheet": "Refs",
+    "source": "A1:A15",
+    "target": "C5"
+  },
+  "03": {
+    "onto": "Other",
+    "refused": "",
+    "sheet": "Refs",
+    "source": "A1:A15",
+    "target": "E1"
+  },
+  "04": {
+    "onto": "OffSheet",
+    "refused": "",
+    "sheet": "OffSheet",
+    "source": "A5:A16",
+    "target": "A1"
+  },
+  "05": {
+    "onto": "Merged",
+    "refused": "",
+    "sheet": "Merged",
+    "source": "A1:C3",
+    "target": "E2"
+  },
+  "06": {
+    "onto": "MergeEdge",
+    "refused": "",
+    "sheet": "MergeEdge",
+    "source": "A1:A3",
+    "target": "D1"
+  },
+  "07": {
+    "onto": "MergedWhole",
+    "refused": "",
+    "sheet": "MergedWhole",
+    "source": "A1:B3",
+    "target": "E1"
+  },
+  "08": {
+    "onto": "MergedPart",
+    "refused": "We can't do that to a merged cell.",
+    "sheet": "MergedPart",
+    "source": "A1:A3",
+    "target": "E1"
+  },
+  "09": {
+    "onto": "Notes",
+    "refused": "",
+    "sheet": "Notes",
+    "source": "A1:B3",
+    "target": "D2"
+  },
+  "10": {
+    "onto": "Over",
+    "refused": "",
+    "sheet": "Over",
+    "source": "A1:A2",
+    "target": "C1"
+  },
+  "11": {
+    "onto": "Rules",
+    "refused": "",
+    "sheet": "Rules",
+    "source": "A1:B3",
+    "target": "D2"
+  },
+  "12": {
+    "onto": "Onto",
+    "refused": "",
+    "sheet": "Onto",
+    "source": "A1:A3",
+    "target": "E2"
+  },
+  "13": {
+    "onto": "To",
+    "refused": "",
+    "sheet": "From",
+    "source": "A1:A3",
+    "target": "C2"
+  },
+  "14": {
+    "onto": "To",
+    "refused": "",
+    "sheet": "From",
+    "source": "C2:C3",
+    "target": "E5"
+  },
+  "15": {
+    "onto": "Overlap",
+    "refused": "",
+    "sheet": "Overlap",
+    "source": "A1:A5",
+    "target": "A3"
+  },
+  "16": {
+    "onto": "Arrays",
+    "refused": "",
+    "sheet": "Arrays",
+    "source": "A1:A3",
+    "target": "F1"
+  },
+  "17": {
+    "onto": "Arrays",
+    "refused": "",
+    "sheet": "Arrays",
+    "source": "A1",
+    "target": "G1"
+  },
+  "18": {
+    "onto": "Arrays",
+    "refused": "",
+    "sheet": "Arrays",
+    "source": "A2:A3",
+    "target": "H1"
+  },
+  "19": {
+    "onto": "Arrays",
+    "refused": "",
+    "sheet": "Arrays",
+    "source": "C1:C3",
+    "target": "I1"
+  },
+  "20": {
+    "onto": "Arrays",
+    "refused": "",
+    "sheet": "Arrays",
+    "source": "C2:C3",
+    "target": "J1"
+  },
+  "21": {
+    "onto": "SpillAnchor",
+    "refused": "",
+    "sheet": "SpillAnchor",
+    "source": "C1",
+    "target": "A1"
+  },
+  "22": {
+    "onto": "SpillOver",
+    "refused": "",
+    "sheet": "SpillOver",
+    "source": "C1",
+    "target": "A2"
+  },
+  "23": {
+    "onto": "ArrayCut",
+    "refused": "You can't change part of an array.",
+    "sheet": "ArrayCut",
+    "source": "A1:A2",
+    "target": "E3"
+  },
+  "24": {
+    "onto": "ArrayWhole",
+    "refused": "",
+    "sheet": "ArrayWhole",
+    "source": "A1:A3",
+    "target": "E1"
+  },
+  "25": {
+    "onto": "Hidden",
+    "refused": "",
+    "sheet": "Hidden",
+    "source": "A1:A6",
+    "target": "C1"
+  },
+  "26": {
+    "onto": "Filtered",
+    "refused": "",
+    "sheet": "Filtered",
+    "source": "A1:A6",
+    "target": "C1"
+  },
+  "27": {
+    "onto": "Filtered",
+    "refused": "",
+    "sheet": "Filtered",
+    "source": "B1:B6",
+    "target": "D1"
+  },
+  "28": {
+    "onto": "Filtered",
+    "refused": "",
+    "sheet": "Filtered",
+    "source": "A2:A3",
+    "target": "F1"
+  },
+  "29": {
+    "onto": "FilterHand",
+    "refused": "",
+    "sheet": "FilterHand",
+    "source": "A1:A6",
+    "target": "C1"
+  },
+  "30": {
+    "onto": "HiddenColumn",
+    "refused": "",
+    "sheet": "HiddenColumn",
+    "source": "A1:C4",
+    "target": "E1"
+  },
+  "31": {
+    "onto": "TableRows",
+    "refused": "",
+    "sheet": "TableRows",
+    "source": "A2:A6",
+    "target": "C1"
+  },
+  "32": {
+    "onto": "Shared",
+    "refused": "",
+    "sheet": "Shared",
+    "source": "A1:A4",
+    "target": "D2"
+  },
+  "33": {
+    "onto": "Tile",
+    "refused": "",
+    "sheet": "Tile",
+    "source": "A1",
+    "target": "D1:E3"
+  },
+  "34": {
+    "onto": "Tile",
+    "refused": "",
+    "sheet": "Tile",
+    "source": "A1:A2",
+    "target": "G1:G6"
+  },
+  "35": {
+    "onto": "Tile",
+    "refused": "",
+    "sheet": "Tile",
+    "source": "A1:A2",
+    "target": "I1:I5"
+  },
+  "36": {
+    "onto": "Tile",
+    "refused": "",
+    "sheet": "Tile",
+    "source": "A1:B2",
+    "target": "K1:N4"
+  },
+  "37": {
+    "onto": "Tile",
+    "refused": "",
+    "sheet": "Tile",
+    "source": "A1:B2",
+    "target": "P1:S3"
+  },
+  "38": {
+    "onto": "Tile",
+    "refused": "",
+    "sheet": "Tile",
+    "source": "A1:A3",
+    "target": "U1:U2"
+  },
+  "39": {
+    "onto": "Blanks",
+    "refused": "",
+    "sheet": "Blanks",
+    "source": "A1:A3",
+    "target": "C1"
+  },
+  "40": {
+    "onto": "Sizes",
+    "refused": "",
+    "sheet": "Sizes",
+    "source": "A1:A3",
+    "target": "D5"
+  },
+  "41": {
+    "onto": "WholeRows",
+    "refused": "",
+    "sheet": "WholeRows",
+    "source": "1:3",
+    "target": "6:8"
+  },
+  "42": {
+    "onto": "WholeColumns",
+    "refused": "",
+    "sheet": "WholeColumns",
+    "source": "A:A",
+    "target": "D:D"
+  },
+  "43": {
+    "onto": "IntoTable",
+    "refused": "",
+    "sheet": "IntoTable",
+    "source": "E1:E2",
+    "target": "A2"
+  },
+  "44": {
+    "onto": "PartOut",
+    "refused": "",
+    "sheet": "PartOut",
+    "source": "A2:C3",
+    "target": "E2"
+  }
+}

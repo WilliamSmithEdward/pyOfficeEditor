@@ -41,6 +41,20 @@ def rows(sheet: Worksheet) -> dict[int, dict[str, str]]:
     return found
 
 
+def columns(sheet: Worksheet) -> dict[int, tuple[float | None, bool]]:
+    """Each column the sheet sets a width or hides, with its width and
+    whether it is hidden."""
+    container = sheet.document.root.child("cols")
+    numbers: set[int] = set()
+    for entry in () if container is None else container.children_named("col"):
+        numbers.update(range(int(entry.get("min") or 1), int(entry.get("max") or 1) + 1))
+    return {
+        number: (sheet.column_width(number), sheet.column_hidden(number))
+        for number in sorted(numbers)
+        if sheet.column_width(number) is not None or sheet.column_hidden(number)
+    }
+
+
 def attached(sheet: Worksheet) -> dict[str, object]:
     """Notes and their boxes, links, validation and conditional formats
     with their formulas, merged cells, the filter and the tables, each as

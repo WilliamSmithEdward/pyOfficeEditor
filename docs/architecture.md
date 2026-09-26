@@ -79,6 +79,8 @@ Each layer knows the layer below it and not the layer above.
 |                 Duplicates removes them                   |
 |   _tableshrink  a table giving up the rows at its bottom, |
 |                 as Excel's Resize does                    |
+|   _copy         cells copied and pasted as Excel's Copy   |
+|                 and Paste does                            |
 |   _shapes       shapes, and the grid a form control needs |
 |   _comments     notes and threads, and the box each gets  |
 |   _pictures     images, sized as Excel sizes them         |
@@ -404,13 +406,15 @@ tests/
   test_excel_duplicates.py      removing duplicates, against the ranges
                                 Excel cleaned in duplicates_removed.xlsx
   sheet_state.py                a sheet's state, as those two compare it
+  test_excel_copy.py            copying and pasting, against the sheets
+                                Excel pasted into in copies_pasted.xlsx
   test_excel_table_resize.py    a table giving up rows, against the
                                 resizes of table_resizes.json
   test_excel_collate.py         the collation, against what a filter and
                                 a sort answered
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               twenty-seven Excel-authored packages:
-                                three sourced, twenty-four scripted, and
+  fixtures/excel/               twenty-nine Excel-authored packages:
+                                three sourced, twenty-six scripted, and
                                 eight measured corpora; see its README
 ```
 
@@ -419,7 +423,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against twenty-nine committed
+- The suite needs no Office installation. It runs against thirty-one committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as

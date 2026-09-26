@@ -167,16 +167,6 @@ def write_comment(
     placeholder is written as Excel writes one: plain text with no run,
     named after its thread in ``xr:uid`` where the part declares ``xr``.
     """
-    authors = _made(root, "authors")
-    names = [decode(entry.text) for entry in authors.children_named("author")]
-    if author in names:
-        author_id = names.index(author)
-    else:
-        entry = Element.create("author")
-        entry.set_text(encode_text(author))
-        authors.append(entry)
-        author_id = len(names)
-
     space = ' xml:space="preserve"' if needs_space_preserved(text) else ""
     body = f"<t{space}>{escape_text(encode_text(text))}</t>"
     if run:
@@ -184,8 +174,49 @@ def write_comment(
     # The parser here reads a prefix as part of the name, so the fragment
     # needs no declaration of its own; the part's root has one.
     named = f' xr:uid="{uid}"' if uid is not None and root.has("xmlns:xr") else ""
+    author_id = _author_id(root, author)
     markup = f'<comment ref="{ref}" authorId="{author_id}" shapeId="0"{named}><text>{body}</text></comment>'
-    element = XmlDocument.parse(markup.encode("utf-8")).root
+    _place(root, XmlDocument.parse(markup.encode("utf-8")).root, ref)
+
+
+@dataclass(frozen=True)
+class CopiedNote:
+    """A note as a copy takes it: its element in the comments part, its
+    author's name, its box as the VML part holds it, and the box's width
+    and height in pixels."""
+
+    element: Element
+    author: str
+    shape: str
+    size: tuple[int, int]
+
+
+def paste_comment(root: Element, note: Element, ref: str, author: str) -> None:
+    """Put a copy of a note, as another part held it, on a cell: its text
+    and its runs as they were, its author by name, replacing any note the
+    cell had."""
+    element = XmlDocument.parse(note.to_xml().encode("utf-8")).root
+    element.set("ref", ref)
+    element.set("authorId", str(_author_id(root, author)))
+    element.unset("xr:uid")
+    _place(root, element, ref)
+
+
+def _author_id(root: Element, author: str) -> int:
+    """Where ``author`` is in a part's list of authors, added if absent."""
+    authors = _made(root, "authors")
+    names = [decode(entry.text) for entry in authors.children_named("author")]
+    if author in names:
+        return names.index(author)
+    entry = Element.create("author")
+    entry.set_text(encode_text(author))
+    authors.append(entry)
+    return len(names)
+
+
+def _place(root: Element, element: Element, ref: str) -> None:
+    """Put a note's element in its part, where Excel keeps it: in cell
+    order, row by row, in place of the cell's note if it has one."""
     container = _made(root, "commentList")
     existing = find_comment(root, ref)
     if existing is not None:
@@ -460,26 +491,74 @@ def _made(root: Element, name: str) -> Element:
 
 
 def note_anchor(
-    cell: CellRef, column_pixels: list[int], row_pixels: list[int]
+    cell: CellRef,
+    column_pixels: list[int],
+    row_pixels: list[int],
+    *,
+    size: tuple[int, int] = (NOTE_WIDTH_PIXELS, NOTE_HEIGHT_PIXELS),
 ) -> tuple[tuple[int, int, int, int, int, int, int, int], float, float]:
     """Where Excel puts a new note's box, as the VML anchor's eight numbers
-    and the box's top left corner in points.
+    and the box's top left corner in points; ``size`` is its width and
+    height in pixels.
 
     ``column_pixels`` and ``row_pixels`` are the widths and heights of the
     sheet's columns and rows from the first, far enough to hold the box.
     Measured: the box starts 15 pixels right of the cell's right edge and
     10 above its top, 2 below the sheet's top edge on the first row, and
     the anchor names each corner by the zero-based column and row it falls
-    in and how many pixels into it.
+    in and how many pixels into it. A pasted note's box starts there too,
+    at the size it had where it was copied from.
     """
     left = sum(column_pixels[: cell.column]) + 15
     top = max(sum(row_pixels[: cell.row - 1]) - 10, 2)
     first_column, first_x = _cell_at(left, column_pixels)
     first_row, first_y = _cell_at(top, row_pixels)
-    last_column, last_x = _cell_at(left + NOTE_WIDTH_PIXELS, column_pixels)
-    last_row, last_y = _cell_at(top + NOTE_HEIGHT_PIXELS, row_pixels)
+    last_column, last_x = _cell_at(left + size[0], column_pixels)
+    last_row, last_y = _cell_at(top + size[1], row_pixels)
     anchor = (first_column, first_x, first_row, first_y, last_column, last_x, last_row, last_y)
     return anchor, left * 0.75, top * 0.75
+
+
+def note_corners(shape: str) -> tuple[int, int, int, int, int, int, int, int] | None:
+    """A note box's anchor: the zero-based column of its left edge and how
+    many pixels into it, then its top row, its right column and its bottom
+    row the same way; ``None`` when it has no anchor to read."""
+    found = _ANCHOR.search(shape)
+    numbers = [int(number) for number in re.findall(r"-?\d+", found.group(2))] if found else []
+    if len(numbers) != 8:
+        return None
+    first_column, first_x, first_row, first_y, last_column, last_x, last_row, last_y = numbers
+    return first_column, first_x, first_row, first_y, last_column, last_x, last_row, last_y
+
+
+def box_size(
+    corners: tuple[int, int, int, int, int, int, int, int], column_pixels: list[int], row_pixels: list[int]
+) -> tuple[int, int]:
+    """A note box's width and height in pixels, from its anchor over a
+    sheet's column widths and row heights in pixels."""
+    first_column, first_x, first_row, first_y, last_column, last_x, last_row, last_y = corners
+    width = sum(column_pixels[:last_column]) + last_x - sum(column_pixels[:first_column]) - first_x
+    height = sum(row_pixels[:last_row]) + last_y - sum(row_pixels[:first_row]) - first_y
+    return width, height
+
+
+def rehomed_note(
+    shape: str,
+    shape_id: int,
+    cell: CellRef,
+    anchor: tuple[int, int, int, int, int, int, int, int],
+    left: float,
+    top: float,
+) -> str:
+    """A note's box made over for another cell: its id, its place and its
+    anchor, and the cell it belongs to, the rest of it as it was."""
+    shape = re.sub(r'(<v:shape\b[^>]*?\bid=")[^"]*(")', rf"\g<1>_x0000_s{shape_id}\g<2>", shape, count=1)
+    shape = re.sub(r"margin-left:[^;']*", f"margin-left:{left:g}pt", shape, count=1)
+    shape = re.sub(r"margin-top:[^;']*", f"margin-top:{top:g}pt", shape, count=1)
+    corners = ", ".join(str(number) for number in anchor)
+    shape = _ANCHOR.sub(lambda found: f"{found.group(1)}\r\n    {corners}{found.group(3)}", shape, count=1)
+    shape = re.sub(r"(<x:Row>)\s*\d+\s*(</x:Row>)", rf"\g<1>{cell.row - 1}\g<2>", shape, count=1)
+    return re.sub(r"(<x:Column>)\s*\d+\s*(</x:Column>)", rf"\g<1>{cell.column - 1}\g<2>", shape, count=1)
 
 
 def _cell_at(position: int, sizes: list[int]) -> tuple[int, int]:
@@ -644,8 +723,10 @@ __all__ = [
     "RT_PERSONS",
     "RT_THREADED_COMMENTS",
     "Comment",
+    "CopiedNote",
     "Reply",
     "ThreadedComment",
+    "box_size",
     "comment_text",
     "delete_comment",
     "delete_thread",
@@ -656,14 +737,17 @@ __all__ = [
     "new_id",
     "next_id",
     "note_anchor",
+    "note_corners",
     "note_shapes",
     "note_vml",
     "parse_moment",
+    "paste_comment",
     "person_id",
     "placeholder_text",
     "read_comments",
     "read_persons",
     "read_threads",
+    "rehomed_note",
     "set_resolved",
     "shape_count",
     "shown_as",

@@ -2927,13 +2927,316 @@ Private Sub FillTables(wb As Workbook)
 End Sub
 '''
 
-_BUILD_DUPLICATES =_DUPLICATES_TEMPLATE.replace("%COUNT%", str(len(_DUPLICATE_PAIRS))).replace(
+_BUILD_DUPLICATES = _DUPLICATES_TEMPLATE.replace("%COUNT%", str(len(_DUPLICATE_PAIRS))).replace(
     "    ' The pairs\n",
     "".join(
         f"    Pair ws, {index}, {', '.join(_vba_text(field) for field in pair)}\n"
         for index, pair in enumerate(_DUPLICATE_PAIRS)
     ),
 )
+
+
+#: Copy and paste as Excel does it, through Range.Copy Destination:=, the
+#: paste all of Ctrl+V. Each sheet holds a source block and one or more
+#: copies of it: values of every kind with their formats; references of
+#: every kind, copied on the sheet and to another, and pushed off it;
+#: merged cells in the source and in the way; notes, their boxes and
+#: links, and others pasted over; validation and conditional formats,
+#: on the sheet and to another, and those at the destination cut back; a
+#: copy overlapping its source; arrays whole and in part, a spill and its
+#: cells, and arrays in the way; rows hidden by hand, by the sheet's filter
+#: and by a table's, and a hidden column; a shared formula; destinations
+#: a multiple of the source and not; formats on blank cells; whole rows
+#: and columns; and pastes into a table and out of one. The workbook is
+#: saved as it stands, then every copy made in order and the workbook
+#: saved again as ``copies_pasted.xlsx``, which the library's own copies
+#: are held to. The reply is one line per copy: the source's sheet and
+#: range, the destination's sheet and range, and the error Excel refused
+#: it with, if it did.
+_BUILD_COPIES = r'''
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook, ws As Worksheet, out As String, lo As ListObject
+    Set wb = ActiveWorkbook
+
+    ' Values of every kind, with their formats.
+    Set ws = Page(wb, "Kinds")
+    Down ws, 1, "text|12.5|TRUE|=NA()|43845|~|'007"
+    ws.Range("A2").NumberFormat = "0.00"
+    ws.Range("A5").NumberFormat = "m/d/yyyy"
+    ws.Range("A6").Interior.Color = RGB(200, 0, 0)
+    ws.Range("B1").Value = "bold"
+    ws.Range("B1").Font.Bold = True
+    ws.Range("B2").Value = 5
+    ws.Range("B2").Interior.Color = RGB(0, 200, 0)
+    ws.Range("B3").Formula = "=B2*2"
+
+    ' References of every kind.
+    Set ws = Page(wb, "Refs")
+    Page wb, "Other"
+    Page wb, "Jan"
+    Page wb, "Mar"
+    wb.Names.Add Name:="Rate", RefersTo:="=Refs!$B$1"
+    Down wb.Worksheets("Refs"), 1, "=B1|=$B$1|=B$1|=$B1|=SUM(B1:B3)|=SUM($B$1:B3)|=Other!B1|=SUM(Jan:Mar!B1)|" & _
+        "=SUM(B:B)|=SUM(2:3)|=Rate|=""B1""&B1|=LOG10(B1+10)|=Refs!B1|=SUM(Other!B1:B2)"
+
+    ' References pushed off the sheet, copied up four rows.
+    Set ws = Page(wb, "OffSheet")
+    Down ws, 1, "=A1|=B2|=SUM(A1:A3)|=A$1|=SUM(A1:B2)|=Other!A1|=SUM(Other!A1:A2)|=SUM(Jan:Mar!A1)|" & _
+        "=Other!$A$1|=A$1+A1|=SUM(2:3)|=SUM(B:B)", 5
+
+    ' Merged cells: in the source, only partly in it, and at the
+    ' destination, whole and in part.
+    Set ws = Page(wb, "Merged")
+    ws.Range("A1:B1").Merge
+    ws.Range("A1").Value = "wide"
+    ws.Range("A2:A3").Merge
+    ws.Range("A2").Value = "tall"
+    ws.Range("C3").Value = "c3"
+    Set ws = Page(wb, "MergeEdge")
+    ws.Range("A1:B1").Merge
+    ws.Range("A1").Value = "wide"
+    ws.Range("A2").Value = "a2"
+    ws.Range("A3:A4").Merge
+    ws.Range("A3").Value = "tall"
+    Set ws = Page(wb, "MergedWhole")
+    Down ws, 1, "1|2|3"
+    Down ws, 2, "4|5|6"
+    ws.Range("E2:F2").Merge
+    Set ws = Page(wb, "MergedPart")
+    Down ws, 1, "1|2|3"
+    ws.Range("E2:F2").Merge
+
+    ' Notes, a note's box moved and sized, links, and notes and links
+    ' pasted over. No thread: a workbook Excel wrote one in would carry
+    ' who wrote it.
+    Set ws = Page(wb, "Notes")
+    ws.Range("A1").Value = "noted"
+    ws.Range("A1").AddComment "a note"
+    ws.Range("A2").Value = "link"
+    ws.Hyperlinks.Add ws.Range("A2"), "https://example.com/a"
+    ws.Range("A3").Value = "inside"
+    ws.Hyperlinks.Add ws.Range("A3"), "", "Notes!C5", , "inside"
+    ws.Range("B2").Value = "moved box"
+    ws.Range("B2").AddComment "a box moved and sized"
+    ws.Range("B2").Comment.Shape.Left = 300
+    ws.Range("B2").Comment.Shape.Top = 100
+    ws.Range("B2").Comment.Shape.Width = 150
+    ws.Range("B2").Comment.Shape.Height = 60
+    Set ws = Page(wb, "Over")
+    ws.Range("A1").Value = "a"
+    ws.Range("A1").AddComment "source note"
+    ws.Range("A2").Value = "b"
+    ws.Range("C1").Value = "c"
+    ws.Range("C1").AddComment "target note"
+    ws.Hyperlinks.Add ws.Range("C2"), "https://example.com/target"
+    ws.Range("C3").AddComment "note below"
+
+    ' Validation and conditional formats: copied on the sheet, cut back at
+    ' the destination, and copied to another sheet, one validation reading
+    ' its own cell.
+    Set ws = Page(wb, "Rules")
+    Down ws, 1, "1|2|3|4|5"
+    Down ws, 2, "5|4|3|2|1"
+    ws.Range("A1:A3").Validation.Add Type:=3, AlertStyle:=1, Formula1:="=$D$10:$D$12"
+    ws.Range("A1:B5").FormatConditions.Add Type:=1, Operator:=5, Formula1:="3"
+    ws.Range("A1:A3").FormatConditions.Add Type:=2, Formula1:="=$A1>B1"
+    Set ws = Page(wb, "Onto")
+    Down ws, 1, "1|2|3"
+    Down ws, 5, "x|y|z"
+    ws.Range("E1:E5").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="9"
+    ws.Range("E1:F5").FormatConditions.Add Type:=1, Operator:=5, Formula1:="100"
+    ws.Range("E2").Interior.Color = RGB(0, 0, 200)
+    Set ws = Page(wb, "From")
+    Down ws, 1, "1|2|3"
+    ws.Range("A1:A3").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="=$B$1"
+    ws.Range("A1:A3").FormatConditions.Add Type:=2, Formula1:="=A1>From!$B$1"
+    ws.Range("C1:C3").Validation.Add Type:=7, AlertStyle:=1, Formula1:="=C1>0"
+    Down ws, 3, "7|8|9"
+    Set ws = Page(wb, "To")
+    ws.Range("C1:C5").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="=$B$1"
+
+    ' A copy overlapping its source.
+    Set ws = Page(wb, "Overlap")
+    Down ws, 1, "1|2|=A1+A2|4|5"
+
+    ' Arrays: whole, part with its first cell and without, a spill with its
+    ' cells and its cells alone, pastes onto a spill's formula and onto a
+    ' cell it spilled into, and arrays in the way, in part and whole.
+    Set ws = Page(wb, "Arrays")
+    Down ws, 2, "1|2|3"
+    ws.Range("A1:A3").FormulaArray = "=B1:B3*2"
+    ws.Range("C1").Formula2 = "=SEQUENCE(3)"
+    Set ws = Page(wb, "SpillAnchor")
+    ws.Range("A1").Formula2 = "=SEQUENCE(3)"
+    ws.Range("C1").Value = "x"
+    Set ws = Page(wb, "SpillOver")
+    ws.Range("A1").Formula2 = "=SEQUENCE(3)"
+    ws.Range("C1").Value = "x"
+    Set ws = Page(wb, "ArrayCut")
+    Down ws, 1, "1|2|3"
+    ws.Range("E2:E3").FormulaArray = "=A1:A2*2"
+    Set ws = Page(wb, "ArrayWhole")
+    Down ws, 1, "1|2|3"
+    ws.Range("E2:E3").FormulaArray = "=A1:A2*2"
+
+    ' Hidden rows and columns: by hand, under the sheet's filter, under a
+    ' filter hiding nothing, outside the filter's columns, all of them
+    ' hidden, a hidden column, and under a table's filter.
+    Set ws = Page(wb, "Hidden")
+    Down ws, 1, "h|1|2|3|4|5"
+    ws.Rows(3).Hidden = True
+    ws.Rows(5).Hidden = True
+    Set ws = Page(wb, "Filtered")
+    Down ws, 1, "h|1|2|3|4|5"
+    Down ws, 2, "x|x|x|x|x|x"
+    ws.Range("A1:A6").AutoFilter Field:=1, Criteria1:=">2"
+    Set ws = Page(wb, "FilterHand")
+    Down ws, 1, "h|1|2|3|4|5"
+    ws.Range("A1:A6").AutoFilter Field:=1, Criteria1:=">0"
+    ws.Rows(3).Hidden = True
+    Set ws = Page(wb, "HiddenColumn")
+    Down ws, 1, "h|1|2|3"
+    Down ws, 2, "g|4|5|6"
+    Down ws, 3, "f|7|8|9"
+    ws.Range("A1:C4").AutoFilter Field:=1, Criteria1:=">1"
+    ws.Columns(2).Hidden = True
+    Set ws = Page(wb, "TableRows")
+    Down ws, 1, "h|1|2|3|4|5"
+    Set lo = ws.ListObjects.Add(1, ws.Range("A1:A6"), , 1)
+    lo.Name = "Seen"
+    lo.Range.AutoFilter Field:=1, Criteria1:=">2"
+
+    ' A shared formula.
+    Set ws = Page(wb, "Shared")
+    Down ws, 2, "1|2|3|4"
+    ws.Range("A1:A4").Formula = "=B1*2"
+
+    ' Destinations of other sizes.
+    Set ws = Page(wb, "Tile")
+    Down ws, 1, "=ROW()|=B1|=C1"
+    Down ws, 2, "a|b|c"
+
+    ' Formats on blank cells, and blank cells over formats.
+    Set ws = Page(wb, "Blanks")
+    ws.Range("A1").Interior.Color = RGB(200, 0, 0)
+    ws.Range("A2").NumberFormat = "0.00"
+    ws.Range("C1:C3").Interior.Color = RGB(0, 0, 200)
+    ws.Range("C1:C3").Value = 9
+
+    ' Row heights and column widths: a block, whole rows and whole columns.
+    Set ws = Page(wb, "Sizes")
+    Down ws, 1, "1|2|3"
+    ws.Rows(2).RowHeight = 30
+    ws.Columns(1).ColumnWidth = 20
+    Set ws = Page(wb, "WholeRows")
+    Down ws, 1, "1|2|3"
+    ws.Rows(2).Hidden = True
+    ws.Rows(3).Interior.Color = RGB(0, 200, 0)
+    ws.Rows(3).RowHeight = 25
+    Set ws = Page(wb, "WholeColumns")
+    Down ws, 1, "1|2|3"
+    ws.Columns(1).ColumnWidth = 20
+
+    ' Tables: plain cells pasted into one, and part of one copied out.
+    Set ws = Page(wb, "IntoTable")
+    Down ws, 1, "k|a|b|c"
+    Down ws, 2, "n|1|2|3"
+    ws.ListObjects.Add(1, ws.Range("A1:B4"), , 1).Name = "Into"
+    Down ws, 5, "x|y"
+    Set ws = Page(wb, "PartOut")
+    Down ws, 1, "k|a|b|c"
+    Down ws, 2, "n|1|2|3"
+    Set lo = ws.ListObjects.Add(1, ws.Range("A1:B4"), , 1)
+    lo.Name = "Part"
+    lo.ListColumns.Add
+    lo.ListColumns(3).Name = "calc"
+    lo.ListColumns("calc").DataBodyRange.Formula = "=[@n]*2"
+
+    wb.Worksheets(1).Activate
+    Application.DisplayAlerts = False
+    wb.RemovePersonalInformation = True
+    wb.SaveAs Filename:=Target, FileFormat:=51
+
+    out = out & Copy_(wb, "Kinds", "A1:B7", "Kinds", "D3")
+    out = out & Copy_(wb, "Refs", "A1:A15", "Refs", "C5")
+    out = out & Copy_(wb, "Refs", "A1:A15", "Other", "E1")
+    out = out & Copy_(wb, "OffSheet", "A5:A16", "OffSheet", "A1")
+    out = out & Copy_(wb, "Merged", "A1:C3", "Merged", "E2")
+    out = out & Copy_(wb, "MergeEdge", "A1:A3", "MergeEdge", "D1")
+    out = out & Copy_(wb, "MergedWhole", "A1:B3", "MergedWhole", "E1")
+    out = out & Copy_(wb, "MergedPart", "A1:A3", "MergedPart", "E1")
+    out = out & Copy_(wb, "Notes", "A1:B3", "Notes", "D2")
+    out = out & Copy_(wb, "Over", "A1:A2", "Over", "C1")
+    out = out & Copy_(wb, "Rules", "A1:B3", "Rules", "D2")
+    out = out & Copy_(wb, "Onto", "A1:A3", "Onto", "E2")
+    out = out & Copy_(wb, "From", "A1:A3", "To", "C2")
+    out = out & Copy_(wb, "From", "C2:C3", "To", "E5")
+    out = out & Copy_(wb, "Overlap", "A1:A5", "Overlap", "A3")
+    out = out & Copy_(wb, "Arrays", "A1:A3", "Arrays", "F1")
+    out = out & Copy_(wb, "Arrays", "A1", "Arrays", "G1")
+    out = out & Copy_(wb, "Arrays", "A2:A3", "Arrays", "H1")
+    out = out & Copy_(wb, "Arrays", "C1:C3", "Arrays", "I1")
+    out = out & Copy_(wb, "Arrays", "C2:C3", "Arrays", "J1")
+    out = out & Copy_(wb, "SpillAnchor", "C1", "SpillAnchor", "A1")
+    out = out & Copy_(wb, "SpillOver", "C1", "SpillOver", "A2")
+    out = out & Copy_(wb, "ArrayCut", "A1:A2", "ArrayCut", "E3")
+    out = out & Copy_(wb, "ArrayWhole", "A1:A3", "ArrayWhole", "E1")
+    out = out & Copy_(wb, "Hidden", "A1:A6", "Hidden", "C1")
+    out = out & Copy_(wb, "Filtered", "A1:A6", "Filtered", "C1")
+    out = out & Copy_(wb, "Filtered", "B1:B6", "Filtered", "D1")
+    out = out & Copy_(wb, "Filtered", "A2:A3", "Filtered", "F1")
+    out = out & Copy_(wb, "FilterHand", "A1:A6", "FilterHand", "C1")
+    out = out & Copy_(wb, "HiddenColumn", "A1:C4", "HiddenColumn", "E1")
+    out = out & Copy_(wb, "TableRows", "A2:A6", "TableRows", "C1")
+    out = out & Copy_(wb, "Shared", "A1:A4", "Shared", "D2")
+    out = out & Copy_(wb, "Tile", "A1", "Tile", "D1:E3")
+    out = out & Copy_(wb, "Tile", "A1:A2", "Tile", "G1:G6")
+    out = out & Copy_(wb, "Tile", "A1:A2", "Tile", "I1:I5")
+    out = out & Copy_(wb, "Tile", "A1:B2", "Tile", "K1:N4")
+    out = out & Copy_(wb, "Tile", "A1:B2", "Tile", "P1:S3")
+    out = out & Copy_(wb, "Tile", "A1:A3", "Tile", "U1:U2")
+    out = out & Copy_(wb, "Blanks", "A1:A3", "Blanks", "C1")
+    out = out & Copy_(wb, "Sizes", "A1:A3", "Sizes", "D5")
+    out = out & Copy_(wb, "WholeRows", "1:3", "WholeRows", "6:8")
+    out = out & Copy_(wb, "WholeColumns", "A:A", "WholeColumns", "D:D")
+    out = out & Copy_(wb, "IntoTable", "E1:E2", "IntoTable", "A2")
+    out = out & Copy_(wb, "PartOut", "A2:C3", "PartOut", "E2")
+
+    wb.SaveAs Filename:=Replace(Target, ".xlsx", "_pasted.xlsx"), FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+
+Private Function Page(wb As Workbook, ByVal Name As String) As Worksheet
+    Dim ws As Worksheet
+    If wb.Worksheets.Count = 1 And wb.Worksheets(1).Name = "Sheet1" Then
+        Set ws = wb.Worksheets(1)
+    Else
+        Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    End If
+    ws.Name = Name
+    Set Page = ws
+End Function
+
+Private Sub Down(ws As Worksheet, ByVal col As Long, ByVal texts As String, Optional ByVal start As Long = 1)
+    Dim parts() As String, i As Long
+    parts = Split(texts, "|")
+    For i = 0 To UBound(parts)
+        If parts(i) <> "~" Then ws.Cells(start + i, col).Formula = parts(i)
+    Next i
+End Sub
+
+Private Function Copy_(wb As Workbook, ByVal Sheet As String, ByVal Source As String, ByVal Onto As String, _
+                       ByVal Target As String) As String
+    Copy_ = Sheet & "|" & Source & "|" & Onto & "|" & Target & "|"
+    On Error GoTo Refused
+    wb.Worksheets(Sheet).Range(Source).Copy Destination:=wb.Worksheets(Onto).Range(Target)
+    Copy_ = Copy_ & vbLf
+    Exit Function
+Refused:
+    Copy_ = Copy_ & Err.Description & vbLf
+End Function
+'''
 
 
 #: What a measured fixture's reply turns into: an entry per thing measured.
@@ -2998,6 +3301,25 @@ def error_check_answers(reply: str) -> Answers:
             continue
         cell, flags = line.split("\t")
         answers[cell] = {"rules": [rule for rule, flag in zip(_ERROR_RULES, flags, strict=True) if flag == "1"]}
+    return answers
+
+
+def copy_answers(reply: str) -> Answers:
+    """One line per copy, in the order Excel made them, numbered from 1:
+    the source's sheet and range, the destination's sheet and range, and
+    the error Excel refused the copy with, if it did."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        sheet, source, onto, target, refused = line.split("|", 4)
+        answers[f"{len(answers) + 1:02d}"] = {
+            "sheet": sheet,
+            "source": source,
+            "onto": onto,
+            "target": target,
+            "refused": refused,
+        }
     return answers
 
 
@@ -3367,12 +3689,13 @@ def main() -> int:
         ("errorchecks.xlsx", _BUILD_ERROR_CHECKS, error_check_answers),
         ("sorts.xlsx", _BUILD_SORTS, sort_answers),
         ("duplicates.xlsx", _BUILD_DUPLICATES, duplicate_answers),
+        ("copies.xlsx", _BUILD_COPIES, copy_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]
     everything += [f"{Path(name).stem}_answers.json" for name, _, _ in measured]
     # These recipes save the workbook again once Excel has changed it.
-    everything += ["sorts_sorted.xlsx", "duplicates_removed.xlsx"]
+    everything += ["sorts_sorted.xlsx", "duplicates_removed.xlsx", "copies_pasted.xlsx"]
     if not force and all((FIXTURES / name).exists() for name in everything):
         print("every fixture is already there; nothing to do (pass --force to rebuild)")
         return 0
