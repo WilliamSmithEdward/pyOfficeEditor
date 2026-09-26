@@ -52,7 +52,7 @@ from pyofficeeditor.excel._conditional import (
     uniques,
 )
 from pyofficeeditor.excel._dxf import Dxf, DxfFill, DxfFont
-from pyofficeeditor.excel._errorchecks import DEFAULT_ERROR_RULES, ERROR_RULES, ErrorCheck, ErrorRule, IgnoredError
+from pyofficeeditor.excel._errorchecks import DEFAULT_ERROR_RULES, ErrorCheck
 from pyofficeeditor.excel._filters import (
     AutoFilter,
     Comparison,
@@ -78,6 +78,7 @@ from pyofficeeditor.excel._formats import (
     Protection,
     Side,
 )
+from pyofficeeditor.excel._ignorederrors import ERROR_RULES, ErrorRule, IgnoredError
 from pyofficeeditor.excel._numfmt import format_value
 from pyofficeeditor.excel._pagesetup import (
     HeaderFooter,

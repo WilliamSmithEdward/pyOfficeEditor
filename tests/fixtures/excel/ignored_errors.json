@@ -1,0 +1,2019 @@
+{
+ "measured": "2026-09-26",
+ "writes": [
+  {
+   "name": "single",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "down",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:B3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "across",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:C2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "gap",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D2",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "D2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2 D2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "square",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:C3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "column first",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:B3 C2:C3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "ell down",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:B3 C2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "ell across",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:C2 C3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "ell other",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:C2 B3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "upward",
+   "steps": [
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "B2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:B3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "leftward",
+   "steps": [
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "B2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:C2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "diagonal",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2 C3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "far",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B100",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "Z2",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B100": [
+     "numberStoredAsText"
+    ],
+    "Z2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2 B100 Z2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "bridge",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "D2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2 C2:D2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "extend last",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "F2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "E2",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "D2": [
+     "numberStoredAsText"
+    ],
+    "F2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "E2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2 C2:D2 E2:F2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "choose last",
+   "steps": [
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B3 C2:C3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "choose last again",
+   "steps": [
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"C2 B3:C3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "stack",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "D2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ],
+    "D3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:D3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "merge before",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ],
+    "C4": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:C2 B3:C4\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "merge apart",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "Z9",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "Z9": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:C2 Z9 B3:C3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "ring",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D4",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "D2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "D3": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ],
+    "C4": [
+     "numberStoredAsText"
+    ],
+    "D4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:D2 B3:B4 D3 C4:D4\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "middle",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:B4 C3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "two cells two rules",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "evalError",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "evalError"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" numberStoredAsText=\"1\"/><ignoredError sqref=\"B3\" evalError=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "split for a rule",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "evalError",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "evalError",
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" numberStoredAsText=\"1\"/><ignoredError sqref=\"B3\" evalError=\"1\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "rules apart",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "evalError",
+     true
+    ],
+    [
+     "C3",
+     "evalError",
+     true
+    ],
+    [
+     "C4",
+     "evalError",
+     true
+    ],
+    [
+     "D2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D2",
+     "evalError",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "evalError"
+    ],
+    "C3": [
+     "evalError"
+    ],
+    "C4": [
+     "evalError"
+    ],
+    "D2": [
+     "evalError",
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:B4\" numberStoredAsText=\"1\"/><ignoredError sqref=\"C2:C4\" evalError=\"1\"/><ignoredError sqref=\"D2\" evalError=\"1\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "join an entry",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D2",
+     "evalError",
+     true
+    ],
+    [
+     "D3",
+     "evalError",
+     true
+    ],
+    [
+     "D2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "evalError",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "evalError",
+     "numberStoredAsText"
+    ],
+    "D2": [
+     "evalError",
+     "numberStoredAsText"
+    ],
+    "D3": [
+     "evalError"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" numberStoredAsText=\"1\"/><ignoredError sqref=\"D3\" evalError=\"1\"/><ignoredError sqref=\"D2 B3\" evalError=\"1\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "drop a rule",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B2",
+     "evalError",
+     true
+    ],
+    [
+     "B3",
+     "evalError",
+     true
+    ],
+    [
+     "B3",
+     "evalError",
+     false
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "evalError",
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B3:B4\" numberStoredAsText=\"1\"/><ignoredError sqref=\"B2\" evalError=\"1\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "order of entries",
+   "steps": [
+    [
+     "D2",
+     "evalError",
+     true
+    ],
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "twoDigitTextYear",
+     true
+    ]
+   ],
+   "ignored": {
+    "D2": [
+     "evalError"
+    ],
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "twoDigitTextYear"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"D2\" evalError=\"1\"/><ignoredError sqref=\"B2\" numberStoredAsText=\"1\"/><ignoredError sqref=\"C2\" twoDigitTextYear=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "misleading",
+   "steps": [
+    [
+     "B2",
+     "misleadingFormat",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "misleadingFormat"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" xmlns:x16r3=\"http://schemas.microsoft.com/office/spreadsheetml/2018/08/main\" x16r3:misleadingFormat=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "every rule alone",
+   "steps": [
+    [
+     "B2",
+     "evalError",
+     true
+    ],
+    [
+     "D2",
+     "twoDigitTextYear",
+     true
+    ],
+    [
+     "F2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "H2",
+     "formula",
+     true
+    ],
+    [
+     "J2",
+     "formulaRange",
+     true
+    ],
+    [
+     "L2",
+     "unlockedFormula",
+     true
+    ],
+    [
+     "N2",
+     "emptyCellReference",
+     true
+    ],
+    [
+     "P2",
+     "listDataValidation",
+     true
+    ],
+    [
+     "R2",
+     "calculatedColumn",
+     true
+    ],
+    [
+     "T2",
+     "misleadingFormat",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "evalError"
+    ],
+    "D2": [
+     "twoDigitTextYear"
+    ],
+    "F2": [
+     "numberStoredAsText"
+    ],
+    "H2": [
+     "formula"
+    ],
+    "J2": [
+     "formulaRange"
+    ],
+    "L2": [
+     "unlockedFormula"
+    ],
+    "N2": [
+     "emptyCellReference"
+    ],
+    "P2": [
+     "listDataValidation"
+    ],
+    "R2": [
+     "calculatedColumn"
+    ],
+    "T2": [
+     "misleadingFormat"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" evalError=\"1\"/><ignoredError sqref=\"D2\" twoDigitTextYear=\"1\"/><ignoredError sqref=\"F2\" numberStoredAsText=\"1\"/><ignoredError sqref=\"H2\" formula=\"1\"/><ignoredError sqref=\"J2\" formulaRange=\"1\"/><ignoredError sqref=\"L2\" unlockedFormula=\"1\"/><ignoredError sqref=\"N2\" emptyCellReference=\"1\"/><ignoredError sqref=\"P2\" listDataValidation=\"1\"/><ignoredError sqref=\"R2\" calculatedColumn=\"1\"/><ignoredError sqref=\"T2\" xmlns:x16r3=\"http://schemas.microsoft.com/office/spreadsheetml/2018/08/main\" x16r3:misleadingFormat=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "empty cell",
+   "steps": [
+    [
+     "F2",
+     "evalError",
+     true
+    ]
+   ],
+   "ignored": {
+    "F2": [
+     "evalError"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"F2\" evalError=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "undone",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B2",
+     "numberStoredAsText",
+     false
+    ]
+   ],
+   "ignored": {},
+   "saved": null
+  },
+  {
+   "name": "undone in a range",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     false
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2 B4\" numberStoredAsText=\"1\"/><ignoredError sqref=\"B3\"/></ignoredErrors>"
+  },
+  {
+   "name": "undone again",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     false
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:B4\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "undone then another",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     false
+    ],
+    [
+     "B3",
+     "evalError",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "evalError"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2 B4\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "undone in place",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     false
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ],
+    "D2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2 D2 B4\" numberStoredAsText=\"1\"/><ignoredError sqref=\"B3\"/></ignoredErrors>"
+  },
+  {
+   "name": "undone at a corner",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B2",
+     "numberStoredAsText",
+     false
+    ]
+   ],
+   "ignored": {
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B3:C3 C2\" numberStoredAsText=\"1\"/><ignoredError sqref=\"B2\"/></ignoredErrors>"
+  },
+  {
+   "name": "undone in the middle",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     false
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "D2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2 D2\" numberStoredAsText=\"1\"/><ignoredError sqref=\"C2\"/></ignoredErrors>"
+  },
+  {
+   "name": "hole",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     false
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "D2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "D3": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ],
+    "C4": [
+     "numberStoredAsText"
+    ],
+    "D4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:D2 B4:D4 B3 D3\" numberStoredAsText=\"1\"/><ignoredError sqref=\"C3\"/></ignoredErrors>"
+  },
+  {
+   "name": "hole in a column",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "D4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C2",
+     "numberStoredAsText",
+     false
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ],
+    "C4": [
+     "numberStoredAsText"
+    ],
+    "D2": [
+     "numberStoredAsText"
+    ],
+    "D3": [
+     "numberStoredAsText"
+    ],
+    "D4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:B4 C3:C4 D2:D4\" numberStoredAsText=\"1\"/><ignoredError sqref=\"C2\"/></ignoredErrors>"
+  },
+  {
+   "name": "undone alone",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "C3",
+     "numberStoredAsText",
+     false
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:B4\" numberStoredAsText=\"1\"/><ignoredError sqref=\"C3\"/></ignoredErrors>"
+  },
+  {
+   "name": "never ignored",
+   "steps": [
+    [
+     "B2",
+     "evalError",
+     false
+    ]
+   ],
+   "ignored": {},
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\"/></ignoredErrors>"
+  },
+  {
+   "name": "another rule undone",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B2",
+     "evalError",
+     false
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "second rule",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B2",
+     "twoDigitTextYear",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "twoDigitTextYear",
+     "numberStoredAsText"
+    ]
+   },
+   "saved": null
+  },
+  {
+   "name": "second rule both",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "evalError",
+     true
+    ],
+    [
+     "B2",
+     "evalError",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "evalError",
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "evalError",
+     "numberStoredAsText"
+    ]
+   },
+   "saved": null
+  },
+  {
+   "name": "second rule then undone",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B2",
+     "evalError",
+     true
+    ],
+    [
+     "B2",
+     "numberStoredAsText",
+     false
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "evalError"
+    ]
+   },
+   "saved": null
+  },
+  {
+   "name": "masks move",
+   "steps": [
+    [
+     "B2",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B3",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B4",
+     "numberStoredAsText",
+     true
+    ],
+    [
+     "B2",
+     "evalError",
+     true
+    ],
+    [
+     "B3",
+     "evalError",
+     true
+    ],
+    [
+     "B4",
+     "evalError",
+     true
+    ]
+   ],
+   "ignored": {
+    "B2": [
+     "evalError",
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "evalError",
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "evalError",
+     "numberStoredAsText"
+    ]
+   },
+   "saved": null
+  }
+ ],
+ "reads": [
+  {
+   "name": "overlap",
+   "file": "<ignoredErrors><ignoredError sqref=\"B2:B3\" numberStoredAsText=\"1\"/><ignoredError sqref=\"B3\" evalError=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "evalError"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" numberStoredAsText=\"1\"/><ignoredError sqref=\"B3\" evalError=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "overlap reversed",
+   "file": "<ignoredErrors><ignoredError sqref=\"B3\" evalError=\"1\"/><ignoredError sqref=\"B2:B3\" numberStoredAsText=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": null
+  },
+  {
+   "name": "scattered",
+   "file": "<ignoredErrors><ignoredError sqref=\"B2 B3 B4\" numberStoredAsText=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2 B3 B4\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "twins",
+   "file": "<ignoredErrors><ignoredError sqref=\"B2\" numberStoredAsText=\"1\"/><ignoredError sqref=\"B3\" numberStoredAsText=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:B3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "no rule",
+   "file": "<ignoredErrors><ignoredError sqref=\"B2\"/><ignoredError sqref=\"C2\" numberStoredAsText=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "C2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\"/><ignoredError sqref=\"C2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "order",
+   "file": "<ignoredErrors><ignoredError sqref=\"C2\" numberStoredAsText=\"1\"/><ignoredError sqref=\"B2\" evalError=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "evalError"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"C2\" numberStoredAsText=\"1\"/><ignoredError sqref=\"B2\" evalError=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "repeat",
+   "file": "<ignoredErrors><ignoredError sqref=\"B2 B2\" numberStoredAsText=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2 B2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "unsorted",
+   "file": "<ignoredErrors><ignoredError sqref=\"D4 B2 C3\" numberStoredAsText=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ],
+    "D4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"D4 B2 C3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "whole sheet",
+   "file": "<ignoredErrors><ignoredError sqref=\"A1:XFD1048576\" numberStoredAsText=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "D2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ],
+    "D3": [
+     "numberStoredAsText"
+    ],
+    "B4": [
+     "numberStoredAsText"
+    ],
+    "C4": [
+     "numberStoredAsText"
+    ],
+    "D4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"A1:XFD1048576\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "side by side",
+   "file": "<ignoredErrors><ignoredError sqref=\"B2:B3 C2:C3\" numberStoredAsText=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:B3 C2:C3\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "overlapping ranges",
+   "file": "<ignoredErrors><ignoredError sqref=\"B2:C3 C3:D4\" numberStoredAsText=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ],
+    "C2": [
+     "numberStoredAsText"
+    ],
+    "B3": [
+     "numberStoredAsText"
+    ],
+    "C3": [
+     "numberStoredAsText"
+    ],
+    "D3": [
+     "numberStoredAsText"
+    ],
+    "C4": [
+     "numberStoredAsText"
+    ],
+    "D4": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2:C3 C3:D4\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "attribute order",
+   "file": "<ignoredErrors><ignoredError numberStoredAsText=\"1\" sqref=\"B2\" evalError=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "evalError",
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" evalError=\"1\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "true",
+   "file": "<ignoredErrors><ignoredError sqref=\"B2\" numberStoredAsText=\"true\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "numberStoredAsText"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" numberStoredAsText=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "zero",
+   "file": "<ignoredErrors><ignoredError sqref=\"B2\" numberStoredAsText=\"0\" evalError=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "evalError"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" evalError=\"1\"/></ignoredErrors>"
+  },
+  {
+   "name": "misleading",
+   "file": "<ignoredErrors><ignoredError sqref=\"B2\" xmlns:x16r3=\"http://schemas.microsoft.com/office/spreadsheetml/2018/08/main\" x16r3:misleadingFormat=\"1\"/></ignoredErrors>",
+   "ignored": {
+    "B2": [
+     "misleadingFormat"
+    ]
+   },
+   "saved": "<ignoredErrors><ignoredError sqref=\"B2\" xmlns:x16r3=\"http://schemas.microsoft.com/office/spreadsheetml/2018/08/main\" x16r3:misleadingFormat=\"1\"/></ignoredErrors>"
+  }
+ ]
+}

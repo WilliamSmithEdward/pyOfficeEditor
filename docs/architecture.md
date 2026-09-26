@@ -96,6 +96,8 @@ Each layer knows the layer below it and not the layer above.
 |   _errorchecks  error checking: the cells Excel marks    |
 |                 with a green triangle, and under which  |
 |                 of its ten rules                        |
+|   _ignorederrors  the rules, and the errors a sheet     |
+|                 ignores, read and changed as Excel does |
 |   _calc/        the formula engine                      |
 |     lexer, parser, nodes   formula text into a tree,    |
 |                 with Excel's precedence                 |
@@ -264,7 +266,8 @@ The Excel surface is exported from `pyofficeeditor.excel`:
 | `format_value` | `excel/_numfmt.py` | the text Excel shows for a value under a format code |
 | `Calculation` | `excel/_calc/engine.py` | what `Workbook.calculate()` did, and which formulas kept their cached value |
 | `FormulaSyntaxError` | `excel/_calc/lexer.py` | formula text Excel would refuse, and where |
-| `ErrorCheck`, `ErrorRule`, `IgnoredError`, `ERROR_RULES`, `DEFAULT_ERROR_RULES` | `excel/_errorchecks.py` | a cell error checking catches, the rule that catches it, and the errors a file records as ignored |
+| `ErrorCheck`, `DEFAULT_ERROR_RULES` | `excel/_errorchecks.py` | a cell error checking catches, and the rule that catches it |
+| `ErrorRule`, `ERROR_RULES`, `IgnoredError` | `excel/_ignorederrors.py` | the rules, and the errors a sheet records as ignored |
 
 `UnsupportedFormulaError`, in `exceptions.py`, is what `Worksheet.evaluate`
 raises for a formula needing something the engine does not have.
@@ -383,11 +386,13 @@ tests/
   test_excel_formula_corpus.py  every formula in formulas.xlsx,
                                 calculated and held to Excel's result
   test_excel_errorchecks.py     error checking, against errorchecks.xlsx
-                                and the strings of text_checks.json
+                                and the strings of text_checks.json, and
+                                ignoring errors, against the steps of
+                                ignored_errors.json
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               twenty-three Excel-authored packages:
                                 three sourced, twenty scripted, and
-                                five measured corpora; see its README
+                                six measured corpora; see its README
 ```
 
 - **Always** run pytest with `-p no:randomly` to keep ordering reproducible.
@@ -402,11 +407,11 @@ tests/
   rules.
 - Richer Excel-authored fixtures come from
   `scripts/build_excel_fixtures.py`, which drives real Excel through
-  `pyvbaharness`. Tests needing them skip when they are absent. The five
+  `pyvbaharness`. Tests needing them skip when they are absent. The six
   measured corpora come from `scripts/measure_number_formats.py`,
   `scripts/measure_filters.py`, `scripts/measure_formulas.py`,
-  `scripts/measure_text_checks.py` and `scripts/measure_date_texts.py` the
-  same way.
+  `scripts/measure_text_checks.py`, `scripts/measure_date_texts.py` and
+  `scripts/measure_ignored_errors.py` the same way.
 
 ### 8.1 The fidelity gate
 

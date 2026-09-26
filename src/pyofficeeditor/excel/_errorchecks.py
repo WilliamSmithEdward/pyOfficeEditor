@@ -73,6 +73,7 @@ from pyofficeeditor.excel._calc.nodes import (
 from pyofficeeditor.excel._calc.parser import parse
 from pyofficeeditor.excel._calc.values import Area, Reference, Scalar, compare, plain_number, scalar_text
 from pyofficeeditor.excel._formulas import translate_formula
+from pyofficeeditor.excel._ignorederrors import ERROR_RULES, ErrorRule, ignored_rules, read_ignored_errors, rule_list
 from pyofficeeditor.excel._numfmt import parse as parse_format
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, AxisRef, CellRef, RangeRef
 from pyofficeeditor.excel._tokens import TokenKind, tokenize
@@ -84,33 +85,6 @@ if TYPE_CHECKING:
     from pyofficeeditor.excel._calc.engine import Engine
     from pyofficeeditor.excel._tables import Table
     from pyofficeeditor.excel.worksheet import Worksheet
-
-ErrorRule = Literal[
-    "evalError",
-    "twoDigitTextYear",
-    "numberStoredAsText",
-    "formula",
-    "formulaRange",
-    "unlockedFormula",
-    "emptyCellReference",
-    "listDataValidation",
-    "calculatedColumn",
-    "misleadingFormat",
-]
-
-#: Every rule, in the order Excel numbers them.
-ERROR_RULES: tuple[ErrorRule, ...] = (
-    "evalError",
-    "twoDigitTextYear",
-    "numberStoredAsText",
-    "formula",
-    "formulaRange",
-    "unlockedFormula",
-    "emptyCellReference",
-    "listDataValidation",
-    "calculatedColumn",
-    "misleadingFormat",
-)
 
 #: The rules Excel checks unless told otherwise: all but references to
 #: empty cells.
@@ -126,15 +100,6 @@ class ErrorCheck:
     #: Whether the file records the error as ignored, which hides the
     #: triangle.
     ignored: bool = False
-
-
-@dataclass(frozen=True)
-class IgnoredError:
-    """Cells whose errors under some rules the file records as ignored:
-    one ``<ignoredError>`` of a sheet's ``<ignoredErrors>``."""
-
-    ranges: tuple[RangeRef, ...]
-    rules: frozenset[ErrorRule]
 
 
 # ----------------------------------------------------------------------
@@ -863,27 +828,8 @@ def _holds(operator: ValidationOperator, measure: float, first: Scalar, second: 
 
 
 # ----------------------------------------------------------------------
-# Ignored errors
+# The checks
 # ----------------------------------------------------------------------
-
-
-def read_ignored_errors(sheet: Worksheet) -> list[IgnoredError]:
-    """A sheet's ``<ignoredErrors>``, entry by entry."""
-    found = sheet.document.root.child("ignoredErrors")
-    if found is None:
-        return []
-    entries: list[IgnoredError] = []
-    for element in found.children_named("ignoredError"):
-        ranges: list[RangeRef] = []
-        for piece in (element.get("sqref") or "").split():
-            try:
-                ranges.append(RangeRef.parse(piece).normalized)
-            except ValueError:
-                continue
-        rules: frozenset[ErrorRule] = frozenset(rule for rule in ERROR_RULES if element.get(rule) in ("1", "true"))
-        if ranges and rules:
-            entries.append(IgnoredError(tuple(ranges), rules))
-    return entries
 
 
 def check_errors(
@@ -895,18 +841,11 @@ def check_errors(
 ) -> list[ErrorCheck]:
     """The cells a sheet's error checking catches, by row, then column,
     then rule in Excel's order."""
-    wanted = DEFAULT_ERROR_RULES if rules is None else frozenset(rules)
-    unknown = wanted - set(ERROR_RULES)
-    if unknown:
-        raise ValueError(f"{sorted(unknown)} are not error-checking rules; they are {', '.join(ERROR_RULES)}.")
+    wanted = DEFAULT_ERROR_RULES if rules is None else frozenset(rule_list(rules))
     ignored = read_ignored_errors(sheet)
     found: list[ErrorCheck] = []
     for (row, column), rule in _Checker(sheet, wanted, today or dt.date.today()).run():
-        hidden = any(
-            rule in entry.rules
-            and any(span.top <= row <= span.bottom and span.left <= column <= span.right for span in entry.ranges)
-            for entry in ignored
-        )
+        hidden = rule in ignored_rules(ignored, row, column)
         if hidden and not include_ignored:
             continue
         found.append(ErrorCheck(CellRef(row, column), rule, hidden))
@@ -915,13 +854,9 @@ def check_errors(
 
 __all__ = [
     "DEFAULT_ERROR_RULES",
-    "ERROR_RULES",
     "ErrorCheck",
-    "ErrorRule",
-    "IgnoredError",
     "check_errors",
     "format_kind",
     "r1c1_key",
-    "read_ignored_errors",
     "two_digit_year",
 ]

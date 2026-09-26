@@ -91,6 +91,22 @@ anything trailing the file is swept into the oldest release's notes. -->
   Held to a fixture Excel authored, on all 198 of its cells, and to 6,683
   strings for the two rules that read text.
 
+- **Errors can be ignored.** `Worksheet.ignore_errors(cells, rules)` does
+  what Excel's Ignore Error does, so those rules put no green triangle on
+  the cells, `ignore=False` undoes it, and `reset_ignored_errors()` clears
+  the sheet's record. Measured, Excel changes its record a cell at a time,
+  and what it writes depends on the order. A cell that leaves its entry
+  splits the range holding it, and a cell that joins one widens the last
+  range it makes a rectangle with, which merges with the range before it
+  when one stands on the other. Each call takes its rules in turn and its
+  ranges a row at a time, and writes what Excel writes for the same steps,
+  held to 47 sequences Excel took. Excel's own saving loses the marks of a
+  cell alone in its entry that takes another rule, which it goes on
+  showing ignored; here they are kept. A file's record is read as Excel
+  reads it: a later entry replaces what an earlier one said of a cell,
+  rather than adding to it, which is now also how `error_checks` decides
+  what is ignored.
+
 - **Formulas that read another workbook calculate.** They used to keep
   the values Excel cached. Excel keeps a copy of every linked cell a
   formula read, in the link's own part, and calculates with it while the

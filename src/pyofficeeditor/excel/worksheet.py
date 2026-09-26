@@ -74,7 +74,7 @@ from pyofficeeditor.excel._dimensions import (
     sheet_standard_width,
 )
 from pyofficeeditor.excel._dxf import Dxf
-from pyofficeeditor.excel._errorchecks import ErrorCheck, ErrorRule, IgnoredError, check_errors, read_ignored_errors
+from pyofficeeditor.excel._errorchecks import ErrorCheck, check_errors
 from pyofficeeditor.excel._filters import (
     AutoFilter,
     FilterCell,
@@ -97,6 +97,14 @@ from pyofficeeditor.excel._formats import (
 )
 from pyofficeeditor.excel._formulas import Deletion, quote_sheet_name, shared_formula_for
 from pyofficeeditor.excel._hyperlinks import RT_HYPERLINK, Hyperlink
+from pyofficeeditor.excel._ignorederrors import (
+    ErrorRule,
+    IgnoredError,
+    clear_ignored_errors,
+    read_ignored_errors,
+    rule_list,
+    set_ignored_errors,
+)
 from pyofficeeditor.excel._names import FILTER_DATABASE, PRINT_AREA, PRINT_TITLES, DefinedName
 from pyofficeeditor.excel._numfmt import format_value
 from pyofficeeditor.excel._numfmt import parse as parse_format
@@ -665,9 +673,40 @@ class Worksheet:
 
     @property
     def ignored_errors(self) -> list[IgnoredError]:
-        """The cells whose errors the file records as ignored, and under
-        which rules."""
+        """The sheet's record of the errors its cells ignore, entry by entry.
+        A later entry says all that a cell it covers ignores, replacing an
+        earlier one, as Excel reads them."""
         return read_ignored_errors(self)
+
+    def ignore_errors(
+        self,
+        cells: str | RangeRef | Sequence[str | RangeRef],
+        rules: ErrorRule | Iterable[ErrorRule],
+        *,
+        ignore: bool = True,
+    ) -> None:
+        """Have error checking ignore ``rules`` in ``cells``, as Excel's
+        Ignore Error does, so those rules put no green triangle on them;
+        with ``ignore=False`` the cells stop ignoring them.
+
+        Excel sets ``Range.Errors(rule).Ignore`` a cell at a time, and the
+        record it keeps depends on the order: this takes each rule in turn
+        and each range a row at a time, and records them as Excel records
+        the same steps, where Excel saves what it holds. Like Excel, it
+        records a cell told to stop ignoring a rule it never ignored as
+        ignoring nothing.
+        """
+        ranges = _as_ranges(cells)
+        if not ranges:
+            raise ValueError("ignoring errors needs at least one range of cells.")
+        set_ignored_errors(self, ranges, rule_list(rules), ignore)
+        self._invalidate()
+
+    def reset_ignored_errors(self) -> None:
+        """Have error checking ignore nothing on the sheet again: its record
+        of ignored errors goes."""
+        if clear_ignored_errors(self):
+            self._invalidate()
 
     def get_text(self, reference: CellRef) -> str:
         """The text Excel shows for a cell: its value under its number format.

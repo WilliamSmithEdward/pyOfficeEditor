@@ -37,7 +37,8 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > calculated and thousands more, to the last bit for all but a few, with
 > the results written into the cells as Excel's recalculation would
 > write them. Error checking finds the cells Excel marks with a green
-> triangle, under each of its ten rules, as Excel's own checks find them.
+> triangle, under each of its ten rules, as Excel's own checks find them,
+> and ignoring an error records it as Excel's Ignore Error does.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Validation, protected ranges, sorts, scenarios and comments move

@@ -72,10 +72,10 @@ spelled three ways, and the off state is -4146 rather than 0.
 
 ## Measured by script
 
-Five corpora record what Excel did rather than what it wrote, and each case
-in them is a test. All five came from Excel 16.0 build 20326 in en-US. The
+Six corpora record what Excel did rather than what it wrote, and each case
+in them is a test. All six came from Excel 16.0 build 20326 in en-US. The
 first two scripts run beside other harness sessions, since they only run
-hidden macros; the other three wait for the lock like the fixture builder.
+hidden macros; the other four wait for the lock like the fixture builder.
 
 | File | Built by | What it records |
 |------|----------|-----------------|
@@ -84,6 +84,7 @@ hidden macros; the other three wait for the lock like the fixture builder.
 | `filter_semantics.json` | `scripts/measure_filters.py` | 358 criteria, each applied by Excel to one of 31 columns built to trip it, with the rows it hid and the markup it stored. 261 went through the object model; 93 were written straight into a package and applied from the file, for markup the object model will not write; 4 are special cases, such as rows hidden by hand. `test_excel_filter_semantics.py` evaluates every one. |
 | `text_checks.json` | `scripts/measure_text_checks.py` | 6,683 strings, each typed into a cell after an apostrophe, and whether error checking called it a number stored as text or a date with a two-digit year: a grid of numbers and month names joined every way, the separators, digit counts and spellings that settle a borderline case, and random strings made from the same pieces with a fixed seed. `test_excel_errorchecks.py` judges every one. |
 | `date_texts.json` | `scripts/measure_date_texts.py` | 18,899 strings, each put in a cell as text, with VALUE of it as the exact double Excel calculated or an error, and whether DATEVALUE and TIMEVALUE read it, which they do as VALUE's whole days and the rest: times with fields of every width and AM or PM, numbers and month names joined by every separator, dates and times joined either way and what may trail them, and random strings made with fixed seeds, the last 4,945 measured only after the rules were found; and 35 more in a workbook using the 1904 date system. `test_excel_calc.py` reads every one. |
+| `ignored_errors.json` | `scripts/measure_ignored_errors.py` | 47 sequences of steps, each a rule ignored or no longer ignored in a cell through `Range.Errors(i).Ignore` on a sheet of its own, with the rules Excel then said each cell ignored and the `<ignoredErrors>` it saved; and 15 files holding `<ignoredErrors>` of every shape, with what Excel read from each and what it saved again. Where Excel saved less than it held, the steps show its own loss. `test_excel_errorchecks.py` replays every one. |
 
 Rebuilding any of them replaces it, since a corpus has no content to keep:
 what it holds is whatever Excel answers. The dates in
