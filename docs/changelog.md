@@ -127,6 +127,17 @@ anything trailing the file is swept into the oldest release's notes. -->
   the box follows the cell it annotates, by as many rows or columns as the
   cell moves, and keeps its size whatever the rows inside it do.
 
+- **IPMT, PPMT, CUMIPMT and CUMPRINC differed from Excel in the last
+  digits.** They were computed exactly and rounded once. Measured, Excel
+  forms each from the pieces PMT uses, through its own accurate logarithm
+  and exponential: PPMT discounts the loan's share by the payments left,
+  and the cumulative functions are closed forms over the span. All four
+  now give Excel's bits on 2,640 loans each. IPMT and PPMT also take a
+  period up to the term plus one and refuse a rate of -1 or below, and
+  CUMIPMT and CUMPRINC check a fractional start or end as given, then
+  round the start up and the end down, all as Excel does; they used to
+  truncate both first.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added

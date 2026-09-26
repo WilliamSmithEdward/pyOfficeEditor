@@ -728,6 +728,59 @@ def test_pmt_errors(book: Workbook) -> None:
     assert sheet.evaluate("PMT(0,7,0.1,0.2,1)") == -0.042857142857142864
 
 
+def test_ipmt_and_ppmt_form_the_balance_and_the_discount_as_pmt_does(book: Workbook) -> None:
+    sheet = book["Data"]
+    # The balance going into the period, (pv + fv)/w_n w_m - fv with m
+    # payments left, times the rate: the exact interest, rounded once, is
+    # 0.9990000000000009 and -8.562690475450857.
+    assert sheet.evaluate("IPMT(-0.999,2,10,1000)") == 0.9990000000000073
+    assert sheet.evaluate("IPMT(0.01,2.5,10,1000)") == -8.562690475450859
+    # The principal is (pv + fv)/w_n (1 + r)^-m times the rate, not the
+    # payment less the interest.
+    assert sheet.evaluate("PPMT(0.01,1,10,1000)") == -95.58207655117134
+    assert sheet.evaluate("PPMT(1E-20,2,12,1000)") == -83.33333333333334
+    # Paid at the start of each period, the first payment is all principal.
+    assert sheet.evaluate("IPMT(0.01,1,10,1000,0,1)") == 0
+    assert sheet.evaluate("PPMT(0.01,1,10,1000,0,1)") == -104.5367094566053
+
+
+def test_ipmt_takes_a_period_up_to_the_term_plus_one(book: Workbook) -> None:
+    sheet = book["Data"]
+    assert sheet.evaluate("IPMT(0.01,10.5,10,1000)") == -0.5239837631578298
+    assert sheet.evaluate("IPMT(0.01,11,10,1000)") == CellError("#NUM!")
+    assert sheet.evaluate("PPMT(0.01,0.99,10,1000)") == CellError("#NUM!")
+    # A rate of -1 or below is refused, as PMT refuses it.
+    assert sheet.evaluate("IPMT(-1,2,10,1000)") == CellError("#NUM!")
+    assert sheet.evaluate("PPMT(-1.5,2,10,1000)") == CellError("#NUM!")
+
+
+def test_cumipmt_and_cumprinc_in_closed_form(book: Workbook) -> None:
+    sheet = book["Data"]
+    # The principal repaid is pv/w_n (1 + r)^-(n - end + 1) w_count, times
+    # 1 + r when payments fall at the end of each period, and the interest
+    # is the payments less it: the exact sum of the periods, rounded once,
+    # is -55.82076551171361, -1000 and -6.5e-17.
+    assert sheet.evaluate("CUMIPMT(0.01,10,1000,1,10,0)") == -55.82076551171349
+    assert sheet.evaluate("CUMPRINC(5,10,1000,1,10,0)") == -1000.0000000000001
+    assert sheet.evaluate("CUMIPMT(1E-20,12,1000,1,12,0)") == -1.1368683772161603e-13
+    # At the start of each period a first payment in the span is all
+    # principal, added on its own.
+    assert sheet.evaluate("CUMPRINC(0.01,10,1000,1,2,1)") == -200.11878600777663
+    assert sheet.evaluate("CUMIPMT(0.01,10,1000,1,2,1)") == -8.95463290543394
+
+
+def test_cumipmt_rounds_a_fractional_start_up_and_end_down(book: Workbook) -> None:
+    sheet = book["Data"]
+    # From period 2 and to period 9.
+    assert sheet.evaluate("CUMIPMT(0.01,10,1000,1.1,10,0)") == -45.820765511713375
+    assert sheet.evaluate("CUMIPMT(0.01,10,1000,2,9.9,0)") == -44.77539841714736
+    assert sheet.evaluate("CUMPRINC(0.01,10,1000,1.4,1.4,1)") == 0
+    # The checks read the periods as given.
+    assert sheet.evaluate("CUMIPMT(0.01,10,1000,0.9,10,0)") == CellError("#NUM!")
+    assert sheet.evaluate("CUMIPMT(0.01,10.5,1000,1,10.7,0)") == CellError("#NUM!")
+    assert sheet.evaluate("CUMIPMT(0.01,10,1000,2.5,2.4,0)") == CellError("#NUM!")
+
+
 def test_below_1_the_hyperbolic_functions_take_e_to_the_x_less_1_by_kahans_trick(book: Workbook) -> None:
     sheet = book["Data"]
     # a = e^x - 1 and b = e^-x - 1, each (u - 1) x / ln u with u = EXP(x):

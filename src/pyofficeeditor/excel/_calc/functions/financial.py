@@ -5,11 +5,10 @@ Measured: the time-value functions raise ``1 + rate`` to a power the way
 the ``^`` operator does (see :func:`~.evaluator.power`), so a whole number
 of periods is multiplied out square by square, and they are plain double
 arithmetic: FV, PV, NPER, NPV and the rest give Excel's bits even where
-those are a hundred units in the last place from the exact value. PMT is
-the exception: it forms ``(1 + rate)^-n`` through Excel's own accurate
-logarithm and exponential (see :func:`payment`). IPMT, PPMT, CUMIPMT and
-CUMPRINC are computed exactly and rounded once, within a few units in
-the last place of Excel's.
+those are a hundred units in the last place from the exact value. PMT,
+IPMT, PPMT, CUMIPMT and CUMPRINC are the exception: they form
+``(1 + rate)^-n`` through Excel's own accurate logarithm and exponential
+(see :func:`_loan`), and give Excel's bits too.
 
 RATE, IRR, XIRR and YIELD solve by iteration, and Excel stops short of
 the root. Each follows Excel's own iteration step by step, so it stops
@@ -20,9 +19,9 @@ from __future__ import annotations
 
 import itertools
 import math
-from decimal import ROUND_HALF_UP, Decimal, localcontext
+from decimal import ROUND_HALF_UP, Decimal
 
-from pyofficeeditor.excel._calc import dates, precise, special
+from pyofficeeditor.excel._calc import dates, precise
 from pyofficeeditor.excel._calc.evaluator import Context, power
 from pyofficeeditor.excel._calc.functions.arithmetic import checked, rounded
 from pyofficeeditor.excel._calc.functions.common import matrix
@@ -96,69 +95,93 @@ def _balance(rate: float, periods: float, payment: float, present: float, future
     return precise.add(precise.add(precise.multiply(present, growth), precise.multiply(payment, factor)), future)
 
 
-def _growth(rate: Decimal, periods: float) -> Decimal:
-    """``(1 + rate) ^ periods``, exactly to fifty digits."""
-    base = 1 + rate
-    if base <= 0 and periods != math.trunc(periods):
+def _discount(periods: float, log_growth: float) -> float:
+    """``(1 + r)^-periods`` from ``log_growth = ln(1 + r)``, as ``e^-x``,
+    ``x = periods ln(1 + r)``."""
+    return precise.exp(-precise.multiply(periods, log_growth))
+
+
+def _repaid(periods: float, log_growth: float) -> float:
+    """``1 - (1 + r)^-periods``, the share of a loan that that many
+    payments repay, formed as ``-(e^-x - 1)``."""
+    return -precise.exp_less_one(-precise.multiply(periods, log_growth))
+
+
+def _loan(rate: float, periods: float, present: float, future: float, due: int) -> tuple[float, float, float]:
+    """What PMT, IPMT, PPMT and the cumulative functions share, each step
+    through Excel's own accurate logarithm and exponential: ``ln(1 + r)``;
+    ``(pv + fv)/w``, with ``w`` the share of the loan the ``n`` payments
+    repay; and the factor that turns a balance into a period's interest,
+    ``r``, or at the start of each period ``1/(1/r + 1)``."""
+    log_growth = precise.ln_one_plus(rate)
+    repaid = _repaid(periods, log_growth)
+    if repaid == 0 or math.isinf(repaid):
         raise ExcelError(NUM)
-    if base == 0:
-        return Decimal(0)
-    return base ** Decimal(periods)
-
-
-def _exact_payment(rate: float, periods: float, present: float, future: float, due: int) -> Decimal:
-    if periods == 0:
-        raise ExcelError(NUM)
-    r = Decimal(rate)
-    if r == 0:
-        return -(Decimal(present) + Decimal(future)) / Decimal(periods)
-    growth = _growth(r, periods)
-    if growth == 1:
-        raise ExcelError(NUM)
-    return -(r * (Decimal(future) + Decimal(present) * growth)) / ((1 + r * due) * (growth - 1))
-
-
-def _exact_future(rate: Decimal, periods: float, paid: Decimal, present: float, due: int) -> Decimal:
-    if rate == 0:
-        return -(Decimal(present) + paid * Decimal(periods))
-    growth = _growth(rate, periods)
-    return -(Decimal(present) * growth + paid * (1 + rate * due) * (growth - 1) / rate)
-
-
-def _exact_interest(rate: float, period: float, periods: float, present: float, future: float, due: int) -> Decimal:
-    """IPMT's interest for a period: the balance owed going into it, times
-    the rate."""
-    r = Decimal(rate)
-    paid = _exact_payment(rate, periods, present, future, due)
-    if period == 1:
-        interest = Decimal(0) if due else -Decimal(present)
-    elif due:
-        interest = _exact_future(r, period - 2, paid, present, 1) - paid
-    else:
-        interest = _exact_future(r, period - 1, paid, present, 0)
-    return interest * r
+    share = precise.divide(precise.add(present, future), repaid)
+    factor = precise.divide(1.0, precise.add(precise.divide(1.0, rate), 1.0)) if due else rate
+    return log_growth, share, factor
 
 
 def payment(rate: float, periods: float, present: float, future: float, due: int) -> float:
-    """PMT as Excel computes it. With ``w = 1 - (1 + r)^-n`` formed as
-    ``-(e^-x - 1)``, ``x = n ln(1 + r)``, each through Excel's own
-    accurate routine, the payment is ``-((pv + fv)/w - fv) r``, and at the
-    start of each period ``r`` is replaced by ``1/(1/r + 1)``. Measured:
-    15,553 of 15,555 payments to the bit, the structure pinned by twelve
-    present or future values sharing each rate and term. The two misses
-    are one loan whose logarithm, inside e^x - 1, lies too near a
-    midpoint for anything but the x87's own FYL2X to decide."""
+    """PMT as Excel computes it: ``-((pv + fv)/w - fv) r`` with the pieces
+    of :func:`_loan`. Measured: 15,553 of 15,555 payments to the bit, the
+    structure pinned by twelve present or future values sharing each rate
+    and term. The two misses are one loan whose logarithm, inside e^x - 1,
+    lies too near a midpoint for anything but the x87's own FYL2X to
+    decide."""
     if periods == 0 or rate <= -1:
         raise ExcelError(NUM)
     if rate == 0:
         return checked(-precise.divide(precise.add(present, future), periods))
-    left = -precise.exp_less_one(-precise.multiply(periods, precise.ln_one_plus(rate)))
-    if left == 0 or math.isinf(left):
-        raise ExcelError(NUM)
-    owed = precise.subtract(precise.divide(precise.add(present, future), left), future)
-    if due:
-        return checked(-precise.multiply(owed, precise.divide(1.0, precise.add(precise.divide(1.0, rate), 1.0))))
-    return checked(-precise.multiply(owed, rate))
+    _, share, factor = _loan(rate, periods, present, future, due)
+    return checked(-precise.multiply(precise.subtract(share, future), factor))
+
+
+def interest(rate: float, period: float, periods: float, present: float, future: float, due: int) -> float:
+    """IPMT as Excel computes it: the balance going into ``period``,
+    ``(pv + fv)/w_n w_m - fv`` with ``m = n - per + 1`` payments left,
+    times the rate factor, each piece as :func:`payment` forms its own.
+    Measured: 2,640 of 2,640 to the bit, fv = 0 in groups of twelve present
+    values sharing everything else and fv random."""
+    if rate == 0 or (period == 1 and due):
+        return 0.0
+    log_growth, share, factor = _loan(rate, periods, present, future, due)
+    owed = precise.subtract(precise.multiply(share, _repaid(periods - period + 1, log_growth)), future)
+    return checked(-precise.multiply(owed, factor))
+
+
+def principal(rate: float, period: float, periods: float, present: float, future: float, due: int) -> float:
+    """PPMT as Excel computes it: ``-((pv + fv)/w_n (1 + r)^-m) f``, the
+    loan's share discounted over the ``m`` payments left. Measured: 2,640
+    of 2,640 to the bit, on the same loans as :func:`interest`, where the
+    payment less the interest gives Excel's bits on fewer than half."""
+    if rate == 0 or (period == 1 and due):
+        return payment(rate, periods, present, future, due)
+    log_growth, share, factor = _loan(rate, periods, present, future, due)
+    return checked(-precise.multiply(precise.multiply(share, _discount(periods - period + 1, log_growth)), factor))
+
+
+def repayments(rate: float, periods: float, present: float, first: int, last: int, due: int) -> tuple[float, float]:
+    """CUMPRINC and CUMIPMT from period ``first`` to ``last``, in closed
+    form. The principal those payments repay is ``pv/w_n (1 + r)^-(n -
+    last + 1) w_count``, times ``1 + r`` when payments fall at the end of
+    each period; at the start, a first payment in the span is all principal
+    and is added on its own. The interest is the payments less the
+    principal. Measured: 2,640 of 2,640 of each to the bit, half of them in
+    groups of twelve present values sharing everything else."""
+    if first > last:
+        return 0.0, 0.0
+    log_growth, share, factor = _loan(rate, periods, present, 0.0, due)
+    paid = -precise.multiply(share, factor)
+    opening = bool(due) and first == 1
+    if opening:
+        first = 2
+    count = float(last - first + 1)
+    span = precise.multiply(share, -precise.multiply(_discount(periods - last + 1, log_growth), _repaid(count, log_growth)))
+    if opening:
+        return checked(precise.add(paid, span)), checked(precise.subtract(precise.multiply(count, paid), span))
+    repaid = span if due else precise.multiply(span, precise.add(1.0, rate))
+    return checked(repaid), checked(precise.subtract(precise.multiply(count, paid), repaid))
 
 
 @function("FV", V, V, V, V, V, minimum=3)
@@ -221,11 +244,15 @@ def NPER(
 def _period_arguments(
     context: Context, rate: Scalar, per: Scalar, nper: Scalar, pv: Scalar, fv: Scalar | None, type_: Scalar | None
 ) -> tuple[float, float, float, float, float, int]:
+    """IPMT's and PPMT's arguments. Measured: the period may run past the
+    term, up to the term plus one, so ``IPMT(r,10.5,10,pv)`` has a value;
+    a rate of -1 or below is refused, as PMT refuses it."""
+    r = context.number(rate)
     period = context.number(per)
     periods = context.number(nper)
-    if period < 1 or period > periods:
+    if r <= -1 or period < 1 or periods - period + 1 <= 0:
         raise ExcelError(NUM)
-    return context.number(rate), period, periods, context.number(pv), _optional(context, fv, 0.0), _due(context, type_)
+    return r, period, periods, context.number(pv), _optional(context, fv, 0.0), _due(context, type_)
 
 
 @function("IPMT", V, V, V, V, V, V, minimum=4)
@@ -238,8 +265,7 @@ def IPMT(
     fv: Scalar | None = None,
     type_: Scalar | None = None,
 ) -> Value:
-    with localcontext(special.CONTEXT):
-        return checked(float(_exact_interest(*_period_arguments(context, rate, per, nper, pv, fv, type_))))
+    return interest(*_period_arguments(context, rate, per, nper, pv, fv, type_))
 
 
 @function("PPMT", V, V, V, V, V, V, minimum=4)
@@ -252,50 +278,38 @@ def PPMT(
     fv: Scalar | None = None,
     type_: Scalar | None = None,
 ) -> Value:
-    r, period, periods, present, future, due = _period_arguments(context, rate, per, nper, pv, fv, type_)
-    with localcontext(special.CONTEXT):
-        paid = _exact_payment(r, periods, present, future, due)
-        return checked(float(paid - _exact_interest(r, period, periods, present, future, due)))
+    return principal(*_period_arguments(context, rate, per, nper, pv, fv, type_))
 
 
 def _cumulative(
     context: Context, rate: Scalar, nper: Scalar, pv: Scalar, start: Scalar, end: Scalar, type_: Scalar
-) -> tuple[float, float, int, int, int, float]:
+) -> tuple[float, float, float, int, int, int]:
+    """CUMIPMT's and CUMPRINC's arguments. Measured: the checks read the
+    periods as given, then a fractional start rounds up and a fractional
+    end down, so a span holding no whole period is 0."""
     r = context.number(rate)
     periods = context.number(nper)
     present = context.number(pv)
-    first = math.trunc(context.number(start))
-    last = math.trunc(context.number(end))
+    first = context.number(start)
+    last = context.number(end)
     due = context.number(type_)
     if r <= 0 or periods <= 0 or present <= 0 or first < 1 or last < first or last > periods or due not in (0, 1):
         raise ExcelError(NUM)
-    return r, periods, first, last, int(due), present
+    return r, periods, present, math.ceil(first), math.floor(last), int(due)
 
 
 @function("CUMIPMT", V, V, V, V, V, V)
 def CUMIPMT(
     context: Context, rate: Scalar, nper: Scalar, pv: Scalar, start: Scalar, end: Scalar, type_: Scalar
 ) -> Value:
-    r, periods, first, last, due, present = _cumulative(context, rate, nper, pv, start, end, type_)
-    with localcontext(special.CONTEXT):
-        total = sum(
-            (_exact_interest(r, period, periods, present, 0.0, due) for period in range(first, last + 1)), Decimal(0)
-        )
-        return checked(float(total))
+    return repayments(*_cumulative(context, rate, nper, pv, start, end, type_))[1]
 
 
 @function("CUMPRINC", V, V, V, V, V, V)
 def CUMPRINC(
     context: Context, rate: Scalar, nper: Scalar, pv: Scalar, start: Scalar, end: Scalar, type_: Scalar
 ) -> Value:
-    r, periods, first, last, due, present = _cumulative(context, rate, nper, pv, start, end, type_)
-    with localcontext(special.CONTEXT):
-        paid = _exact_payment(r, periods, present, 0.0, due)
-        total = sum(
-            (paid - _exact_interest(r, period, periods, present, 0.0, due) for period in range(first, last + 1)),
-            Decimal(0),
-        )
-        return checked(float(total))
+    return repayments(*_cumulative(context, rate, nper, pv, start, end, type_))[0]
 
 
 def _cash_flows(context: Context, values: tuple[Value, ...]) -> list[float]:

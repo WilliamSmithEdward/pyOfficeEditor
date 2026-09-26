@@ -63,9 +63,6 @@ NEAR: dict[str, int] = {
     # Built from ATAN and SQRT, as Excel builds it, but Excel's own is not
     # odd below 0.35, which no odd formula follows.
     "ASIN": 1,
-    # Computed exactly here; Excel, more precisely than doubles but not
-    # exactly.
-    "IPMT": 1, "PPMT": 1, "CUMIPMT": 2, "CUMPRINC": 4,
     # ERF, ERFC and the normal distribution take Excel's own rounding of the
     # argument, which is most of its error in the tail; the rest of the
     # distributions are the nearest double to the exact value. Excel's own
