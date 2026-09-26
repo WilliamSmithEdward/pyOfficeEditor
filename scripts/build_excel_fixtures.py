@@ -1809,6 +1809,258 @@ _PICTURE_FIELDS = ("type", "left", "top", "width", "height", "description", "loc
 _COMMENT_FIELDS = ("text", "author", "visible", "left", "top", "width", "height")
 
 
+#: Cells for each of the ten error-checking rules, and a report of what
+#: Range.Errors says of every cell. Each sheet's cells are spaced so a
+#: case meets no other: the rules about formulas beside formulas, ranges
+#: beside numbers and empty cells read their neighbours.
+_BUILD_ERROR_CHECKS = r'''
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Set wb = ActiveWorkbook
+    wb.Worksheets(1).Name = "Text"
+    wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count)).Name = "Values"
+    wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count)).Name = "Regions"
+    wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count)).Name = "Empty"
+    wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count)).Name = "Tables"
+    wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count)).Name = "Ignored"
+    wb.Names.Add Name:="NameNA", RefersTo:="=NA()"
+    wb.Names.Add Name:="Four", RefersTo:="=Regions!$A$15"
+    FillText wb.Worksheets("Text")
+    FillValues wb.Worksheets("Values")
+    FillRegions wb.Worksheets("Regions")
+    FillEmpty wb.Worksheets("Empty")
+    FillTables wb.Worksheets("Tables")
+    FillIgnored wb.Worksheets("Ignored")
+    Application.CalculateFull
+    Build = Report(wb)
+    Application.DisplayAlerts = False
+    wb.RemovePersonalInformation = True
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+End Function
+
+Private Sub WriteDown(ws As Worksheet, ByVal col As Long, ByVal texts As String)
+    Dim parts() As String, i As Long
+    parts = Split(texts, "|")
+    For i = 0 To UBound(parts)
+        ws.Cells(i + 1, col).Formula = parts(i)
+    Next i
+End Sub
+
+Private Sub FillText(ws As Worksheet)
+    ' Numbers stored as text, and text that is not a number.
+    WriteDown ws, 1, "'123|'1,000|'$5|'5%|'(5)|'1 1/2|'1e5|'0123|' 123|'1,0000|'0,123|'$5%|'5-|'1,2|'abc|'TRUE|'1/2|'12:30|'1/1/2020"
+    ' Dates with a two-digit year, and near misses.
+    WriteDown ws, 3, "'1/1/99|'1-Jan-99|'Jan 99|'99 Jan|'Jan 1 99|'1 1/0|'1/0|'12/31/29|' 1/1/99|'Feb Jan 99|'1/287/99|'Jan, 99|'1/1/99 |'1/1/99 12:00|'1.1.99|'99/1/1|'Jan 0|'1/1/099|'Jan,99|'1/ 1/99"
+    ' Strings in formulas, two rows apart.
+    ws.Range("E1").Formula = "=""1/1/99"""
+    ws.Range("E3").Formula = "=YEAR(""1/1/31"")"
+    ws.Range("E5").Formula = "=DATEVALUE(""1/1/1931"")"
+    ws.Range("E7").Formula = "=""1 1/0"""
+    ws.Range("E9").Formula = "=COUNTA({""1/1/99"",""x""})"
+    ws.Range("E11").Formula = "=""123"""
+End Sub
+
+Private Sub FillValues(ws As Worksheet)
+    Dim i As Long
+    ws.Range("Z10").Value = 1
+    ws.Range("Z11").Value = 2
+    ' Formulas whose value is an error, NA() among them.
+    Dim errors As Variant
+    errors = Array("=1/0", "=NA()", "=#N/A", "=IF(TRUE,NA(),1)", "=VLOOKUP(99,Z10:Z11,1,FALSE)", _
+        "=IFERROR(1/0,NA())", "=NameNA", "#N/A", "=IF(TRUE,1/0,NA())")
+    For i = 0 To UBound(errors)
+        ws.Cells(1 + 2 * i, 1).Formula = errors(i)
+    Next i
+    ' Unlocked cells.
+    ws.Range("C1").Locked = False
+    ws.Range("C1").Formula = "=1+1"
+    ws.Range("C3").Locked = False
+    ws.Range("C3").Value = 5
+    ws.Range("C5").Formula = "=1+1"
+    ' Formats that mislead: a date, a number, and a number shown as text.
+    ws.Range("X1").Value = 45000
+    ws.Range("X1").NumberFormat = "m/d/yyyy"
+    ws.Range("X2").Value = 5
+    ws.Range("X3").Value = 7
+    ws.Range("X3").NumberFormat = "@"
+    Dim shown As Variant, formats As Variant
+    shown = Array("=X1", "=+X1", "=(X1)", "=X2", "=X3", "=-X1", "=X1", "=X1+0")
+    formats = Array("General", "General", "General", "m/d/yyyy", "m/d/yyyy", "0.00", "h:mm", "General")
+    For i = 0 To UBound(shown)
+        ws.Cells(1 + 2 * i, 5).Formula = shown(i)
+        ws.Cells(1 + 2 * i, 5).NumberFormat = formats(i)
+    Next i
+End Sub
+
+Private Sub FillRegions(ws As Worksheet)
+    Dim i As Long
+    ' A formula unlike the two it sits between, down a column and along a row.
+    For i = 1 To 5
+        ws.Cells(i, 1).Value = i
+        ws.Cells(i, 2).Formula = "=A" & i & "*2"
+        ws.Cells(8, i).Value = i
+        ws.Cells(9, i).Formula = "=" & Chr(64 + i) & "8*2"
+    Next i
+    ws.Range("B3").Formula = "=A3*3"
+    ws.Range("C9").Formula = "=C8*3"
+    ws.Range("D1").Formula = "=A1*2"
+    ws.Range("D2").Formula = "=A2 *2"
+    ws.Range("D3").Formula = "=A3*2"
+    ' Ranges beside a number they leave out, and the ones spared.
+    For i = 12 To 15
+        ws.Cells(i, 1).Value = i
+    Next i
+    ws.Range("B12").Formula = "=SUM(A12:A14)"
+    ws.Range("C13").Formula = "=SUMIF(A12:A14,"">0"")"
+    ws.Range("D14").Formula = "=SUM(A$12:A$14)"
+    ws.Range("E15").Formula = "=SUM(A12:A14)+A15"
+    ws.Range("F16").Formula = "=SUM(A12:A14)+Four"
+    ws.Range("A20").Value = 1
+    ws.Range("A21").Formula = "'x"
+    ws.Range("A22").Value = 3
+    ws.Range("A23").Value = 4
+    ws.Range("B20").Formula = "=SUM(A20:A22)"
+End Sub
+
+Private Sub FillEmpty(ws As Worksheet)
+    Dim i As Long
+    ws.Range("A1").Formula = "=Y100"
+    ws.Range("A3").Formula = "=SUM(Y1:Y2)"
+    ws.Range("A5").Formula = "=SUM(C:C)"
+    ' A range with a gap in a row that holds nothing, and one whose row does.
+    For i = 5 To 9
+        If i <> 7 Then ws.Cells(i, 3).Value = i
+    Next i
+    ws.Range("E5").Formula = "=SUM(C5:C9)"
+    For i = 21 To 25
+        If i <> 23 Then ws.Cells(i, 3).Value = i
+    Next i
+    ws.Range("AA23").Value = 1
+    ws.Range("E21").Formula = "=SUM(C21:C25)"
+    ' A range running past the last row the sheet uses.
+    For i = 40 To 42
+        ws.Cells(i, 8).Value = i
+    Next i
+    ws.Range("G40").Formula = "=SUM(H40:H45)"
+End Sub
+
+Private Sub FillTables(ws As Worksheet)
+    Dim lo As ListObject, i As Long
+    ws.Range("A1").Value = "a"
+    ws.Range("B1").Value = "b"
+    ws.Range("C1").Value = "c"
+    ws.Range("D1").Value = "d"
+    For i = 2 To 6
+        ws.Cells(i, 1).Value = i
+        ws.Cells(i, 2).Value = i * 10
+    Next i
+    ws.Range("D2").Value = "x"
+    ws.Range("D3").Value = "X"
+    ws.Range("D4").Value = "z"
+    Set lo = ws.ListObjects.Add(1, ws.Range("A1:D6"), , 1)
+    lo.Name = "Checked"
+    ' A calculated column with a value and two cells of another formula.
+    lo.ListColumns(3).DataBodyRange.Formula = "=[@a]*2"
+    ws.Range("C4").Value = 7
+    ws.Range("C5:C6").Formula = "=[@a]*3"
+    ' Validation in the table: a whole number, and a list.
+    ws.Range("B4").Value = 500
+    With ws.Range("B2:B6").Validation
+        .Delete
+        .Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="1", Formula2:="100"
+    End With
+    With ws.Range("D2:D5").Validation
+        .Delete
+        .Add Type:=3, AlertStyle:=1, Formula1:="x,y"
+        .IgnoreBlank = True
+    End With
+    With ws.Range("D6").Validation
+        .Delete
+        .Add Type:=3, AlertStyle:=1, Formula1:="x,y"
+        .IgnoreBlank = False
+    End With
+    ' The same validation outside a table is not this rule's business.
+    ws.Range("G2").Value = 500
+    With ws.Range("G2").Validation
+        .Delete
+        .Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="1", Formula2:="100"
+    End With
+    FillKinds ws
+End Sub
+
+Private Sub FillKinds(ws As Worksheet)
+    ' Each kind of validation over a value of its own: type, the formulas,
+    ' and the value typed. #R# is the value's row, for a relative formula.
+    Dim spec As Variant, parts() As String, i As Long, r As Long, lo As ListObject
+    spec = Array("1|1|10|5", "1|1|10|'5", "1|1|10|5.5", "1|1|10|TRUE", "3|a,b,c||A", "3|a,b,c|| b", _
+        "3|=$K$1:$K$3||X", "3|=$K$1:$K$3||'7", "3|=$K$1:$K$3||TRUE", "4|43831|44196|43831.5", _
+        "4|43831|44196|44197", "5|0.375|0.708333333333333|0.5", "5|0.375|0.708333333333333|45000.5", _
+        "6|2|4|TRUE", "6|2|4|12345", "6|2|4|1.5", "7|=B#R#>0||-5", "7|=B#R#>0||abc", "7|=5||1", "7|=FALSE||1")
+    ws.Range("K1").Value = "x"
+    ws.Range("K2").Value = 7
+    ws.Range("K3").Value = True
+    ws.Range("A10").Value = "k"
+    ws.Range("B10").Value = "v"
+    ' The values first: a formula typed into a table may fill its column.
+    For i = 0 To UBound(spec)
+        parts = Split(spec(i), "|")
+        ws.Cells(11 + i, 1).Value = i
+        ws.Cells(11 + i, 2).Formula = parts(3)
+    Next i
+    Set lo = ws.ListObjects.Add(1, ws.Range(ws.Cells(10, 1), ws.Cells(11 + UBound(spec), 2)), , 1)
+    lo.Name = "Kinds"
+    ' A validation's relative references are read from the active cell.
+    ws.Activate
+    For i = 0 To UBound(spec)
+        parts = Split(spec(i), "|")
+        r = 11 + i
+        ws.Cells(r, 2).Select
+        With ws.Cells(r, 2).Validation
+            .Delete
+            If parts(2) = "" Then
+                .Add Type:=CLng(parts(0)), AlertStyle:=1, Operator:=1, Formula1:=Replace(parts(1), "#R#", CStr(r))
+            Else
+                .Add Type:=CLng(parts(0)), AlertStyle:=1, Operator:=1, Formula1:=parts(1), Formula2:=parts(2)
+            End If
+        End With
+    Next i
+End Sub
+
+Private Sub FillIgnored(ws As Worksheet)
+    ws.Range("B2").Formula = "'5"
+    ws.Range("B3").Formula = "'6"
+    ws.Range("B2").Errors(3).Ignore = True
+    ws.Range("B3").Errors(3).Ignore = True
+    ws.Range("B5").Formula = "=1/0"
+    ws.Range("B5").Errors(1).Ignore = True
+    ws.Range("B7").Formula = "'1/1/99"
+End Sub
+
+Private Function Report(wb As Workbook) As String
+    Dim ws As Worksheet, c As Range, i As Long, flags As String, out As String, flagged As Boolean
+    For Each ws In wb.Worksheets
+        For Each c In ws.UsedRange.Cells
+            flags = ""
+            flagged = False
+            For i = 1 To 10
+                If c.Errors(i).Value Then
+                    flags = flags & "1"
+                    flagged = True
+                Else
+                    flags = flags & "0"
+                End If
+            Next i
+            If flagged Or Not IsEmpty(c.Value) Or c.HasFormula Then
+                out = out & ws.Name & "!" & c.Address(False, False) & vbTab & flags & vbLf
+            End If
+        Next c
+    Next ws
+    Report = out
+End Function
+'''
+
+
 #: What a measured fixture's reply turns into: an entry per thing measured.
 Answers = dict[str, dict[str, object]]
 
@@ -1852,6 +2104,26 @@ def build_answers(
         json.dumps(answers, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     print(f"  wrote {target.name} ({target.stat().st_size} bytes) and {answers_path.name}")
+
+
+#: The error-checking rules in the order Range.Errors numbers them, named
+#: as a worksheet's <ignoredErrors> names them.
+_ERROR_RULES = (
+    "evalError", "twoDigitTextYear", "numberStoredAsText", "formula", "formulaRange",
+    "unlockedFormula", "emptyCellReference", "listDataValidation", "calculatedColumn", "misleadingFormat",
+)  # fmt: skip
+
+
+def error_check_answers(reply: str) -> Answers:
+    """One line per cell, ``Sheet!A1`` and then a 0 or 1 for each rule,
+    recorded as the rules that catch the cell."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        cell, flags = line.split("\t")
+        answers[cell] = {"rules": [rule for rule, flag in zip(_ERROR_RULES, flags, strict=True) if flag == "1"]}
+    return answers
 
 
 def control_answers(reply: str) -> Answers:
@@ -2177,6 +2449,7 @@ def main() -> int:
         ("charts.xlsx", _BUILD_CHARTS, chart_answers),
         ("pivots.xlsx", _BUILD_PIVOTS, pivot_answers),
         ("chartkinds.xlsx", _BUILD_CHART_KINDS, chart_kind_answers),
+        ("errorchecks.xlsx", _BUILD_ERROR_CHECKS, error_check_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]

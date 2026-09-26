@@ -74,6 +74,23 @@ anything trailing the file is swept into the oldest release's notes. -->
   Excel puts them in, which are the wrong ones, by the rule measured for
   where each lands.
 
+- **Error checking.** `Worksheet.error_checks()` finds the cells Excel
+  marks with a green triangle and the rule that catches each, named as the
+  file names them: `evalError`, `twoDigitTextYear`, `numberStoredAsText`,
+  `formula`, `formulaRange`, `unlockedFormula`, `emptyCellReference`,
+  `listDataValidation`, `calculatedColumn` and `misleadingFormat`. It
+  checks what Excel checks unless told otherwise, all but references to
+  empty cells, and leaves out an error the file records as ignored, which
+  `Worksheet.ignored_errors` lists. Every rule was measured against
+  `Range.Errors` in Excel. Text is read as a date by a scanner looser than
+  DATEVALUE, so `99 Jan` has a two-digit year. A range leaves out a number
+  beside it only at an end written relative, and never in a formula
+  calling SUMIF or LOOKUP. A range reaches an empty cell only where Excel
+  stores cells: in a row that holds one, or past the last used row or
+  column. A format misleads only a formula that is one cell's reference.
+  Held to a fixture Excel authored, on all 198 of its cells, and to 6,683
+  strings for the two rules that read text.
+
 - **Formulas that read another workbook calculate.** They used to keep
   the values Excel cached. Excel keeps a copy of every linked cell a
   formula read, in the link's own part, and calculates with it while the

@@ -623,6 +623,23 @@ class Engine:
             except PendingCellsError as need:
                 self.calculate(need.cells)
 
+    def values(self, formula: str, sheet: str, row: int, column: int) -> list[Scalar]:
+        """Every value ``formula`` gives in a cell, calculating what it
+        reads: a range's cells that hold something, row by row, an array's
+        items, or the one value."""
+        node = parse(formula)
+        while True:
+            context = Context(self, sheet, row, column, today=self.today, now=self.now)
+            try:
+                value = context.formula(node)
+                if isinstance(value, Reference):
+                    return [found for area in value.areas for _, _, found in self.cells(area)]
+                if isinstance(value, Array):
+                    return [item for line in value.rows for item in line]
+                return [value]
+            except PendingCellsError as need:
+                self.calculate(need.cells)
+
     # ------------------------------------------------------------------
     # Results
     # ------------------------------------------------------------------

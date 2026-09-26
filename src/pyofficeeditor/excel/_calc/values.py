@@ -269,13 +269,20 @@ _FRACTION_PART = 32767
 def text_to_number(text: str, today: dt.date, *, epoch_1904: bool = False) -> float | None:
     """The number text stands for, as typing it into a cell would make it,
     or ``None`` when it is not one."""
-    body = text.strip(" ")
-    if not body:
-        return None
-    number = _plain_number(body)
+    number = plain_number(text)
     if number is not None:
         return number
-    return parse_date_time(body, today, epoch_1904=epoch_1904)
+    body = text.strip(" ")
+    return parse_date_time(body, today, epoch_1904=epoch_1904) if body else None
+
+
+def plain_number(text: str) -> float | None:
+    """The number text stands for when it is written as one, with its sign,
+    currency or percent, rather than as a date or a time; ``None`` when it
+    is not. Measured, this is the text Excel's error checking calls a
+    number stored as text."""
+    body = text.strip(" ")
+    return _plain_number(body) if body else None
 
 
 def _skip(text: str, index: int) -> int:
@@ -426,6 +433,7 @@ __all__ = [
     "Scope",
     "Value",
     "compare",
+    "plain_number",
     "scalar_text",
     "text_to_number",
 ]

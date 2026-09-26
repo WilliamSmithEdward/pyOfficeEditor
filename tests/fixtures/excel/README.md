@@ -32,7 +32,7 @@ fixtures to refresh.
 
 `scripts/build_excel_fixtures.py` drives real Excel through
 [pyvbaharness](https://github.com/WilliamSmithEdward/pyVBAharness) to author
-nineteen more. These are committed like the rest: the script exists so a
+twenty more. These are committed like the rest: the script exists so a
 fixture's *content* can be changed deliberately and reproduced, not so the
 suite rebuilds them. Run it on a Windows machine with Excel; tests that need
 a fixture skip when it is absent.
@@ -58,6 +58,7 @@ a fixture skip when it is absent.
 | `pivots.xlsx` | Two pivot tables reading `Data!A1:C11` through caches of their own, one on a sheet of its own and one on the data sheet where edits reach it. `pivots_answers.json` records, for the file as built and after each of nineteen edits Excel made, where each pivot table was, what its cache read and how many caches the workbook kept, read from the file Excel saved, or that Excel refused the edit. |
 | `pivotdata.xlsx` | Twenty-six pivot tables in each layout Excel offers, over `Data!A1:F13` and `Data!H1:J5`: nested, across, tabular, outline, filtered, without totals or subtotals, with values down the side, renamed items and fields, hidden items, dates grouped by years and months, numbers in bins, a calculated field and a share of the total. Sheet Q holds 147 GETPIVOTDATA formulas reading them, each with Excel's answer cached beside it. Excel removed personal information as it saved. |
 | `datatables.xlsx` | What-if data tables from `Range.Table` over a small loan model: rates down a column against two formulas, years along a row, both at once, a chain through another sheet and back, a formula for an input cell, a branch the input decides, and a blank, an error, text and a formula among the values tried. The model is built twice, on Model and on Moved with other years and principal, so setting one's inputs to the other's and recalculating is held to Excel's answer. Excel removed personal information as it saved. |
+| `errorchecks.xlsx` | Cells for each of error checking's ten rules and their near misses, a sheet apiece: text that is a number or a date with a two-digit year, alone or in a formula; errors, NA() among them, unlocked formulas and misleading formats; inconsistent formulas and ranges that leave out a number, SUMIF, absolute rows and a name among them; references to empty cells in rows that store cells and rows that do not, and past the last used row; a table with a calculated column's exceptions and values its validation refuses, a blank one included, and another with a validation of every kind; and errors ignored. `errorchecks_answers.json` records every cell with the rules `Range.Errors` says catch it, ignored ones included. Excel removed personal information as it saved. |
 
 `shapes.xlsm` is committed but has no recipe here: it predates the script.
 It carries one of every shape a sheet can hold, with `shapes_answers.json`
@@ -71,22 +72,24 @@ spelled three ways, and the off state is -4146 rather than 0.
 
 ## Measured by script
 
-Three corpora record what Excel did rather than what it wrote, and each case
-in them is a test. All three came from Excel 16.0 build 20326 in en-US. The
+Four corpora record what Excel did rather than what it wrote, and each case
+in them is a test. All four came from Excel 16.0 build 20326 in en-US. The
 first two scripts run beside other harness sessions, since they only run
-hidden macros; the third waits for the lock like the fixture builder.
+hidden macros; the other two wait for the lock like the fixture builder.
 
 | File | Built by | What it records |
 |------|----------|-----------------|
 | `formulas.xlsx` | `scripts/measure_formulas.py` | 10,958 formulas on 115 sheets, each sheet named for what it probes, and the value Excel calculated for each. The inputs, sixteen sheets such as `Numbers`, `Pairs` and `Powers`, were written by this library as exact doubles into a copy of `empty.xlsx`; Excel then typed in the formulas, calculated and saved. `About` records the build and the day it was measured, which a text naming a day without a year needs. `test_excel_formula_corpus.py` calculates every formula and holds it to Excel's result. |
 | `number_formats.json` | `scripts/measure_number_formats.py` | The text Excel showed for 503 format codes, each under 21 to 73 values, 27,898 texts in all across both date systems, and the nine codes it refused; the code of all 164 built-in ids with its text for five sample values; and the text of 782 cells of the committed fixtures. `test_excel_numfmt.py` renders every one. |
 | `filter_semantics.json` | `scripts/measure_filters.py` | 358 criteria, each applied by Excel to one of 31 columns built to trip it, with the rows it hid and the markup it stored. 261 went through the object model; 93 were written straight into a package and applied from the file, for markup the object model will not write; 4 are special cases, such as rows hidden by hand. `test_excel_filter_semantics.py` evaluates every one. |
+| `text_checks.json` | `scripts/measure_text_checks.py` | 6,683 strings, each typed into a cell after an apostrophe, and whether error checking called it a number stored as text or a date with a two-digit year: a grid of numbers and month names joined every way, the separators, digit counts and spellings that settle a borderline case, and random strings made from the same pieces with a fixed seed. `test_excel_errorchecks.py` judges every one. |
 
 Rebuilding any of them replaces it, since a corpus has no content to keep:
 what it holds is whatever Excel answers. The dates in
 `filter_semantics.json` are relative to the day it was built, which it
 records, and its tests measure "today" from that day; `formulas.xlsx` does
-the same for the texts in it that name a day without a year.
+the same for the texts in it that name a day without a year, and
+`text_checks.json` for `2/29`, a day only in a leap year.
 
 A fixture that already exists is left alone, because Excel stamps every part
 with a fresh revision GUID and so never produces the same bytes twice.

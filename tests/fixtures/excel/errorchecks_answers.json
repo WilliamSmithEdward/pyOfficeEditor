@@ -1,0 +1,730 @@
+{
+  "Empty!A1": {
+    "rules": [
+      "emptyCellReference"
+    ]
+  },
+  "Empty!A3": {
+    "rules": [
+      "emptyCellReference"
+    ]
+  },
+  "Empty!A5": {
+    "rules": [
+      "emptyCellReference"
+    ]
+  },
+  "Empty!AA23": {
+    "rules": []
+  },
+  "Empty!C21": {
+    "rules": []
+  },
+  "Empty!C22": {
+    "rules": []
+  },
+  "Empty!C24": {
+    "rules": []
+  },
+  "Empty!C25": {
+    "rules": []
+  },
+  "Empty!C5": {
+    "rules": []
+  },
+  "Empty!C6": {
+    "rules": []
+  },
+  "Empty!C8": {
+    "rules": []
+  },
+  "Empty!C9": {
+    "rules": []
+  },
+  "Empty!E21": {
+    "rules": [
+      "emptyCellReference"
+    ]
+  },
+  "Empty!E5": {
+    "rules": []
+  },
+  "Empty!G40": {
+    "rules": [
+      "emptyCellReference"
+    ]
+  },
+  "Empty!H40": {
+    "rules": []
+  },
+  "Empty!H41": {
+    "rules": []
+  },
+  "Empty!H42": {
+    "rules": []
+  },
+  "Ignored!B2": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Ignored!B3": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Ignored!B5": {
+    "rules": [
+      "evalError"
+    ]
+  },
+  "Ignored!B7": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Regions!A1": {
+    "rules": []
+  },
+  "Regions!A12": {
+    "rules": []
+  },
+  "Regions!A13": {
+    "rules": []
+  },
+  "Regions!A14": {
+    "rules": []
+  },
+  "Regions!A15": {
+    "rules": []
+  },
+  "Regions!A2": {
+    "rules": []
+  },
+  "Regions!A20": {
+    "rules": []
+  },
+  "Regions!A21": {
+    "rules": []
+  },
+  "Regions!A22": {
+    "rules": []
+  },
+  "Regions!A23": {
+    "rules": []
+  },
+  "Regions!A3": {
+    "rules": []
+  },
+  "Regions!A4": {
+    "rules": []
+  },
+  "Regions!A5": {
+    "rules": []
+  },
+  "Regions!A8": {
+    "rules": []
+  },
+  "Regions!A9": {
+    "rules": []
+  },
+  "Regions!B1": {
+    "rules": []
+  },
+  "Regions!B12": {
+    "rules": [
+      "formulaRange"
+    ]
+  },
+  "Regions!B2": {
+    "rules": []
+  },
+  "Regions!B20": {
+    "rules": []
+  },
+  "Regions!B3": {
+    "rules": [
+      "formula"
+    ]
+  },
+  "Regions!B4": {
+    "rules": []
+  },
+  "Regions!B5": {
+    "rules": []
+  },
+  "Regions!B8": {
+    "rules": []
+  },
+  "Regions!B9": {
+    "rules": []
+  },
+  "Regions!C13": {
+    "rules": []
+  },
+  "Regions!C8": {
+    "rules": []
+  },
+  "Regions!C9": {
+    "rules": [
+      "formula"
+    ]
+  },
+  "Regions!D1": {
+    "rules": []
+  },
+  "Regions!D14": {
+    "rules": []
+  },
+  "Regions!D2": {
+    "rules": [
+      "formula"
+    ]
+  },
+  "Regions!D3": {
+    "rules": []
+  },
+  "Regions!D8": {
+    "rules": []
+  },
+  "Regions!D9": {
+    "rules": []
+  },
+  "Regions!E15": {
+    "rules": []
+  },
+  "Regions!E8": {
+    "rules": []
+  },
+  "Regions!E9": {
+    "rules": []
+  },
+  "Regions!F16": {
+    "rules": [
+      "formulaRange"
+    ]
+  },
+  "Tables!A1": {
+    "rules": []
+  },
+  "Tables!A10": {
+    "rules": []
+  },
+  "Tables!A11": {
+    "rules": []
+  },
+  "Tables!A12": {
+    "rules": []
+  },
+  "Tables!A13": {
+    "rules": []
+  },
+  "Tables!A14": {
+    "rules": []
+  },
+  "Tables!A15": {
+    "rules": []
+  },
+  "Tables!A16": {
+    "rules": []
+  },
+  "Tables!A17": {
+    "rules": []
+  },
+  "Tables!A18": {
+    "rules": []
+  },
+  "Tables!A19": {
+    "rules": []
+  },
+  "Tables!A2": {
+    "rules": []
+  },
+  "Tables!A20": {
+    "rules": []
+  },
+  "Tables!A21": {
+    "rules": []
+  },
+  "Tables!A22": {
+    "rules": []
+  },
+  "Tables!A23": {
+    "rules": []
+  },
+  "Tables!A24": {
+    "rules": []
+  },
+  "Tables!A25": {
+    "rules": []
+  },
+  "Tables!A26": {
+    "rules": []
+  },
+  "Tables!A27": {
+    "rules": []
+  },
+  "Tables!A28": {
+    "rules": []
+  },
+  "Tables!A29": {
+    "rules": []
+  },
+  "Tables!A3": {
+    "rules": []
+  },
+  "Tables!A30": {
+    "rules": []
+  },
+  "Tables!A4": {
+    "rules": []
+  },
+  "Tables!A5": {
+    "rules": []
+  },
+  "Tables!A6": {
+    "rules": []
+  },
+  "Tables!B1": {
+    "rules": []
+  },
+  "Tables!B10": {
+    "rules": []
+  },
+  "Tables!B11": {
+    "rules": []
+  },
+  "Tables!B12": {
+    "rules": [
+      "numberStoredAsText",
+      "listDataValidation"
+    ]
+  },
+  "Tables!B13": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!B14": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!B15": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!B16": {
+    "rules": []
+  },
+  "Tables!B17": {
+    "rules": []
+  },
+  "Tables!B18": {
+    "rules": [
+      "numberStoredAsText",
+      "listDataValidation"
+    ]
+  },
+  "Tables!B19": {
+    "rules": []
+  },
+  "Tables!B2": {
+    "rules": []
+  },
+  "Tables!B20": {
+    "rules": []
+  },
+  "Tables!B21": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!B22": {
+    "rules": []
+  },
+  "Tables!B23": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!B24": {
+    "rules": []
+  },
+  "Tables!B25": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!B26": {
+    "rules": []
+  },
+  "Tables!B27": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!B28": {
+    "rules": []
+  },
+  "Tables!B29": {
+    "rules": []
+  },
+  "Tables!B3": {
+    "rules": []
+  },
+  "Tables!B30": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!B4": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!B5": {
+    "rules": []
+  },
+  "Tables!B6": {
+    "rules": []
+  },
+  "Tables!C1": {
+    "rules": []
+  },
+  "Tables!C2": {
+    "rules": []
+  },
+  "Tables!C3": {
+    "rules": []
+  },
+  "Tables!C4": {
+    "rules": [
+      "calculatedColumn"
+    ]
+  },
+  "Tables!C5": {
+    "rules": [
+      "calculatedColumn"
+    ]
+  },
+  "Tables!C6": {
+    "rules": [
+      "calculatedColumn"
+    ]
+  },
+  "Tables!D1": {
+    "rules": []
+  },
+  "Tables!D2": {
+    "rules": []
+  },
+  "Tables!D3": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!D4": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!D6": {
+    "rules": [
+      "listDataValidation"
+    ]
+  },
+  "Tables!G2": {
+    "rules": []
+  },
+  "Tables!K1": {
+    "rules": []
+  },
+  "Tables!K2": {
+    "rules": []
+  },
+  "Tables!K3": {
+    "rules": []
+  },
+  "Text!A1": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Text!A10": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Text!A11": {
+    "rules": []
+  },
+  "Text!A12": {
+    "rules": []
+  },
+  "Text!A13": {
+    "rules": []
+  },
+  "Text!A14": {
+    "rules": []
+  },
+  "Text!A15": {
+    "rules": []
+  },
+  "Text!A16": {
+    "rules": []
+  },
+  "Text!A17": {
+    "rules": []
+  },
+  "Text!A18": {
+    "rules": []
+  },
+  "Text!A19": {
+    "rules": []
+  },
+  "Text!A2": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Text!A3": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Text!A4": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Text!A5": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Text!A6": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Text!A7": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Text!A8": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Text!A9": {
+    "rules": [
+      "numberStoredAsText"
+    ]
+  },
+  "Text!C1": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!C10": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!C11": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!C12": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!C13": {
+    "rules": []
+  },
+  "Text!C14": {
+    "rules": []
+  },
+  "Text!C15": {
+    "rules": []
+  },
+  "Text!C16": {
+    "rules": []
+  },
+  "Text!C17": {
+    "rules": []
+  },
+  "Text!C18": {
+    "rules": []
+  },
+  "Text!C19": {
+    "rules": []
+  },
+  "Text!C2": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!C20": {
+    "rules": []
+  },
+  "Text!C3": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!C4": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!C5": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!C6": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!C7": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!C8": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!C9": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!E1": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!E11": {
+    "rules": []
+  },
+  "Text!E3": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!E5": {
+    "rules": []
+  },
+  "Text!E7": {
+    "rules": [
+      "twoDigitTextYear"
+    ]
+  },
+  "Text!E9": {
+    "rules": []
+  },
+  "Values!A1": {
+    "rules": [
+      "evalError"
+    ]
+  },
+  "Values!A11": {
+    "rules": []
+  },
+  "Values!A13": {
+    "rules": [
+      "evalError"
+    ]
+  },
+  "Values!A15": {
+    "rules": []
+  },
+  "Values!A17": {
+    "rules": [
+      "evalError"
+    ]
+  },
+  "Values!A3": {
+    "rules": []
+  },
+  "Values!A5": {
+    "rules": [
+      "evalError"
+    ]
+  },
+  "Values!A7": {
+    "rules": []
+  },
+  "Values!A9": {
+    "rules": [
+      "evalError"
+    ]
+  },
+  "Values!C1": {
+    "rules": [
+      "unlockedFormula"
+    ]
+  },
+  "Values!C3": {
+    "rules": []
+  },
+  "Values!C5": {
+    "rules": []
+  },
+  "Values!E1": {
+    "rules": [
+      "misleadingFormat"
+    ]
+  },
+  "Values!E11": {
+    "rules": [
+      "misleadingFormat"
+    ]
+  },
+  "Values!E13": {
+    "rules": []
+  },
+  "Values!E15": {
+    "rules": []
+  },
+  "Values!E3": {
+    "rules": [
+      "misleadingFormat"
+    ]
+  },
+  "Values!E5": {
+    "rules": []
+  },
+  "Values!E7": {
+    "rules": [
+      "misleadingFormat"
+    ]
+  },
+  "Values!E9": {
+    "rules": []
+  },
+  "Values!X1": {
+    "rules": []
+  },
+  "Values!X2": {
+    "rules": []
+  },
+  "Values!X3": {
+    "rules": []
+  },
+  "Values!Z10": {
+    "rules": []
+  },
+  "Values!Z11": {
+    "rules": []
+  }
+}

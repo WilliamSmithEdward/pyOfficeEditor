@@ -52,6 +52,7 @@ from pyofficeeditor.excel._conditional import (
     uniques,
 )
 from pyofficeeditor.excel._dxf import Dxf, DxfFill, DxfFont
+from pyofficeeditor.excel._errorchecks import DEFAULT_ERROR_RULES, ERROR_RULES, ErrorCheck, ErrorRule, IgnoredError
 from pyofficeeditor.excel._filters import (
     AutoFilter,
     Comparison,
@@ -113,6 +114,8 @@ from pyofficeeditor.excel.workbook import Workbook
 from pyofficeeditor.excel.worksheet import Cell, Range, Worksheet
 
 __all__ = [
+    "DEFAULT_ERROR_RULES",
+    "ERROR_RULES",
     "MAX_COLUMN",
     "MAX_ROW",
     "XL_MIXED",
@@ -148,6 +151,8 @@ __all__ = [
     "DxfFill",
     "DxfFont",
     "DynamicFilter",
+    "ErrorCheck",
+    "ErrorRule",
     "ErrorStyle",
     "Fill",
     "FilterColumn",
@@ -159,6 +164,7 @@ __all__ = [
     "HeaderFooter",
     "HeaderFooterText",
     "IconSet",
+    "IgnoredError",
     "OpaqueCriterion",
     "PageMargins",
     "PageSetup",

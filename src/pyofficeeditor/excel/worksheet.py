@@ -74,6 +74,7 @@ from pyofficeeditor.excel._dimensions import (
     sheet_standard_width,
 )
 from pyofficeeditor.excel._dxf import Dxf
+from pyofficeeditor.excel._errorchecks import ErrorCheck, ErrorRule, IgnoredError, check_errors, read_ignored_errors
 from pyofficeeditor.excel._filters import (
     AutoFilter,
     FilterCell,
@@ -640,6 +641,33 @@ class Worksheet:
             # As the cell would read back once saved.
             return int(value)
         return value
+
+    def error_checks(
+        self,
+        rules: Iterable[ErrorRule] | None = None,
+        *,
+        include_ignored: bool = False,
+        today: dt.date | None = None,
+    ) -> list[ErrorCheck]:
+        """The cells Excel's error checking marks with a green triangle, and
+        the rule that catches each: ``evalError``, ``numberStoredAsText``
+        and the rest, named as the file names them.
+
+        ``rules`` are the rules to check, by default those Excel checks
+        unless told otherwise, which is all but ``emptyCellReference``. An
+        error the file records as ignored is left out, as Excel hides its
+        triangle, unless ``include_ignored`` is set. A formula's value is
+        the one cached for it, so calculate a changed workbook first.
+        ``today`` settles whether February 29 is a day this year, for text
+        such as ``2/29``.
+        """
+        return check_errors(self, rules, include_ignored=include_ignored, today=today)
+
+    @property
+    def ignored_errors(self) -> list[IgnoredError]:
+        """The cells whose errors the file records as ignored, and under
+        which rules."""
+        return read_ignored_errors(self)
 
     def get_text(self, reference: CellRef) -> str:
         """The text Excel shows for a cell: its value under its number format.
