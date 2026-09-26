@@ -55,7 +55,7 @@ ROW_FORMAT = ("ht", "customHeight", "s", "customFormat", "outlineLevel", "dyDesc
 _NOT_TAKEN = ("hidden", "collapsed")
 
 
-class _Formats:
+class FormatMatcher:
     """Cell styles compared by what they hold, as Excel compares them."""
 
     def __init__(self, styles: Styles | None) -> None:
@@ -91,8 +91,8 @@ def copy_row_format(sheet: Worksheet, at: int, count: int) -> RangeRef | None:
         return None
     taken = [(name, value) for name, value in above.attributes.items() if local_name(name) in ROW_FORMAT]
     row_style = above.get("s") if _true(above.get("customFormat")) else None
-    styles = _column_styles(root)
-    formats = _Formats(sheet.workbook.styles)
+    styles = column_styles(root)
+    formats = FormatMatcher(sheet.workbook.styles)
     cells: list[tuple[int, str]] = []
     for cell in above.children_named("c"):
         column = _column_of(cell)
@@ -184,7 +184,7 @@ def copy_column_format(
         return None
     root = sheet.document.root
     column_style = "0" if source is None else (source.get("style") or "0")
-    formats = _Formats(sheet.workbook.styles)
+    formats = FormatMatcher(sheet.workbook.styles)
     added: list[int] = []
     for number, row in sorted(sheet.rows_by_number().items()):
         default = row.get("s") if _true(row.get("customFormat")) else column_style
@@ -377,7 +377,7 @@ def _column_of(cell: Element) -> int | None:
         return None
 
 
-def _column_styles(root: Element) -> dict[int, str]:
+def column_styles(root: Element) -> dict[int, str]:
     """Each styled column's style, by column number."""
     styles: dict[int, str] = {}
     container = root.child("cols")
@@ -435,6 +435,8 @@ def widen_dimension(root: Element, block: RangeRef) -> None:
 
 __all__ = [
     "ROW_FORMAT",
+    "FormatMatcher",
+    "column_styles",
     "copy_column_format",
     "copy_row_format",
     "copy_sparklines",

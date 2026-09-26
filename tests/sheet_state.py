@@ -15,8 +15,9 @@ from pyofficeeditor.excel import CellFormat, CellValue, Table, Worksheet
 from pyofficeeditor.excel._rowcol import RT_VML, related_parts
 
 #: Row attributes Excel works out again whenever it saves, as hints for
-#: drawing: which columns hold cells, and the descent of the row's font.
-ROW_HINTS = frozenset({"r", "spans", "x14ac:dyDescent"})
+#: drawing: which columns hold cells, the descent of the row's font, and
+#: whether a thick border runs along the row's top or bottom.
+ROW_HINTS = frozenset({"r", "spans", "x14ac:dyDescent", "thickTop", "thickBot"})
 
 
 def cells(sheet: Worksheet) -> dict[str, tuple[str | None, CellValue, CellFormat]]:
@@ -32,27 +33,34 @@ def cells(sheet: Worksheet) -> dict[str, tuple[str | None, CellValue, CellFormat
 def rows(sheet: Worksheet) -> dict[int, dict[str, str]]:
     """Each row's own attributes: its height, style, and whether it is
     hidden. A row with no cell and nothing of its own is left out, as Excel
-    leaves it out of the file."""
+    leaves it out of the file. A height Excel fitted to the row, rather
+    than one set by hand, is left out too: Excel fits it again to what the
+    row shows, which is drawing, not what an edit decides."""
     found: dict[int, dict[str, str]] = {}
     for number, row in sheet.rows_by_number().items():
         own = {name: value for name, value in row.attributes.items() if name not in ROW_HINTS}
+        if own.get("customHeight") not in ("1", "true"):
+            own.pop("ht", None)
         if own or next(row.children_named("c"), None) is not None:
             found[number] = own
     return found
 
 
-def columns(sheet: Worksheet) -> dict[int, tuple[float | None, bool]]:
-    """Each column the sheet sets a width or hides, with its width and
-    whether it is hidden."""
+def columns(sheet: Worksheet) -> dict[int, tuple[float | None, bool, CellFormat | None]]:
+    """Each column the sheet sets a width or a format for, or hides, with
+    its width, whether it is hidden, and the format its empty cells show."""
     container = sheet.document.root.child("cols")
+    styles = sheet.workbook.styles
     numbers: set[int] = set()
     for entry in () if container is None else container.children_named("col"):
         numbers.update(range(int(entry.get("min") or 1), int(entry.get("max") or 1) + 1))
-    return {
-        number: (sheet.column_width(number), sheet.column_hidden(number))
-        for number in sorted(numbers)
-        if sheet.column_width(number) is not None or sheet.column_hidden(number)
-    }
+    found: dict[int, tuple[float | None, bool, CellFormat | None]] = {}
+    for number in sorted(numbers):
+        index = sheet.column_style_index(number)
+        shown = None if index is None or styles is None else styles.cell_format(index)
+        if sheet.column_width(number) is not None or sheet.column_hidden(number) or shown is not None:
+            found[number] = (sheet.column_width(number), sheet.column_hidden(number), shown)
+    return found
 
 
 def attached(sheet: Worksheet) -> dict[str, object]:

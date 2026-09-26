@@ -47,6 +47,7 @@ from pyofficeeditor.excel._comments import (
     CopiedNote,
     ThreadedComment,
     box_size,
+    column_pixels,
     delete_comment,
     delete_thread,
     find_comment,
@@ -71,7 +72,7 @@ from pyofficeeditor.excel._comments import (
     write_thread,
 )
 from pyofficeeditor.excel._conditional import ConditionalFormatting, ConditionalRule
-from pyofficeeditor.excel._copy import copy_cells
+from pyofficeeditor.excel._copy import PasteKind, PasteOperation, copy_cells
 from pyofficeeditor.excel._dimensions import (
     Freeze,
     column_entry,
@@ -1032,6 +1033,26 @@ class Worksheet:
         self._tidy_cols(container)
         self._invalidate()
 
+    def column_style_index(self, column: int) -> int | None:
+        """A column's ``style``, the index into the workbook's cell formats
+        its empty cells show, or ``None`` for a column with none."""
+        container = self._root.child("cols")
+        entry = None if container is None else column_entry(container, column)
+        raw = None if entry is None else entry.get("style")
+        return int(raw) if raw is not None and raw.isdigit() and raw != "0" else None
+
+    def set_column_style_index(self, column: int, index: int | None) -> None:
+        """Give a column a cell format by its index, as a paste of whole
+        columns carries one across, or take its own away."""
+        container = self._ensure_cols()
+        entry = isolate_column(container, column, width=self._standard_width())
+        if index:
+            entry.set("style", str(index))
+        else:
+            entry.unset("style")
+        self._tidy_cols(container)
+        self._invalidate()
+
     def row_height(self, row: int) -> float | None:
         """A row's height in points, or ``None`` if it uses the default.
 
@@ -1699,6 +1720,10 @@ class Worksheet:
         destination: str | RangeRef,
         *,
         to: Worksheet | None = None,
+        paste: PasteKind = "all",
+        operation: PasteOperation | None = None,
+        skip_blanks: bool = False,
+        transpose: bool = False,
     ) -> RangeRef:
         """Copy ``cells`` and paste them at ``destination``, on this sheet or
         on ``to``, as Excel's Copy and Paste does, and return the block
@@ -1707,21 +1732,47 @@ class Worksheet:
         repeated over when it is a whole number of copies both ways.
 
         As measured in Excel: each cell comes with its value, formula and
-        format, and a blank one clears the cell it lands on. A formula
-        moves as a copy does, its relative references whichever sheet they
-        name, and one pushed off the sheet is ``#REF!``. Merged cells,
-        notes, threads, links, validation and conditional formats come too,
-        and those at the destination give way. On a sheet whose filter
-        hides rows by a criterion, only the rows and columns showing come.
-        Whole rows bring their heights and whole columns their widths.
+        format, and a blank one clears the cell it lands on, bringing the
+        format its row or column gives it. A formula moves as a copy does,
+        its relative references whichever sheet they name, and one pushed
+        off the sheet is ``#REF!``. Merged cells, notes, threads, links,
+        validation and conditional formats come too, and those at the
+        destination give way. On a sheet whose filter hides rows by a
+        criterion, only the rows and columns showing come. Whole rows bring
+        their heights and formats, and whole columns their widths and
+        formats.
+
+        The rest is Paste Special. ``paste`` says what comes:
+        ``"formulas"``, ``"values"``, ``"formats"``, ``"comments"``,
+        ``"validation"``, ``"all_except_borders"``, ``"column_widths"``,
+        ``"formulas_and_number_formats"``, ``"values_and_number_formats"``,
+        ``"all_merging_conditional_formats"``, or ``"link"`` for Paste
+        Link's formulas reading the cells copied; the rest of the
+        destination stays. ``operation`` adds, subtracts, multiplies or
+        divides the values that come into those there, a formula on either
+        side giving a formula such as ``=(1+1)+10``. ``skip_blanks`` leaves
+        the destination as it is where the copy has a blank cell, and
+        ``transpose`` turns the copy's rows into columns, its references
+        with them.
 
         A paste over part of merged cells or of an array formula is refused
-        with a ``ValueError`` and nothing changed, as Excel refuses it. So
-        are, for now, a copy of a whole table, a paste over a table's header
-        or totals row, across its edge or just past it, shapes inside the
-        source, pivot tables and what-if data tables.
+        with a ``ValueError`` and nothing changed, as Excel refuses it, and
+        so are a paste of values onto merged cells the copy does not have,
+        an operation onto an array formula and a transposed paste over its
+        own source. So are, for now, a copy of a whole table, a paste over
+        a table's header or totals row, across its edge or just past it,
+        shapes inside the source, pivot tables and what-if data tables.
         """
-        return copy_cells(self, cells, to if to is not None else self, destination)
+        return copy_cells(
+            self,
+            cells,
+            to if to is not None else self,
+            destination,
+            paste=paste,
+            operation=operation,
+            skip_blanks=skip_blanks,
+            transpose=transpose,
+        )
 
     def remove_duplicates(
         self,
@@ -2432,9 +2483,18 @@ class Worksheet:
 
     def _pixels(self, column_count: int, row_count: int) -> tuple[list[int], list[int]]:
         """The widths of the first ``column_count`` columns and the heights
-        of the first ``row_count`` rows, in pixels."""
+        of the first ``row_count`` rows, in pixels, as a note's box counts
+        them: a hidden column as none, and one with a width of its own as
+        :func:`~pyofficeeditor.excel._comments.column_pixels` counts it."""
         grid = SheetGrid.of(self._root)
-        columns = [round(grid.column_widths.get(index, grid.default_column) / 0.75) for index in range(column_count)]
+        standard = round(grid.default_column / 0.75)
+        columns: list[int] = []
+        for index in range(column_count):
+            width = self.column_width(index + 1)
+            if self.column_hidden(index + 1):
+                columns.append(0)
+            else:
+                columns.append(standard if width is None else column_pixels(width))
         rows = [round(grid.row_heights.get(index, grid.default_row) / 0.75) for index in range(row_count)]
         return columns, rows
 

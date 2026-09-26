@@ -3239,6 +3239,715 @@ End Function
 '''
 
 
+#: Every Paste Special choice Excel offers, each on sheets of its own, made
+#: through ``Range.PasteSpecial``. A rich block, of every kind of value
+#: with formats, a note, a link, merged cells, validation and conditional
+#: formats, is pasted onto a block with its own of each, once for each
+#: choice, skipping blanks, transposed and with each operation. Then each
+#: behaviour the choices have on their own: blanks, merged cells and
+#: arrays in the way; number formats; conditional formats beside the
+#: destination's; skipping blanks note by note, link by link and rule by
+#: rule; transposed references of every kind, relative, absolute, mixed,
+#: whole rows and columns, in the source and out of it, pushed off the
+#: sheet, on another sheet and in validation and conditional formats; the
+#: operations over every kind of value and formula, and the numbers they
+#: write into a formula; whole rows and columns; row and column formats
+#: under blank cells; widths; links; Paste Link; a filter, tiles, a table
+#: and a shape. The workbook is saved as it stands, then every paste made
+#: in order and the workbook saved again as ``paste_specials_pasted.xlsx``.
+#: The reply is one line per paste: the source's sheet and range, the
+#: destination's sheet and range, the choice, the operation, whether it
+#: skipped blanks and transposed, and the error Excel refused it with, if
+#: it did.
+_BUILD_PASTE_SPECIALS = r'''
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook, ws As Worksheet, out As String, i As Long, kinds As Variant, numbers As Variant
+    Set wb = ActiveWorkbook
+
+    Set ws = Page(wb, "Other")
+    ws.Range("D6").Value = 5
+    Page wb, "Jan"
+    wb.Worksheets("Jan").Range("B5").Value = 1
+    Page wb, "Mar"
+    wb.Worksheets("Mar").Range("B5").Value = 2
+    wb.Names.Add Name:="Rate", RefersTo:="=Other!$D$6"
+
+    ' The rich block pasted by each choice.
+    kinds = Array("All", "Formulas", "Values", "Formats", "Comments", "Validation", "NoBorders", "Widths", _
+                  "FormulasNumbers", "ValuesNumbers", "MergingCF", "SkipBlanks", "Transpose", "Add", "Subtract", _
+                  "Multiply", "Divide", "AllAdd")
+    For i = 0 To UBound(kinds)
+        Dress Page(wb, kinds(i))
+    Next i
+    ' Column widths move the destination's note out from under its box,
+    ' which Excel keeps where it was drawn; that is not a paste's doing.
+    wb.Worksheets("Widths").Range("F1").Comment.Delete
+
+    ' Values: a blank over formats, text a formula gives, rich text, and
+    ' an empty text skipped blanks do not skip.
+    Set ws = Page(wb, "BlankKinds")
+    ws.Range("A2").Formula = "=""x"""
+    ws.Range("A3").Value = "bold plain"
+    ws.Range("A3").Characters(1, 4).Font.Bold = True
+    ws.Range("A4").Formula = "="""""
+    ws.Range("E1:E4").Value = 3
+    ws.Range("E1:E4").Interior.Color = RGB(0, 0, 200)
+    ws.Range("H1:H4").Value = 3
+
+    ' Formats: a plain source over formats, and merged cells it covers.
+    Set ws = Page(wb, "FormatsPlain")
+    ws.Range("A1").Value = 1
+    ws.Range("A3:B3").Value = 7
+    ws.Range("E1:E2").Value = 3
+    ws.Range("E1:E2").Interior.Color = RGB(0, 0, 200)
+    ws.Range("E3:F3").Merge
+    ws.Range("E3").Value = "m"
+
+    ' Merged cells in the way of values and formulas.
+    Set ws = Page(wb, "ValuesMerged")
+    ws.Range("A1:B1").Merge
+    ws.Range("A1").Value = "x"
+    ws.Range("E1:F1").Merge
+    ws.Range("E1").Value = "m"
+    Set ws = Page(wb, "ValuesMergeRefused")
+    ws.Range("A1").Value = 1
+    ws.Range("B1").Value = 2
+    ws.Range("E1:F1").Merge
+    ws.Range("E1").Value = "m"
+    Set ws = Page(wb, "NumbersMerged")
+    ws.Range("A1").Value = 1
+    ws.Range("B1").Value = 2
+    ws.Range("E1:F1").Merge
+    ws.Range("E1").Value = "m"
+    Set ws = Page(wb, "FormulasMerged")
+    ws.Range("A1:B1").Value = 1
+    ws.Range("E1:F1").Merge
+    ws.Range("E1").Value = "m"
+    ws.Range("E5:F5").Merge
+    ws.Range("E5").Value = "m"
+
+    ' Arrays: values and formulas of a spill and an array, arrays in the
+    ' way whole and in part, and formats onto part of one.
+    Set ws = Page(wb, "ValuesArrays")
+    ws.Range("A1").Formula2 = "=SEQUENCE(3)"
+    ws.Range("B1:B3").FormulaArray = "=A1:A3*2"
+    Set ws = Page(wb, "FormulasArrays")
+    ws.Range("A1").Formula2 = "=SEQUENCE(3)"
+    ws.Range("B1:B3").FormulaArray = "=A1:A3*2"
+    Set ws = Page(wb, "ArrayWhole")
+    ws.Range("A1:A2").Value = 1
+    ws.Range("C1:C2").Value = 4
+    ws.Range("E1:E2").FormulaArray = "=C1:C2*2"
+    ws.Range("A5").Value = 1
+    ws.Range("E5").Formula2 = "=SEQUENCE(3)"
+    Set ws = Page(wb, "ArrayPart")
+    ws.Range("A1").Value = 1
+    ws.Range("C1:C2").Value = 4
+    ws.Range("E1:E2").FormulaArray = "=C1:C2*2"
+    Set ws = Page(wb, "FormatsArrayPart")
+    ws.Range("A1").Value = 1
+    ws.Range("A1").Interior.Color = RGB(200, 0, 0)
+    ws.Range("C1:C2").Value = 4
+    ws.Range("E1:E2").FormulaArray = "=C1:C2*2"
+
+    ' Number formats: General over a format, and a blank.
+    Set ws = Page(wb, "NumberFormats")
+    ws.Range("A1").Value = 1
+    ws.Range("A2").Formula = "=A1+1"
+    ws.Range("A2").NumberFormat = "0.00"
+    ws.Range("A2").Interior.Color = RGB(200, 0, 0)
+    ws.Range("E1:E3").Value = 3
+    ws.Range("E1:E3").NumberFormat = "0%"
+    ws.Range("E1").Interior.Color = RGB(0, 0, 200)
+    ws.Range("H1:H3").Value = 3
+    ws.Range("H1:H3").NumberFormat = "0%"
+
+    ' Conditional formats beside the destination's.
+    Set ws = Page(wb, "BesideCF")
+    ws.Range("A1:A3").Value = 7
+    ws.Range("A1:A3").FormatConditions.Add Type:=1, Operator:=5, Formula1:="5"
+    ws.Range("A1:A3").FormatConditions.Add Type:=2, Formula1:="=A1>B1"
+    ws.Range("E1:E5").Value = 3
+    ws.Range("E1:E5").FormatConditions.Add Type:=1, Operator:=5, Formula1:="5"
+    ws.Range("E4:E6").FormatConditions.Add Type:=2, Formula1:="=E4>F4"
+
+    ' Skipping blanks, layer by layer.
+    Set ws = Page(wb, "SkipLayers")
+    ws.Range("A1").AddComment "blank noted"
+    ws.Range("A2").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="99"
+    ws.Range("A3").FormatConditions.Add Type:=1, Operator:=5, Formula1:="5"
+    ws.Range("A4").Interior.Color = RGB(200, 0, 0)
+    ws.Range("A5").Value = 1
+    ws.Range("A5").AddComment "valued note"
+    ws.Range("E1:E6").Value = 3
+    ws.Range("E1").AddComment "dest one"
+    ws.Range("E5").AddComment "dest five"
+    ws.Range("E6").AddComment "dest six"
+    ws.Range("E2").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="9"
+    ws.Range("E3").FormatConditions.Add Type:=1, Operator:=5, Formula1:="100"
+    ws.Range("E4").Interior.Color = RGB(0, 0, 200)
+    Set ws = Page(wb, "SkipLinks")
+    ws.Range("A1").Value = 1
+    ws.Range("E1:E2").Value = 3
+    ws.Hyperlinks.Add ws.Range("E1"), "https://example.com/one"
+    ws.Hyperlinks.Add ws.Range("E2"), "https://example.com/two"
+    Set ws = Page(wb, "SkipMerged")
+    ws.Range("A1:A2").Value = 1
+    ws.Range("A4:A5").Merge
+    ws.Range("A4").Value = "src"
+    ws.Range("E1:E2").Merge
+    ws.Range("E1").Value = "m"
+    Set ws = Page(wb, "SkipFormats")
+    ws.Range("A1").Interior.Color = RGB(200, 0, 0)
+    ws.Range("A2").Value = 1
+    ws.Range("A2").Interior.Color = RGB(200, 0, 0)
+    ws.Range("E1:E2").Value = 3
+    ws.Range("E1:E2").Interior.Color = RGB(0, 0, 200)
+    Set ws = Page(wb, "SkipRules")
+    ws.Range("A1").Value = 1
+    ws.Range("A3").Value = 1
+    ws.Range("A1:A2").FormatConditions.Add Type:=1, Operator:=5, Formula1:="5"
+    ws.Range("E1:E3").Value = 3
+    ws.Range("E1:E3").FormatConditions.Add Type:=1, Operator:=5, Formula1:="100"
+    ws.Range("C1").Value = 1
+    ws.Range("C1").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="99"
+    ws.Range("C3").Value = 1
+    ws.Range("G1:G3").Value = 3
+    ws.Range("G1:G3").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="9"
+    Set ws = Page(wb, "SkipNotes")
+    ws.Range("A1").Value = 1
+    ws.Range("A3").AddComment "source three"
+    ws.Range("E1:E3").Value = 3
+    ws.Range("E1").AddComment "dest one"
+    ws.Range("E2").AddComment "dest two"
+    ws.Range("E3").AddComment "dest three"
+    Set ws = Page(wb, "SkipValues")
+    ws.Range("A2").Value = 1
+    ws.Range("A3").Formula = "="""""
+    ws.Range("E1:E3").Value = 3
+
+    ' Transposed references of every kind.
+    Set ws = Page(wb, "TransposeIn")
+    Down ws, 1, "=B2|=$B2|=B$2|=$B$2|=SUM(A1:B2)|=SUM($A$1:B2)|=SUM(A1:B20)|=SUM(A:A)|=SUM($A:$A)|=SUM(5:5)"
+    Down ws, 2, "=F20|=$F20|=F$20|=$F$20|=SUM(F20:G21)|=SUM($F$20:G21)|=SUM(F:F)|=SUM($F:$F)|=SUM(20:20)|=Other!$B$2"
+    Set ws = Page(wb, "TransposeMore")
+    Down ws, 2, "=Other!B$2|=Other!F$20|=SUM($5:$5)|=SUM(A$1:A$3)|=SUM($A1:$B1)|=SUM(B2:F20)|=A1:B2|" & _
+        "=SUM(Other!A:A)|=ROW(B3)|=$A1+A$1", 3
+    Down ws, 3, "=B2|=$B2|=B$2|=$B$2|=SUM(A1:B2)|=SUM($A$1:B2)|=SUM(A1:B20)|=SUM(A:A)|=SUM($A:$A)|=SUM(5:5)", 3
+    ' None of these reads itself, so the values hold still.
+    Set ws = Page(wb, "TransposeOff")
+    Down ws, 2, "=TransposeOff!$C$5|=A1|=SUM(12:12)|=SUM($B$5:$D$6)|=SUM($A:A)|=""B5""&B5", 5
+    Down ws, 3, "=SUM(Jan:Mar!B5)|=SUM(D:D)|=SUM($A$1:$B$5)|=SUM(D11:$F$20)|=SUM($B5:$B6)|=Rate", 5
+    Set ws = Page(wb, "TransposeMeet")
+    Down ws, 2, "=SUM($A$4:$D$4)|=SUM($A$3:$D$12)|=SUM($B:B)", 3
+    Down ws, 3, "=SUM($A$4:$B$4)|=SUM($C$2:$C$20)|=SUM(B:$B)", 3
+    Down ws, 1, "=SUM($5:$5)|=SUM($A:$A)", 20
+    Down ws, 2, "=SUM($20:$21)|=SUM($9:$9)", 20
+    Set ws = Page(wb, "TransposeAway")
+    Down ws, 1, "=Other!D6|=SUM(2:2)|=A1+B2"
+    Down ws, 2, "=SUM(A1:B2)|=$A$1|=A$1+$A1"
+    Set ws = Page(wb, "TransposeRules")
+    ws.Range("A1:B3").Value = 1
+    ws.Range("A1:B3").FormatConditions.Add Type:=2, Formula1:="=A1>B1"
+    ws.Range("A1:A3").Validation.Add Type:=7, AlertStyle:=1, Formula1:="=A1>$B$1"
+    Set ws = Page(wb, "TransposeArray")
+    ws.Range("B1:B3").Value = 2
+    ws.Range("A1:A3").FormulaArray = "=B1:B3*2"
+    Set ws = Page(wb, "TransposeSpill")
+    ws.Range("A1").Formula2 = "=SEQUENCE(3)"
+    Set ws = Page(wb, "TransposeTiles")
+    ws.Range("A1").Value = 1
+    ws.Range("B1").Value = 2
+    Set ws = Page(wb, "TransposeOverlap")
+    ws.Range("A1:B3").Value = 1
+    Set ws = Page(wb, "TransposeSquare")
+    ws.Range("A1").Value = 1
+    ws.Range("B1").Value = 2
+    ws.Range("A2").Value = 3
+    ws.Range("B2").Formula = "=A1+B1"
+
+    ' Operations over every kind of value and formula.
+    For Each kinds In Array("OpThere", "OpThereAll")
+        Set ws = Page(wb, kinds)
+        ws.Range("A1:A9").Value = 10
+        ws.Range("E1").Value = 3
+        ws.Range("E3").Value = "t"
+        ws.Range("E4").Value = True
+        ws.Range("E5").Value = CVErr(2007)
+        ws.Range("E6").Formula = "=1+1"
+        ws.Range("E7").Value = 43845
+        ws.Range("E7").NumberFormat = "m/d/yyyy"
+        ws.Range("E8").Value = 0.1
+        ws.Range("E9").Value = -5
+    Next kinds
+    For Each kinds In Array("OpComing", "OpComingAll")
+        Set ws = Page(wb, kinds)
+        ws.Range("A1").Value = 10
+        ws.Range("A3").Value = "t"
+        ws.Range("A4").Value = True
+        ws.Range("A5").Value = CVErr(2007)
+        ws.Range("A6").Formula = "=2*5"
+        ws.Range("A7").Value = 43845
+        ws.Range("A7").NumberFormat = "m/d/yyyy"
+        ws.Range("A8").Value = 0
+        ws.Range("E1:E8").Value = 3
+    Next kinds
+    Set ws = Page(wb, "OpFloats")
+    ws.Range("A1").Value = 0.2
+    ws.Range("A2").Value = -0.1
+    ws.Range("A3").Value = 0.3
+    ws.Range("A4").Value = 0.6
+    ws.Range("A5").Value = 3
+    ws.Range("E1").Value = 0.1
+    ws.Range("E2").Value = 0.3
+    ws.Range("E3").Value = 1E+15
+    ws.Range("E4").Value = 123456789012345#
+    ws.Range("E5").Value = 1
+    Set ws = Page(wb, "OpFormulas")
+    ws.Range("B1").Value = 5
+    ws.Range("A1:A7").Formula = "=$B$1*2"
+    ws.Range("E1").Formula = "=1+1"
+    ws.Range("E3").Value = "t"
+    ws.Range("E4").Value = -5
+    ws.Range("E5").Value = 0.1
+    ws.Range("E6").Value = 1E+20
+    ws.Range("E7").Value = CVErr(2042)
+    ws.Range("B11:B12").Value = 5
+    ws.Range("A11:A12").Formula = "=B11*2"
+    ws.Range("E11").Formula = "=1+1"
+    ws.Range("E12").Value = True
+    Set ws = Page(wb, "OpFormulasSubtract")
+    ws.Range("B1").Value = 5
+    ws.Range("A1:A3").Formula = "=$B$1*2"
+    ws.Range("E1").Formula = "=1+1"
+    ws.Range("E3").Value = 4
+    ws.Range("E3").NumberFormat = "0%"
+    ' Numbers set as doubles, so none is cut to the fifteen digits Excel
+    ' reads from what is typed.
+    Set ws = Page(wb, "OpNumbers")
+    ws.Range("B1").Value = 5
+    ws.Range("A1:A40").Formula = "=$B$1*2"
+    numbers = Array(1E+21, 1.5E+300, 1E-10, 0.000001, 1 / 3, 123456789012345678#, 9007199254740993#, -0.5, 1E+15, _
+        12345.6789, 0.00001, 1E+20, 9.99999999999999E+20, 1.5E+21, 0.0000001, 1E-19, 1E-20, 1.23456789012345E-12, _
+        0.000123456789012345, 1E-300, -1E-20, -1E+25, 1 / 7, 2 / 3, 1234567890123456#, -123.456, -1E+20, -1E-19, _
+        1.2345E-17, 1E-18, 9.99999999999999E+307, 1.23456789012345E-07, 1000000000000005#, 1000000000000015#, _
+        1000000000000025#, 0.000000123, 0.1 + 0.2, 1234567890.1234567, 12345678901234567890#, 0.5)
+    For i = 0 To UBound(numbers)
+        ws.Cells(i + 1, 5).Value = numbers(i)
+    Next i
+    Set ws = Page(wb, "OpNumbersComing")
+    numbers = Array(1E+21, 1.5E+300, 1E-10, 1 / 3, -0.5, 0.00001, 0.1 + 0.2, 1234567890123456#, 1E-20, _
+        1.23456789012345E-12)
+    For i = 0 To UBound(numbers)
+        ws.Cells(i + 1, 1).Value = numbers(i)
+    Next i
+    ws.Range("E1:E10").Formula = "=1+1"
+    Set ws = Page(wb, "OpText")
+    ws.Range("A1:A2").Value = 10
+    ws.Range("E1").Formula = "=""a"""
+    ws.Range("E2").Formula = "=1/0"
+    ws.Range("A4").Formula = "=""x"""
+    ws.Range("A5").Formula = "=1/0"
+    ws.Range("A6").Formula = "=""x"""
+    ws.Range("E4:E6").Value = 3
+    Set ws = Page(wb, "OpBlanks")
+    ws.Range("E1:E2").Formula = "=1+1"
+    ws.Range("G1:G2").Formula = "=1+1"
+    Set ws = Page(wb, "OpArrays")
+    ws.Range("C1:C2").Value = 4
+    ws.Range("A1:A2").FormulaArray = "=C1:C2*2"
+    ws.Range("B1").Formula2 = "=SEQUENCE(2)"
+    ws.Range("E1:F2").Value = 3
+    Set ws = Page(wb, "OpOntoArray")
+    ws.Range("A1:A2").Value = 1
+    ws.Range("C1:C2").Value = 4
+    ws.Range("E1:E2").FormulaArray = "=C1:C2*2"
+    Set ws = Page(wb, "OpOverflow")
+    ws.Range("A1").Value = 1E+300
+    ws.Range("A2").Value = 0
+    ws.Range("E1").Value = 1E+300
+    ws.Range("E2").Value = 0
+    Set ws = Page(wb, "OpTransposed")
+    ws.Range("A1").Value = 1
+    ws.Range("A2").Value = 2
+    ws.Range("E1").Value = 10
+    ws.Range("F1").Value = 20
+
+    ' Whole rows and columns.
+    For Each kinds In Array("RowsFormats", "RowsValues", "RowsNoBorders")
+        Set ws = Page(wb, kinds)
+        ws.Range("A1:A2").Value = 1
+        ws.Rows(1).RowHeight = 30
+        ws.Rows(2).Interior.Color = RGB(0, 200, 0)
+        ws.Rows(2).Hidden = True
+        ws.Range("A1").Borders.LineStyle = 1
+        ws.Range("A6").Value = 9
+        ws.Rows(6).RowHeight = 40
+    Next kinds
+    For Each kinds In Array("ColumnsValues", "ColumnsFormats", "ColumnsWidths")
+        Set ws = Page(wb, kinds)
+        ws.Range("A1:B1").Value = 1
+        ws.Columns(1).ColumnWidth = 20
+        ws.Columns(2).Interior.Color = RGB(0, 200, 0)
+        ws.Columns(2).Hidden = True
+        ws.Columns(6).ColumnWidth = 30
+        ws.Columns(5).Interior.Color = RGB(0, 0, 200)
+    Next kinds
+    Set ws = Page(wb, "ColumnFormatCells")
+    ws.Columns(2).Interior.Color = RGB(0, 200, 0)
+    ws.Range("B1").Value = 1
+    ws.Range("B2").Value = 2
+    ws.Range("B2").Interior.Color = RGB(200, 0, 0)
+    ws.Range("B3").Interior.Color = RGB(200, 0, 0)
+    ws.Range("F1").Value = 9
+    ws.Range("F5").Value = 9
+    ws.Range("F5").Interior.Color = RGB(0, 0, 200)
+    Set ws = Page(wb, "RowFormatCells")
+    ws.Rows(2).Interior.Color = RGB(0, 200, 0)
+    ws.Range("A2").Value = 1
+    ws.Range("B2").Value = 2
+    ws.Range("B2").Interior.Color = RGB(200, 0, 0)
+    ws.Range("C2").Interior.Color = RGB(200, 0, 0)
+    ws.Range("A6").Value = 9
+    ws.Range("E6").Value = 9
+    ws.Range("E6").Interior.Color = RGB(0, 0, 200)
+
+    ' Row and column formats under blank cells, pasted whole.
+    Set ws = Page(wb, "BlankStyles")
+    ws.Rows(2).Interior.Color = RGB(0, 200, 0)
+    ws.Range("A2").Value = 1
+    ws.Columns(3).Interior.Color = RGB(0, 0, 200)
+    ws.Range("C1").Value = 1
+    Set ws = Page(wb, "ColumnsStyled")
+    ws.Columns(2).Interior.Color = RGB(0, 200, 0)
+    ws.Range("A1:B1").Value = 1
+    ws.Rows(3).Interior.Color = RGB(0, 0, 200)
+    ws.Rows(3).RowHeight = 25
+
+    ' Widths: a hidden column, and the standard width over a set one.
+    Set ws = Page(wb, "WidthsHidden")
+    ws.Range("A1:C1").Value = 1
+    ws.Columns(1).ColumnWidth = 12
+    ws.Columns(2).Hidden = True
+    ws.Columns(7).ColumnWidth = 30
+
+    ' Links stay under values and formats.
+    Set ws = Page(wb, "LinksStay")
+    ws.Range("A1:A2").Value = 1
+    ws.Range("A2").Interior.Color = RGB(200, 0, 0)
+    ws.Range("E1:E2").Value = 3
+    ws.Hyperlinks.Add ws.Range("E1"), "https://example.com/one"
+    ws.Hyperlinks.Add ws.Range("E2"), "https://example.com/two"
+
+    ' Paste Link.
+    Set ws = Page(wb, "PasteLink")
+    ws.Range("A1").Value = 1
+    ws.Range("B1").Value = "t"
+    ws.Range("B2").Formula = "=A1"
+    ws.Range("A1").Interior.Color = RGB(200, 0, 0)
+    Set ws = Page(wb, "LinkOver")
+    ws.Range("A1").Value = 1
+    ws.Range("B1").Value = 2
+    ws.Range("E1").Interior.Color = RGB(0, 0, 200)
+    ws.Range("E1").NumberFormat = "0.00"
+    ws.Range("E2").AddComment "kept"
+    ws.Range("F1").Value = 9
+    ws.Hyperlinks.Add ws.Range("F2"), "https://example.com/kept"
+    Set ws = Page(wb, "LinkTiles")
+    ws.Range("A1").Value = 1
+    ws.Range("A2").Value = 2
+    Set ws = Page(wb, "LinkFiltered")
+    Down ws, 1, "h|1|2|3|4|5"
+    ws.Range("A1:A6").AutoFilter Field:=1, Criteria1:=">2"
+    Set ws = Page(wb, "LinkMerged")
+    ws.Range("A1:B1").Value = 1
+    ws.Range("E1:F1").Merge
+    ws.Range("E1").Value = "m"
+
+    ' A filter, tiles, a table and a shape.
+    Set ws = Page(wb, "FilterValues")
+    Down ws, 1, "h|1|2|3|4|5"
+    ws.Range("A1:A6").AutoFilter Field:=1, Criteria1:=">2"
+    Set ws = Page(wb, "TileValues")
+    ws.Range("A1").Value = 1
+    ws.Range("A2").Value = 2
+    Set ws = Page(wb, "TableValues")
+    ws.Range("A1:B4").Value = 1
+    ws.Range("A1").Value = "k"
+    ws.Range("B1").Value = "n"
+    ws.ListObjects.Add(1, ws.Range("A1:B4"), , 1).Name = "Vals"
+    Set ws = Page(wb, "ShapeValues")
+    ws.Range("A1:B3").Value = 1
+    ws.Shapes.AddShape(1, 5, 5, 40, 20).Name = "Box"
+    Set ws = Page(wb, "ShapeFormats")
+    ws.Range("A1:B3").Value = 1
+    ws.Range("A1").Interior.Color = RGB(200, 0, 0)
+    ws.Shapes.AddShape(1, 5, 5, 40, 20).Name = "Box"
+
+    ' Merged cells Paste Special pastes into in ways of its own.
+    Set ws = Page(wb, "FormatsMergeAnchor")
+    ws.Range("A1").Value = 1
+    ws.Range("A1").Interior.Color = RGB(200, 0, 0)
+    ws.Range("E1:F1").Merge
+    ws.Range("E1").Value = "m"
+    Set ws = Page(wb, "CommentsMerged")
+    ws.Range("A1").Value = 1
+    ws.Range("A1").AddComment "note"
+    ws.Range("E1:F1").Merge
+    ws.Range("E1").Value = "m"
+
+    wb.Worksheets(1).Activate
+    Application.DisplayAlerts = False
+    wb.RemovePersonalInformation = True
+    wb.SaveAs Filename:=Target, FileFormat:=51
+
+    out = out & Special_(wb, "All", "A1:C4", "All", "E1", "all")
+    out = out & Special_(wb, "Formulas", "A1:C4", "Formulas", "E1", "formulas")
+    out = out & Special_(wb, "Values", "A1:C4", "Values", "E1", "values")
+    out = out & Special_(wb, "Formats", "A1:C4", "Formats", "E1", "formats")
+    out = out & Special_(wb, "Comments", "A1:C4", "Comments", "E1", "comments")
+    out = out & Special_(wb, "Validation", "A1:C4", "Validation", "E1", "validation")
+    out = out & Special_(wb, "NoBorders", "A1:C4", "NoBorders", "E1", "all_except_borders")
+    out = out & Special_(wb, "Widths", "A1:C4", "Widths", "E1", "column_widths")
+    out = out & Special_(wb, "FormulasNumbers", "A1:C4", "FormulasNumbers", "E1", "formulas_and_number_formats")
+    out = out & Special_(wb, "ValuesNumbers", "A1:C4", "ValuesNumbers", "E1", "values_and_number_formats")
+    out = out & Special_(wb, "MergingCF", "A1:C4", "MergingCF", "E1", "all_merging_conditional_formats")
+    out = out & Special_(wb, "SkipBlanks", "A1:C4", "SkipBlanks", "E1", "all", "", True)
+    out = out & Special_(wb, "Transpose", "A1:C4", "Transpose", "E1", "all", "", False, True)
+    out = out & Special_(wb, "Add", "A1:C4", "Add", "E1", "values", "add")
+    out = out & Special_(wb, "Subtract", "A1:C4", "Subtract", "E1", "values", "subtract")
+    out = out & Special_(wb, "Multiply", "A1:C4", "Multiply", "E1", "values", "multiply")
+    out = out & Special_(wb, "Divide", "A1:C4", "Divide", "E1", "values", "divide")
+    out = out & Special_(wb, "AllAdd", "A1:C4", "AllAdd", "E1", "all", "add")
+    out = out & Special_(wb, "BlankKinds", "A1:A4", "BlankKinds", "E1", "values")
+    out = out & Special_(wb, "BlankKinds", "A1:A4", "BlankKinds", "H1", "values", "", True)
+    out = out & Special_(wb, "FormatsPlain", "A1:B3", "FormatsPlain", "E1", "formats")
+    out = out & Special_(wb, "ValuesMerged", "A1:B1", "ValuesMerged", "E1", "values")
+    out = out & Special_(wb, "ValuesMergeRefused", "A1:B1", "ValuesMergeRefused", "E1", "values")
+    out = out & Special_(wb, "NumbersMerged", "A1:B1", "NumbersMerged", "E1", "values_and_number_formats")
+    out = out & Special_(wb, "FormulasMerged", "A1:B1", "FormulasMerged", "E1", "formulas")
+    out = out & Special_(wb, "FormulasMerged", "A1:B1", "FormulasMerged", "E5", "formulas_and_number_formats")
+    out = out & Special_(wb, "ValuesArrays", "A1:B3", "ValuesArrays", "E1", "values")
+    out = out & Special_(wb, "ValuesArrays", "A2:A3", "ValuesArrays", "H1", "values")
+    out = out & Special_(wb, "FormulasArrays", "A1:B3", "FormulasArrays", "E1", "formulas")
+    out = out & Special_(wb, "FormulasArrays", "B2:B3", "FormulasArrays", "H1", "formulas")
+    out = out & Special_(wb, "ArrayWhole", "A1:A2", "ArrayWhole", "E1", "values")
+    out = out & Special_(wb, "ArrayWhole", "A5", "ArrayWhole", "E5", "values")
+    out = out & Special_(wb, "ArrayPart", "A1", "ArrayPart", "E1", "values")
+    out = out & Special_(wb, "FormatsArrayPart", "A1", "FormatsArrayPart", "E1", "formats")
+    out = out & Special_(wb, "NumberFormats", "A1:A3", "NumberFormats", "E1", "formulas_and_number_formats")
+    out = out & Special_(wb, "NumberFormats", "A1:A3", "NumberFormats", "H1", "values_and_number_formats")
+    out = out & Special_(wb, "BesideCF", "A1:A3", "BesideCF", "E2", "all_merging_conditional_formats")
+    out = out & Special_(wb, "SkipLayers", "A1:A6", "SkipLayers", "E1", "all", "", True)
+    out = out & Special_(wb, "SkipLinks", "A1:A2", "SkipLinks", "E1", "all", "", True)
+    out = out & Special_(wb, "SkipMerged", "A1:A5", "SkipMerged", "E1", "all", "", True)
+    out = out & Special_(wb, "SkipFormats", "A1:A2", "SkipFormats", "E1", "formats", "", True)
+    out = out & Special_(wb, "SkipRules", "A1:A3", "SkipRules", "E1", "formats", "", True)
+    out = out & Special_(wb, "SkipRules", "C1:C3", "SkipRules", "G1", "validation", "", True)
+    out = out & Special_(wb, "SkipNotes", "A1:A3", "SkipNotes", "E1", "comments", "", True)
+    out = out & Special_(wb, "SkipValues", "A1:A3", "SkipValues", "E1", "values", "", True)
+    out = out & Special_(wb, "TransposeIn", "A1:B10", "TransposeIn", "D12", "all", "", False, True)
+    out = out & Special_(wb, "TransposeMore", "B3:C12", "TransposeMore", "E15", "all", "", False, True)
+    out = out & Special_(wb, "TransposeOff", "B5:C10", "TransposeOff", "A1", "all", "", False, True)
+    out = out & Special_(wb, "TransposeMeet", "B3:C5", "TransposeMeet", "E15", "all", "", False, True)
+    out = out & Special_(wb, "TransposeMeet", "A20:B21", "TransposeMeet", "E25", "all", "", False, True)
+    out = out & Special_(wb, "TransposeAway", "A1:B3", "TransposeAway", "G1", "all", "", False, True)
+    out = out & Special_(wb, "TransposeAway", "A1:B3", "Other", "G1", "all", "", False, True)
+    out = out & Special_(wb, "TransposeRules", "A1:B3", "TransposeRules", "E1", "all", "", False, True)
+    out = out & Special_(wb, "TransposeArray", "A1:A3", "TransposeArray", "E1", "all", "", False, True)
+    out = out & Special_(wb, "TransposeSpill", "A1:A3", "TransposeSpill", "E5", "all", "", False, True)
+    out = out & Special_(wb, "TransposeTiles", "A1:B1", "TransposeTiles", "E1:F4", "all", "", False, True)
+    out = out & Special_(wb, "TransposeOverlap", "A1:B3", "TransposeOverlap", "B1", "all", "", False, True)
+    out = out & Special_(wb, "TransposeSquare", "A1:B2", "TransposeSquare", "A1", "all", "", False, True)
+    out = out & Special_(wb, "OpThere", "A1:A9", "OpThere", "E1", "values", "add")
+    out = out & Special_(wb, "OpThereAll", "A1:A9", "OpThereAll", "E1", "all", "multiply")
+    out = out & Special_(wb, "OpComing", "A1:A8", "OpComing", "E1", "values", "divide")
+    out = out & Special_(wb, "OpComingAll", "A1:A8", "OpComingAll", "E1", "all", "subtract")
+    out = out & Special_(wb, "OpFloats", "A1:A5", "OpFloats", "E1", "values", "add")
+    out = out & Special_(wb, "OpFloats", "A5", "OpFloats", "E5", "values", "divide")
+    out = out & Special_(wb, "OpFormulas", "A1:A7", "OpFormulas", "E1", "all", "add")
+    out = out & Special_(wb, "OpFormulas", "A11:A12", "OpFormulas", "E11", "all", "add")
+    out = out & Special_(wb, "OpFormulasSubtract", "A1:A3", "OpFormulasSubtract", "E1", "formulas", "subtract")
+    out = out & Special_(wb, "OpNumbers", "A1:A40", "OpNumbers", "E1", "all", "add")
+    out = out & Special_(wb, "OpNumbersComing", "A1:A10", "OpNumbersComing", "E1", "values", "add")
+    out = out & Special_(wb, "OpText", "A1:A5", "OpText", "E1", "all", "add")
+    out = out & Special_(wb, "OpText", "A6", "OpText", "E6", "values", "add")
+    out = out & Special_(wb, "OpBlanks", "A1:A2", "OpBlanks", "E1", "values", "add")
+    out = out & Special_(wb, "OpBlanks", "A1:A2", "OpBlanks", "G1", "values", "multiply", True)
+    out = out & Special_(wb, "OpArrays", "A1:B2", "OpArrays", "E1", "all", "add")
+    out = out & Special_(wb, "OpOntoArray", "A1:A2", "OpOntoArray", "E1", "values", "add")
+    out = out & Special_(wb, "OpOverflow", "A1:A2", "OpOverflow", "E1", "values", "multiply")
+    out = out & Special_(wb, "OpOverflow", "A2", "OpOverflow", "E2", "values", "divide")
+    out = out & Special_(wb, "OpTransposed", "A1:A2", "OpTransposed", "E1", "values", "add", False, True)
+    out = out & Special_(wb, "RowsFormats", "1:2", "RowsFormats", "5:6", "formats")
+    out = out & Special_(wb, "RowsValues", "1:2", "RowsValues", "5:6", "values")
+    out = out & Special_(wb, "RowsNoBorders", "1:2", "RowsNoBorders", "5:6", "all_except_borders")
+    out = out & Special_(wb, "ColumnsValues", "A:B", "ColumnsValues", "E:F", "values")
+    out = out & Special_(wb, "ColumnsFormats", "A:B", "ColumnsFormats", "E:F", "formats")
+    out = out & Special_(wb, "ColumnsWidths", "A:B", "ColumnsWidths", "E:F", "column_widths")
+    out = out & Special_(wb, "ColumnFormatCells", "B:B", "ColumnFormatCells", "F:F", "formats")
+    out = out & Special_(wb, "RowFormatCells", "2:2", "RowFormatCells", "6:6", "formats")
+    out = out & Special_(wb, "BlankStyles", "A2:C2", "BlankStyles", "E5", "all")
+    out = out & Special_(wb, "BlankStyles", "C1:C3", "BlankStyles", "H5", "all")
+    out = out & Special_(wb, "ColumnsStyled", "A:B", "ColumnsStyled", "E:F", "all")
+    out = out & Special_(wb, "ColumnsStyled", "3:3", "ColumnsStyled", "8:8", "all")
+    out = out & Special_(wb, "WidthsHidden", "A1:C1", "WidthsHidden", "E1", "column_widths")
+    out = out & Special_(wb, "LinksStay", "A1", "LinksStay", "E1", "values")
+    out = out & Special_(wb, "LinksStay", "A2", "LinksStay", "E2", "formats")
+    out = out & Special_(wb, "PasteLink", "A1:B2", "PasteLink", "E1", "link")
+    out = out & Special_(wb, "PasteLink", "A1:B2", "Other", "A10", "link")
+    out = out & Special_(wb, "PasteLink", "A1", "PasteLink", "H1", "link")
+    out = out & Special_(wb, "LinkOver", "A1:B2", "LinkOver", "E1", "link")
+    out = out & Special_(wb, "LinkTiles", "A1", "LinkTiles", "E1:E3", "link")
+    out = out & Special_(wb, "LinkTiles", "A1:A2", "LinkTiles", "G1:G4", "link")
+    out = out & Special_(wb, "LinkFiltered", "A1:A6", "LinkFiltered", "C1", "link")
+    out = out & Special_(wb, "LinkMerged", "A1:B1", "LinkMerged", "E1", "link")
+    out = out & Special_(wb, "FilterValues", "A1:A6", "FilterValues", "C1", "values")
+    out = out & Special_(wb, "TileValues", "A1:A2", "TileValues", "E1:E4", "values")
+    out = out & Special_(wb, "TableValues", "A2:B3", "TableValues", "E2", "values")
+    out = out & Special_(wb, "TableValues", "A1:B4", "TableValues", "H1", "values")
+    out = out & Special_(wb, "ShapeValues", "A1:B3", "ShapeValues", "E1", "values")
+    out = out & Special_(wb, "ShapeFormats", "A1:B3", "ShapeFormats", "E1", "formats")
+    out = out & Special_(wb, "FormatsMergeAnchor", "A1", "FormatsMergeAnchor", "E1", "formats")
+    out = out & Special_(wb, "CommentsMerged", "A1", "CommentsMerged", "E1", "comments")
+
+    ' A formula an operation built holds the number it combined in full
+    ' until the workbook is opened again and reads the fifteen digits its
+    ' text keeps, and one may wait to be calculated. So each is entered
+    ' again from its text, as opening the workbook reads it, and the
+    ' workbook calculated.
+    For Each ws In wb.Worksheets
+        If Left(ws.Name, 2) = "Op" Then Reenter ws
+    Next ws
+    Application.CalculateFull
+
+    wb.SaveAs Filename:=Replace(Target, ".xlsx", "_pasted.xlsx"), FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+
+Private Sub Dress(ws As Worksheet)
+    ' The source, A1:C4.
+    ws.Range("A1").Value = 10
+    ws.Range("A1").NumberFormat = "0.00"
+    ws.Range("A1").Interior.Color = RGB(200, 0, 0)
+    ws.Range("A1").Font.Bold = True
+    ws.Range("A1").Borders.LineStyle = 1
+    ws.Range("A2").Formula = "=A1*2"
+    ws.Range("A2").NumberFormat = "#,##0"
+    ws.Range("A3").Value = "t"
+    ws.Range("A3").AddComment "source note"
+    ws.Range("A4").Interior.Color = RGB(0, 200, 0)
+    ws.Range("B1").Value = 43845
+    ws.Range("B1").NumberFormat = "m/d/yyyy"
+    ws.Range("B2").Formula = "=Other!A1+1"
+    ws.Range("B3").Value = True
+    ws.Range("B4").Formula = "=NA()"
+    ws.Range("C1:C2").Merge
+    ws.Range("C1").Value = "merged"
+    ws.Range("C3").Value = "link"
+    ws.Hyperlinks.Add ws.Range("C3"), "https://example.com/source"
+    ws.Range("C4").Formula = "=SUM(A1:A2)"
+    ws.Range("A1:A2").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="99"
+    ws.Range("B1:B4").FormatConditions.Add Type:=1, Operator:=5, Formula1:="5"
+    ws.Columns(1).ColumnWidth = 15
+    ' The destination, E1:G4, with its own of each.
+    ws.Range("E1:G4").Value = 3
+    ws.Range("E4").ClearContents
+    ws.Range("E1").Interior.Color = RGB(0, 0, 200)
+    ws.Range("E1").Borders.LineStyle = 1
+    ws.Range("E2").NumberFormat = "0%"
+    ws.Range("E2").Borders.LineStyle = -4115
+    ws.Range("E3").Formula = "=E1+1"
+    ws.Range("F1").AddComment "destination note"
+    ws.Hyperlinks.Add ws.Range("F4"), "https://example.com/destination"
+    ws.Range("G1:G2").Validation.Add Type:=1, AlertStyle:=1, Operator:=1, Formula1:="0", Formula2:="9"
+    ws.Range("E3:E4").FormatConditions.Add Type:=1, Operator:=5, Formula1:="100"
+End Sub
+
+Private Function Page(wb As Workbook, ByVal Name As String) As Worksheet
+    Dim ws As Worksheet
+    If wb.Worksheets.Count = 1 And wb.Worksheets(1).Name = "Sheet1" Then
+        Set ws = wb.Worksheets(1)
+    Else
+        Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    End If
+    ws.Name = Name
+    Set Page = ws
+End Function
+
+Private Sub Down(ws As Worksheet, ByVal col As Long, ByVal texts As String, Optional ByVal start As Long = 1)
+    Dim parts() As String, i As Long
+    parts = Split(texts, "|")
+    For i = 0 To UBound(parts)
+        If parts(i) <> "~" Then ws.Cells(start + i, col).Formula = parts(i)
+    Next i
+End Sub
+
+Private Sub Reenter(ws As Worksheet)
+    Dim c As Range
+    On Error GoTo Failed
+    For Each c In ws.UsedRange
+        If c.HasFormula Then
+            If Not c.HasArray And Not c.HasSpill Then c.Formula = c.Formula
+        End If
+    Next c
+    Exit Sub
+Failed:
+    Err.Raise Err.Number, , "entering " & ws.Name & "!" & c.Address & " again: " & Err.Description
+End Sub
+
+Private Function KindOf(ByVal Name As String) As Long
+    Select Case Name
+        Case "all": KindOf = -4104
+        Case "formulas": KindOf = -4123
+        Case "values": KindOf = -4163
+        Case "formats": KindOf = -4122
+        Case "comments": KindOf = -4144
+        Case "validation": KindOf = 6
+        Case "all_except_borders": KindOf = 7
+        Case "column_widths": KindOf = 8
+        Case "formulas_and_number_formats": KindOf = 11
+        Case "values_and_number_formats": KindOf = 12
+        Case "all_merging_conditional_formats": KindOf = 14
+    End Select
+End Function
+
+Private Function OperationOf(ByVal Name As String) As Long
+    Select Case Name
+        Case "add": OperationOf = 2
+        Case "subtract": OperationOf = 3
+        Case "multiply": OperationOf = 4
+        Case "divide": OperationOf = 5
+        Case Else: OperationOf = -4142
+    End Select
+End Function
+
+Private Function Special_(wb As Workbook, ByVal Sheet As String, ByVal Source As String, ByVal Onto As String, _
+                          ByVal Target As String, ByVal Kind As String, Optional ByVal Operation As String = "", _
+                          Optional ByVal Skip As Boolean = False, Optional ByVal Flip As Boolean = False) As String
+    Special_ = Sheet & "|" & Source & "|" & Onto & "|" & Target & "|" & Kind & "|" & Operation & "|" & _
+               IIf(Skip, "1", "") & "|" & IIf(Flip, "1", "") & "|"
+    On Error GoTo Refused
+    wb.Worksheets(Sheet).Range(Source).Copy
+    If Kind = "link" Then
+        wb.Worksheets(Onto).Activate
+        wb.Worksheets(Onto).Range(Target).Select
+        wb.Worksheets(Onto).Paste Link:=True
+    Else
+        wb.Worksheets(Onto).Range(Target).PasteSpecial Paste:=KindOf(Kind), Operation:=OperationOf(Operation), _
+            SkipBlanks:=Skip, Transpose:=Flip
+    End If
+    Application.CutCopyMode = False
+    Special_ = Special_ & vbLf
+    Exit Function
+Refused:
+    Application.CutCopyMode = False
+    Special_ = Special_ & Err.Description & vbLf
+End Function
+'''
+
+
 #: What a measured fixture's reply turns into: an entry per thing measured.
 Answers = dict[str, dict[str, object]]
 
@@ -3318,6 +4027,30 @@ def copy_answers(reply: str) -> Answers:
             "source": source,
             "onto": onto,
             "target": target,
+            "refused": refused,
+        }
+    return answers
+
+
+def paste_answers(reply: str) -> Answers:
+    """One line per paste, in the order Excel made them, numbered from 1:
+    the source's sheet and range, the destination's sheet and range, the
+    Paste Special choice, the operation, whether it skipped blanks and
+    transposed, and the error Excel refused the paste with, if it did."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        sheet, source, onto, target, paste, operation, skip, transpose, refused = line.split("|", 8)
+        answers[f"{len(answers) + 1:03d}"] = {
+            "sheet": sheet,
+            "source": source,
+            "onto": onto,
+            "target": target,
+            "paste": paste,
+            "operation": operation,
+            "skip_blanks": skip == "1",
+            "transpose": transpose == "1",
             "refused": refused,
         }
     return answers
@@ -3690,12 +4423,13 @@ def main() -> int:
         ("sorts.xlsx", _BUILD_SORTS, sort_answers),
         ("duplicates.xlsx", _BUILD_DUPLICATES, duplicate_answers),
         ("copies.xlsx", _BUILD_COPIES, copy_answers),
+        ("paste_specials.xlsx", _BUILD_PASTE_SPECIALS, paste_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]
     everything += [f"{Path(name).stem}_answers.json" for name, _, _ in measured]
     # These recipes save the workbook again once Excel has changed it.
-    everything += ["sorts_sorted.xlsx", "duplicates_removed.xlsx", "copies_pasted.xlsx"]
+    everything += ["sorts_sorted.xlsx", "duplicates_removed.xlsx", "copies_pasted.xlsx", "paste_specials_pasted.xlsx"]
     if not force and all((FIXTURES / name).exists() for name in everything):
         print("every fixture is already there; nothing to do (pass --force to rebuild)")
         return 0

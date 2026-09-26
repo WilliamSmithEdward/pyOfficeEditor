@@ -45,7 +45,9 @@ cell, the formula, the paragraph, the slide, the table, the query.
 > Duplicates removes them, from a range or a whole table, which then gives
 > up the rows it no longer needs. Cells copy and paste as Excel's Copy and
 > Paste moves them, formulas, notes, validation and conditional formats
-> included.
+> included, and as its Paste Special pastes them: values, formats and the
+> rest one at a time, added, subtracted, multiplied or divided in, blanks
+> skipped, transposed, or linked.
 > Rows and columns can be inserted and deleted, with every reference in the
 > workbook following or breaking exactly as Excel breaks it, `A:A` and `2:4`
 > included. Validation, protected ranges, sorts, scenarios and comments move

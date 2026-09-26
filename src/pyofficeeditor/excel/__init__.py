@@ -51,6 +51,7 @@ from pyofficeeditor.excel._conditional import (
     top,
     uniques,
 )
+from pyofficeeditor.excel._copy import PasteKind, PasteOperation
 from pyofficeeditor.excel._dxf import Dxf, DxfFill, DxfFont
 from pyofficeeditor.excel._errorchecks import DEFAULT_ERROR_RULES, ErrorCheck
 from pyofficeeditor.excel._filters import (
@@ -170,6 +171,8 @@ __all__ = [
     "OpaqueCriterion",
     "PageMargins",
     "PageSetup",
+    "PasteKind",
+    "PasteOperation",
     "PivotTable",
     "PrintOptions",
     "Protection",

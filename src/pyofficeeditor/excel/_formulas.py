@@ -33,6 +33,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import ROUND_HALF_DOWN, Context, Decimal
 from typing import Protocol
 
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, AxisRef, CellRef, RangeRef
@@ -950,6 +951,141 @@ def _copied_axis(span: AxisRef, rows: int, columns: int) -> AxisRef | None:
     return span.with_span(low, high)
 
 
+def transposed_formula(formula: str, block: RangeRef, corner: CellRef, sheet: str) -> str:
+    """``formula``, from a cell of ``block`` on ``sheet``, as Excel's
+    transposed paste writes it with the block's first cell on ``corner``.
+
+    Measured: a reference moves to where transposing puts the cells it
+    names, its row and column trading places and each other's ``$``, when
+    an end of it is relative both ways, when it is a whole row or column
+    with no ``$``, or when an end of it lies in ``block`` on this sheet. A
+    whole row or column, running the whole way across, runs to the sheet's
+    far edge once it lies the other way. Any other reference stays as it is.
+    One transposing pushes off the sheet is ``#REF!``, a range with it whole.
+    """
+    if not formula:
+        return formula
+    tokens = tokenize(formula)
+    rebuilt: list[Token] = []
+    changed = False
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        own = token.sheet is None or token.sheet.casefold() == sheet.casefold()
+        if token.kind is TokenKind.AXIS and isinstance(token.value, AxisRef):
+            text = _transposed_axis(token.value, block, corner, own=own)
+            rebuilt.append(token if text is None else Token(TokenKind.TEXT, text))
+            changed = changed or text is not None
+            index += 1
+            continue
+        if token.kind is not TokenKind.REFERENCE or not isinstance(token.value, CellRef):
+            rebuilt.append(token)
+            index += 1
+            continue
+        separator = tokens[index + 1] if index + 1 < len(tokens) else None
+        far = tokens[index + 2] if index + 2 < len(tokens) else None
+        is_range = (
+            separator is not None
+            and separator.kind is TokenKind.TEXT
+            and separator.raw.strip() == ":"
+            and far is not None
+            and far.kind is TokenKind.REFERENCE
+            and isinstance(far.value, CellRef)
+        )
+        ends = [token.value] + ([far.value] if is_range and far is not None and isinstance(far.value, CellRef) else [])
+        width = 3 if len(ends) == 2 else 1
+        relative = any(not end.absolute_row and not end.absolute_column for end in ends)
+        if not relative and not (own and any(end in block for end in ends)):
+            rebuilt.extend(tokens[index : index + width])
+            index += width
+            continue
+        moved = [_transposed_cell(end, block, corner) for end in ends]
+        if any(end is None for end in moved):
+            rebuilt.append(Token(TokenKind.TEXT, REF_ERROR))
+        else:
+            rebuilt.append(Token(TokenKind.TEXT, ":".join(end.a1 for end in moved if end is not None)))
+        changed = True
+        index += width
+    return render(rebuilt) if changed else formula
+
+
+def _transposed_cell(reference: CellRef, block: RangeRef, corner: CellRef) -> CellRef | None:
+    """Where transposing ``block`` onto ``corner`` puts a cell, its row
+    taking the column's ``$`` and its column the row's, or ``None`` off
+    the sheet."""
+    row = corner.row + (reference.column - block.left)
+    column = corner.column + (reference.row - block.top)
+    if not (1 <= row <= MAX_ROW and 1 <= column <= MAX_COLUMN):
+        return None
+    return CellRef(row, column, reference.absolute_column, reference.absolute_row)
+
+
+def _transposed_axis(span: AxisRef, block: RangeRef, corner: CellRef, *, own: bool) -> str | None:
+    """A whole row or column as transposing writes it, or ``None`` when it
+    stays as it is."""
+    if span.is_row:
+        ends = [CellRef(span.low, 1), CellRef(span.high, MAX_COLUMN)]
+    else:
+        ends = [CellRef(1, span.low), CellRef(MAX_ROW, span.high)]
+    relative = not span.absolute_low and not span.absolute_high
+    if not relative and not (own and any(end in block for end in ends)):
+        return None
+    if span.is_row:
+        # Its rows turn into columns, and its whole width into rows from
+        # where the first column lands to the bottom of the sheet.
+        top = corner.row + (1 - block.left)
+        low, high = corner.column + (span.low - block.top), corner.column + (span.high - block.top)
+        if top < 1 or low < 1 or high > MAX_COLUMN:
+            return REF_ERROR
+        if top == 1:
+            return AxisRef(False, low, high, span.absolute_low, span.absolute_high).a1
+        start, end = CellRef(top, low, True, span.absolute_low), CellRef(MAX_ROW, high, True, span.absolute_high)
+    else:
+        left = corner.column + (1 - block.top)
+        low, high = corner.row + (span.low - block.left), corner.row + (span.high - block.left)
+        if left < 1 or low < 1 or high > MAX_ROW:
+            return REF_ERROR
+        if left == 1:
+            return AxisRef(True, low, high, span.absolute_low, span.absolute_high).a1
+        start, end = CellRef(low, left, span.absolute_low, True), CellRef(high, MAX_COLUMN, span.absolute_high, True)
+    return f"{start.a1}:{end.a1}"
+
+
+def number_in_formula(value: float) -> str:
+    """A number as Excel writes it into a formula it builds, as a paste
+    that adds, subtracts, multiplies or divides writes the number it
+    combines. Measured: fifteen significant digits, the nearest, and the
+    one nearer zero when the number lies halfway, so 1000000000000015 is
+    ``1000000000000010``; written out in full when that takes 21
+    characters or fewer besides the sign, so ``100000000000000000000`` and
+    ``0.0000000000000000001``, and as ``1E+21`` or ``1.2345E-07``
+    otherwise."""
+    if value == 0:
+        return "0"
+    sign = "-" if value < 0 else ""
+    rounded = _FIFTEEN_DIGITS.plus(Decimal(abs(value)))
+    _, places, exponent = rounded.as_tuple()
+    assert isinstance(exponent, int)
+    digits = "".join(str(place) for place in places)
+    power = exponent + len(digits) - 1
+    digits = digits.rstrip("0")
+    if power < 0:
+        written = "0." + "0" * (-power - 1) + digits
+    elif len(digits) <= power + 1:
+        written = digits + "0" * (power + 1 - len(digits))
+    else:
+        written = f"{digits[: power + 1]}.{digits[power + 1 :]}"
+    if len(written) <= 21:
+        return sign + written
+    head = digits[0] + (f".{digits[1:]}" if len(digits) > 1 else "")
+    return f"{sign}{head}E{'+' if power >= 0 else '-'}{abs(power):02d}"
+
+
+#: Fifteen significant digits, a number halfway going the way of zero, as
+#: Excel writes a number into a formula.
+_FIFTEEN_DIGITS = Context(prec=15, rounding=ROUND_HALF_DOWN)
+
+
 def sorted_formula(formula: str, rows: int) -> str:
     """``formula`` as Excel's sort writes it when it moves the formula's row
     ``rows`` down, or up when negative.
@@ -1098,6 +1234,7 @@ __all__ = [
     "copied_formula",
     "delete_in_formula",
     "join_areas",
+    "number_in_formula",
     "quote_sheet_name",
     "rename_sheet_in_formula",
     "shared_formula_for",
@@ -1105,4 +1242,5 @@ __all__ = [
     "shift_range",
     "sorted_formula",
     "translate_formula",
+    "transposed_formula",
 ]

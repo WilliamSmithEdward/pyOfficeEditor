@@ -519,6 +519,17 @@ def note_anchor(
     return anchor, left * 0.75, top * 0.75
 
 
+def column_pixels(width: float) -> int:
+    """A column's stored width as a note's box counts it, in pixels.
+
+    Measured: a note's anchor counts a column set to 15, stored as
+    15.7109375, as 110 pixels, the file format's own formula for a font
+    seven pixels to the character, whose stored width holds the padding
+    already.
+    """
+    return int((256 * width + 128 // 7) * 7 // 256)
+
+
 def note_corners(shape: str) -> tuple[int, int, int, int, int, int, int, int] | None:
     """A note box's anchor: the zero-based column of its left edge and how
     many pixels into it, then its top row, its right column and its bottom
@@ -727,6 +738,7 @@ __all__ = [
     "Reply",
     "ThreadedComment",
     "box_size",
+    "column_pixels",
     "comment_text",
     "delete_comment",
     "delete_thread",

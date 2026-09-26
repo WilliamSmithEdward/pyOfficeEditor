@@ -174,12 +174,35 @@ anything trailing the file is swept into the oldest release's notes. -->
   and what the destination held gives way. On a sheet whose filter hides
   rows by a criterion, only the rows and columns showing come. Arrays
   come whole or as an array over the part copied, and a spill spills
-  again. Whole rows bring their heights and whole columns their widths.
-  A paste over part of merged cells or of an array is refused, as Excel
-  refuses it, and so, for now, are whole tables and cells taken out of
-  one, pastes over a table's header or just past it, pastes onto cells a
-  formula spilled into, shapes in the source, pivot tables and what-if
-  data tables. Held to 44 copies Excel made, cell for cell once
+  again. A blank cell in a row or column with a format of its own comes
+  with that format. Whole rows bring their heights and formats, and whole
+  columns their widths and formats. A paste over part of merged cells or
+  of an array is refused, as Excel refuses it, and so, for now, are whole
+  tables and cells taken out of one, pastes over a table's header or just
+  past it, pastes onto cells a formula spilled into, shapes in the
+  source, pivot tables and what-if data tables. Held to 44 copies Excel
+  made, cell for cell once calculated.
+
+- **Paste Special.** `copy_range` takes `paste=` for what comes:
+  `"formulas"`, `"values"`, `"formats"`, `"comments"`, `"validation"`,
+  `"all_except_borders"`, `"column_widths"`,
+  `"formulas_and_number_formats"`, `"values_and_number_formats"`,
+  `"all_merging_conditional_formats"`, or `"link"` for Paste Link;
+  `operation=` to add, subtract, multiply or divide what comes into what
+  is there; `skip_blanks=`; and `transpose=`. Measured, each brings its
+  part and leaves the rest of the destination, a value pasted where the
+  sheet had no cell taking the format its row or column shows. An
+  operation gives a number, or a formula when either side is one, such
+  as `=(1+1)+10`, writing a number to fifteen digits as Excel writes it;
+  text, a logical or an error on either side leaves what is there.
+  Skipping blanks skips a blank cell's format too, and brings notes,
+  links, validation and conditional formats only where the source has
+  them. Transposing moves a reference when an end of it is relative both
+  ways or lies in the copy, its `$` trading places, and leaves any other.
+  Paste Link writes `=$A$1` for one cell and `=A1` onward for more.
+  Refused as Excel refuses them: values onto merged cells the copy does
+  not have, an operation onto an array formula, and a transposed paste
+  over its own source. Held to 109 pastes Excel made, cell for cell once
   calculated.
 
 - **Formulas that read another workbook calculate.** They used to keep
@@ -245,6 +268,13 @@ anything trailing the file is swept into the oldest release's notes. -->
   inside a run of columns sharing one width.
 
 ### Fixed
+
+- **A note's box was the wrong size across a column set to its own
+  width.** A new note's box, and one a paste brings, counted each such
+  column five pixels wider than Excel does, so the box's far edge fell
+  short of where Excel puts it and a copied box came out wider than the
+  one copied. A column's stored width holds its padding already;
+  measured, a note's box counts a column set to 15 as 110 pixels.
 
 - **Removing a chart left the chart behind.** Its part, its relationship
   and its content-type entry now go, and so do the style and colour parts
