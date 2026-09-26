@@ -25,7 +25,7 @@ from pyofficeeditor.excel._calc.functions.statistics import (
     quartile_inclusive,
 )
 from pyofficeeditor.excel._calc.numbers import total
-from pyofficeeditor.excel._calc.registry import A, R, V, function
+from pyofficeeditor.excel._calc.registry import REF, A, V, function
 from pyofficeeditor.excel._calc.values import (
     DIV0,
     NA,
@@ -165,7 +165,7 @@ def _visible(
     return found
 
 
-@function("SUBTOTAL", V, R, maximum=255)
+@function("SUBTOTAL", V, REF, maximum=255)
 def SUBTOTAL(context: Context, which: Scalar, *refs: Value) -> Value:
     number = context.integer(which)
     hidden = number > 100

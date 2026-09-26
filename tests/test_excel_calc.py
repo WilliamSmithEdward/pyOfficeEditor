@@ -973,6 +973,9 @@ def test_groupby_keeps_an_error_in_its_cell_but_refuses_an_array(book: Workbook)
     # A group reaches the function as an array, even a group of one row,
     # and a result that is an array refuses the whole summary.
     assert _text(sheet, "GROUPBY(In!A2:A19,In!D2:D19,LAMBDA(x,x))") == CellError("#VALUE!")
+    # COUNTBLANK takes only a range: given the group's array it gives an
+    # array, one #VALUE! an item, and an array result refuses it all.
+    assert _text(sheet, "GROUPBY(In!A2:A19,In!D2:D19,LAMBDA(x,COUNTBLANK(x)))") == CellError("#VALUE!")
 
 
 def test_pivotby_spreads_a_field_across_the_top_with_subtotals_first(book: Workbook) -> None:
@@ -1123,6 +1126,41 @@ def test_counta_counts_every_item_of_an_array_but_only_filled_cells(book: Workbo
     assert sheet.evaluate('TEXTJOIN("|",,C1:C3)') == "a|c"
     assert sheet.evaluate('TEXTJOIN("|",C2,C1:C3)') == "a||c"
     assert sheet.evaluate('TEXTJOIN("|",C5:C6,C1:C3)') == CellError("#VALUE!")
+
+
+def test_a_parameter_only_a_range_will_do_takes_an_array_one_item_at_a_time(book: Workbook) -> None:
+    _grouped(book)
+    sheet = book["Data"]
+    assert _text(sheet, "LET(q,SEQUENCE(2,2),COUNTIF(q,1))") == "{#VALUE!,#VALUE!;#VALUE!,#VALUE!}"
+    assert _text(sheet, "LET(a,SEQUENCE(3),COUNTIF(a,{1,2}))") == "{#VALUE!,#VALUE!;#VALUE!,#VALUE!;#VALUE!,#VALUE!}"
+    assert sheet.evaluate("LET(s,5,COUNTIF(s,1))") == CellError("#VALUE!")
+    assert sheet.evaluate("COUNTBLANK((In!D2:D4,In!E2:E4))") == CellError("#VALUE!")
+
+
+def test_take_and_drop_of_a_range_are_ranges(book: Workbook) -> None:
+    _grouped(book)
+    sheet = book["Data"]
+    assert _text(sheet, "ROW(TAKE(In!D2:D10,3))") == "{2;3;4}"
+    assert sheet.evaluate("COUNTIF(DROP(In!D2:E10,1,-1),1)") == 2
+    assert sheet.evaluate("ISREF(TAKE(In!D2:D10,20))") is True
+    assert sheet.evaluate("ISREF(TAKE({1,2},1))") is False
+    assert sheet.evaluate("TAKE((In!D2:D4,In!E2:E4),1)") == CellError("#VALUE!")
+
+
+def test_trimrange_trims_an_array_of_its_blank_edges(book: Workbook) -> None:
+    sheet = book["Data"]
+    assert _text(sheet, "TRIMRANGE(VSTACK(Z1,1,Z2))") == "{1}"
+    assert _text(sheet, "TRIMRANGE(HSTACK(Z1,1,Z2),,2)") == "{,1}"
+    assert sheet.evaluate("TRIMRANGE(VSTACK(Z1,Z2))") == CellError("#VALUE!")
+
+
+def test_sheet_and_sheets_given_what_is_not_a_range(book: Workbook) -> None:
+    sheet = book["Data"]
+    assert sheet.evaluate('SHEET("Data")') == 1
+    assert sheet.evaluate("SHEET(1)") == CellError("#N/A")
+    assert sheet.evaluate('SHEET({"Data"})') == CellError("#N/A")
+    assert sheet.evaluate('SHEETS("Data")') == CellError("#N/A")
+    assert sheet.evaluate("SHEET(1/0)") == CellError("#DIV/0!")
 
 
 # ----------------------------------------------------------------------

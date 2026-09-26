@@ -26,9 +26,11 @@ from pyofficeeditor.excel._calc.values import (
     NA,
     NUM,
     VALUE,
+    Area,
     Array,
     Empty,
     ExcelError,
+    Reference,
     Scalar,
     Value,
 )
@@ -275,14 +277,27 @@ def _span(size: int, count: int, *, take: bool) -> range:
     return range(max(size + count, 0)) if count < 0 else range(min(count, size), size)
 
 
+def _spans(context: Context, height: int, width: int, rows: Scalar | None, columns: Scalar | None, *, take: bool) -> tuple[range, range]:
+    """The rows and columns TAKE keeps, or DROP leaves, of a block."""
+    down = range(height) if rows is None or isinstance(rows, Empty) else _span(height, context.integer(rows), take=take)
+    across = range(width) if columns is None or isinstance(columns, Empty) else _span(width, context.integer(columns), take=take)
+    return down, across
+
+
 def _cut(context: Context, array: Value, rows: Scalar | None, columns: Scalar | None, *, take: bool) -> Value:
+    """TAKE's or DROP's part of an array, or of a range the part of it that
+    is still a range, as ``COUNTIF(TAKE(A1:A9,3),1)`` needs. Measured: a
+    reference of several areas is ``#VALUE!``."""
+    if isinstance(array, Reference):
+        area = array.area
+        if area is None:
+            return VALUE
+        down, across = _spans(context, area.height, area.width, rows, columns, take=take)
+        if not down or not across:
+            return CALC
+        return Reference.of(Area(area.sheet, area.top + down[0], area.left + across[0], area.top + down[-1], area.left + across[-1]))
     grid = matrix(context, array)
-    down = range(grid.height)
-    across = range(grid.width)
-    if rows is not None and not isinstance(rows, Empty):
-        down = _span(grid.height, context.integer(rows), take=take)
-    if columns is not None and not isinstance(columns, Empty):
-        across = _span(grid.width, context.integer(columns), take=take)
+    down, across = _spans(context, grid.height, grid.width, rows, columns, take=take)
     if not down or not across:
         return CALC
     return Array([[grid.rows[row][column] for column in across] for row in down])

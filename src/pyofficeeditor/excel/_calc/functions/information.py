@@ -137,12 +137,12 @@ def _where(context: Context, reference: Value | None, *, row: bool) -> Value:
     return float(first)
 
 
-@function("ROW", R, minimum=0)
+@function("ROW", REF, minimum=0)
 def ROW(context: Context, reference: Value | None = None) -> Value:
     return _where(context, reference, row=True)
 
 
-@function("COLUMN", R, minimum=0)
+@function("COLUMN", REF, minimum=0)
 def COLUMN(context: Context, reference: Value | None = None) -> Value:
     return _where(context, reference, row=False)
 
@@ -180,7 +180,10 @@ def SHEET(context: Context, value: Value | None = None) -> Value:
     if isinstance(value, str):
         found = context.book.sheet_key(value)
         return NA if found is None else float(order.index(found) + 1)
-    return VALUE
+    if isinstance(value, CellError):
+        return value
+    # Measured: a number, a logical or an array, even of a sheet's name.
+    return NA
 
 
 @function("SHEETS", R, minimum=0)
@@ -189,7 +192,10 @@ def SHEETS(context: Context, value: Value | None = None) -> Value:
         return float(len(context.book.sheet_order()))
     if isinstance(value, Reference):
         return float(len({area.sheet for area in value.areas}))
-    return VALUE
+    if isinstance(value, CellError):
+        return value
+    # Measured: anything else, a sheet's name among them.
+    return NA
 
 
 #: What CELL tells about a cell's formatting, which this engine does not

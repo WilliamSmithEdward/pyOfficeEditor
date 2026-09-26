@@ -178,6 +178,27 @@ anything trailing the file is swept into the oldest release's notes. -->
   that is `#VALUE!`, as an argument too many already was. An argument
   left empty, as in `f(1,)`, counts as omitted.
 
+- **A parameter that takes only a range took an array whole.** Measured,
+  Excel takes the array one item at a time, and no item is a range, so the
+  result is an array of `#VALUE!` the array's size. That holds for
+  COUNTIF, SUMIF and the other conditional functions, COUNTBLANK, RANK,
+  ROW, COLUMN, SUBTOTAL, OFFSET, CELL, AREAS, ISFORMULA, FORMULATEXT and
+  the database functions. They gave one `#VALUE!`, but COUNTBLANK counted
+  the array's blanks and RANK ranked within it. It is why a LAMBDA calling
+  COUNTBLANK makes a GROUPBY `#VALUE!` whole. COUNTBLANK of a union is
+  `#VALUE!` too.
+
+- **TAKE and DROP of a range gave an array.** Measured, they give a range,
+  so COUNTIF, SUMIF's sum range, ROW and CELL take their result as they
+  would the range itself. A reference of several areas is `#VALUE!`.
+
+- **TRIMRANGE refused an array.** It trims an array's blank edges as it
+  trims a range's. An array all blank is `#VALUE!`.
+
+- **SHEET and SHEETS gave `#VALUE!` for what is not a range.** Excel gives
+  `#N/A` for a number, a logical or an array, and SHEETS for a sheet's
+  name too. An error passes through.
+
 - **COUNTA left an array's blank items out.** Every item of an array
   counts, blank or not; only a range's blank cells are left out.
 

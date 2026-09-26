@@ -389,31 +389,47 @@ def SINGLE(context: Context, value: Value) -> Value:
     return context.first(value)
 
 
-@function("TRIMRANGE", REF, V, V, minimum=1)
-def TRIMRANGE(context: Context, reference: Reference, rows: Scalar | None = None, columns: Scalar | None = None) -> Value:
+@function("TRIMRANGE", R, V, V, minimum=1)
+def TRIMRANGE(context: Context, value: Value, rows: Scalar | None = None, columns: Scalar | None = None) -> Value:
     """A range less its blank rows and columns at either end, or at the
-    start (1) or the end (2) only; 0 keeps them."""
-    area = reference.area
-    if area is None:
+    start (1) or the end (2) only; 0 keeps them. Measured: an array loses
+    its blank items the same way, and one all blank is ``#VALUE!`` where a
+    range all blank is ``#REF!``."""
+    if isinstance(value, Reference) and value.area is None:
         return VALUE
     trim_rows = 3 if rows is None or isinstance(rows, Empty) else context.integer(rows)
     trim_columns = 3 if columns is None or isinstance(columns, Empty) else context.integer(columns)
     if trim_rows not in (0, 1, 2, 3) or trim_columns not in (0, 1, 2, 3):
         return VALUE
-    filled = [(row, column) for row, column, _ in context.book.cells(area)]
+    if isinstance(value, Reference) and value.area is not None:
+        area = value.area
+        filled = [(row, column) for row, column, _ in context.book.cells(area)]
+        if not filled:
+            return REF_ERROR
+        top, left, bottom, right = _trimmed(filled, (area.top, area.left, area.bottom, area.right), trim_rows, trim_columns)
+        return Reference.of(Area(area.sheet, top, left, bottom, right))
+    grid = matrix(context, value)
+    filled = [(row, column) for row, line in enumerate(grid.rows) for column, item in enumerate(line) if not isinstance(item, Empty)]
     if not filled:
-        return REF_ERROR
-    top, bottom = area.top, area.bottom
-    left, right = area.left, area.right
-    if trim_rows & 1:
+        return VALUE
+    top, left, bottom, right = _trimmed(filled, (0, 0, grid.height - 1, grid.width - 1), trim_rows, trim_columns)
+    return Array([line[left : right + 1] for line in grid.rows[top : bottom + 1]])
+
+
+def _trimmed(filled: list[tuple[int, int]], edges: tuple[int, int, int, int], rows: int, columns: int) -> tuple[int, int, int, int]:
+    """The edges, top, left, bottom and right, moved in to the filled
+    positions on the sides TRIMRANGE's modes name: 1 the start, 2 the end,
+    3 both."""
+    top, left, bottom, right = edges
+    if rows & 1:
         top = min(row for row, _ in filled)
-    if trim_rows & 2:
+    if rows & 2:
         bottom = max(row for row, _ in filled)
-    if trim_columns & 1:
+    if columns & 1:
         left = min(column for _, column in filled)
-    if trim_columns & 2:
+    if columns & 2:
         right = max(column for _, column in filled)
-    return Reference.of(Area(area.sheet, top, left, bottom, right))
+    return top, left, bottom, right
 
 
 @function("ANCHORARRAY", R)

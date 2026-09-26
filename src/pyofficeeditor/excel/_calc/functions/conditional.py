@@ -19,7 +19,7 @@ from pyofficeeditor.excel._calc.functions.common import (
     shaped,
 )
 from pyofficeeditor.excel._calc.numbers import total
-from pyofficeeditor.excel._calc.registry import R, V, function
+from pyofficeeditor.excel._calc.registry import REF, V, function
 from pyofficeeditor.excel._calc.values import DIV0, VALUE, Area, ExcelError, Scalar, Value
 from pyofficeeditor.excel._values import CellError
 
@@ -57,20 +57,20 @@ def _sum(values: list[float]) -> float:
     return checked(total(values))
 
 
-@function("COUNTIF", R, V)
+@function("COUNTIF", REF, V)
 def COUNTIF(context: Context, range_: Value, test: Scalar) -> Value:
     area = area_of(range_)
     found, beyond = matching(context, [(area, criterion(context, test))], [])
     return float(len(found) + beyond)
 
 
-@function("COUNTIFS", R, V, maximum=254, repeat=2)
+@function("COUNTIFS", REF, V, maximum=254, repeat=2)
 def COUNTIFS(context: Context, *args: Value) -> Value:
     found, beyond = matching(context, _pairs(context, args), [])
     return float(len(found) + beyond)
 
 
-@function("SUMIF", R, V, R, minimum=2)
+@function("SUMIF", REF, V, REF, minimum=2)
 def SUMIF(context: Context, range_: Value, test: Scalar, sum_range: Value | None = None) -> Value:
     area = area_of(range_)
     target = area if sum_range is None else shaped(area_of(sum_range), area)
@@ -78,7 +78,7 @@ def SUMIF(context: Context, range_: Value, test: Scalar, sum_range: Value | None
     return _sum(_numbers_at(context, target, found))
 
 
-@function("SUMIFS", R, R, V, maximum=255, repeat=2)
+@function("SUMIFS", REF, REF, V, maximum=255, repeat=2)
 def SUMIFS(context: Context, sum_range: Value, *args: Value) -> Value:
     target = area_of(sum_range)
     pairs = _pairs(context, args)
@@ -88,7 +88,7 @@ def SUMIFS(context: Context, sum_range: Value, *args: Value) -> Value:
     return _sum(_numbers_at(context, target, found))
 
 
-@function("AVERAGEIF", R, V, R, minimum=2)
+@function("AVERAGEIF", REF, V, REF, minimum=2)
 def AVERAGEIF(context: Context, range_: Value, test: Scalar, average_range: Value | None = None) -> Value:
     area = area_of(range_)
     target = area if average_range is None else shaped(area_of(average_range), area)
@@ -99,7 +99,7 @@ def AVERAGEIF(context: Context, range_: Value, test: Scalar, average_range: Valu
     return checked(total(values) / len(values))
 
 
-@function("AVERAGEIFS", R, R, V, maximum=255, repeat=2)
+@function("AVERAGEIFS", REF, REF, V, maximum=255, repeat=2)
 def AVERAGEIFS(context: Context, average_range: Value, *args: Value) -> Value:
     target = area_of(average_range)
     pairs = _pairs(context, args)
@@ -112,7 +112,7 @@ def AVERAGEIFS(context: Context, average_range: Value, *args: Value) -> Value:
     return checked(total(values) / len(values))
 
 
-@function("MAXIFS", R, R, V, maximum=255, repeat=2)
+@function("MAXIFS", REF, REF, V, maximum=255, repeat=2)
 def MAXIFS(context: Context, max_range: Value, *args: Value) -> Value:
     target = area_of(max_range)
     pairs = _pairs(context, args)
@@ -123,7 +123,7 @@ def MAXIFS(context: Context, max_range: Value, *args: Value) -> Value:
     return max(values) if values else 0.0
 
 
-@function("MINIFS", R, R, V, maximum=255, repeat=2)
+@function("MINIFS", REF, REF, V, maximum=255, repeat=2)
 def MINIFS(context: Context, min_range: Value, *args: Value) -> Value:
     target = area_of(min_range)
     pairs = _pairs(context, args)

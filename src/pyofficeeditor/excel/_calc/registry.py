@@ -9,7 +9,11 @@ parameter uses decides what a range given to it does:
   array back, which is how ``ABS({-1,-2})`` is ``{1,2}``.
 - ``RANGE``: the reference, array or scalar as it is, for a function that
   reads many values, such as SUM, or needs the shape, such as INDEX.
-- ``REFERENCE``: a reference and nothing else, for ROW, OFFSET and the like.
+- ``REFERENCE``: a reference and nothing else, for ROW, OFFSET, COUNTIF's
+  ranges and the like. Anything else is ``#VALUE!``, and an array is one
+  ``#VALUE!`` an item: the call runs once per item as it does for a single
+  value, and no item is a reference. That is how ``COUNTIF(x,1)`` inside a
+  LAMBDA given an array comes to be an array, which GROUPBY then refuses.
 - ``LAZY``: the argument's tree, not yet evaluated, for IF and the others
   that evaluate only what they need.
 
@@ -122,7 +126,9 @@ def call(entry: Function, context: Context, nodes: tuple[Node, ...]) -> Value:
             if isinstance(value, Array):
                 lifted.append(index)
         elif kind is Kind.REFERENCE and not isinstance(value, Reference):
-            return VALUE
+            if not isinstance(value, Array):
+                return VALUE
+            lifted.append(index)
         args.append(value)
     if lifted:
         return _lift(entry, context, args, lifted)
@@ -138,10 +144,13 @@ def invoke(entry: Function, context: Context, args: list[Any]) -> Value:
 
 
 def _lift(entry: Function, context: Context, args: list[Any], positions: list[int]) -> Array:
-    """Call once per item of the arrays given for single values."""
+    """Call once per item of the arrays given for single values or for
+    references, an item never being a reference."""
     arrays: list[Array] = [args[index] for index in positions]
     height = max(array.height for array in arrays)
     width = max(array.width for array in arrays)
+    if any(entry.kind(index) is Kind.REFERENCE for index in positions):
+        return Array([[VALUE] * width for _ in range(height)])
     rows: list[list[Scalar]] = []
     for row in range(height):
         items: list[Scalar] = []
