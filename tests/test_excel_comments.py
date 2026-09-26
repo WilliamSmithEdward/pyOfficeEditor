@@ -24,12 +24,13 @@ from pyofficeeditor.excel._comments import (
     CT_THREADED_COMMENTS,
     RT_PERSONS,
     RT_THREADED_COMMENTS,
+    PixelAxis,
     format_moment,
     next_id,
     note_anchor,
     parse_moment,
 )
-from pyofficeeditor.excel._reference import CellRef
+from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef
 
 #: What Excel wrote for a thread with two replies and a resolved one,
 #: measured, with the person Excel took from the signed-in account swapped
@@ -126,8 +127,8 @@ class TestWhereExcelPutsTheBox:
     """Measured on Excel 16 at 100% scaling: 144 by 79 pixels, 15 right of
     the cell and 10 above it, or 2 below the top edge on the first row."""
 
-    COLUMNS = [64] * 30
-    ROWS = [20] * 30
+    COLUMNS = PixelAxis(64, {}, MAX_COLUMN)
+    ROWS = PixelAxis(20, {}, MAX_ROW)
 
     @pytest.mark.parametrize(
         ("cell", "anchor", "left", "top"),
@@ -147,8 +148,8 @@ class TestWhereExcelPutsTheBox:
     def test_beside_resized_columns_and_rows(self) -> None:
         """Column D at 20.71 characters is 145 pixels and E at 3.71 is 26;
         row 2 at 30 points is 40 pixels and row 4 at 6 is 8."""
-        columns = [64, 64, 64, 145, 26] + [64] * 20
-        rows = [20, 40, 20, 8] + [20] * 20
+        columns = PixelAxis(64, {3: 145, 4: 26}, MAX_COLUMN)
+        rows = PixelAxis(20, {1: 40, 3: 8}, MAX_ROW)
         assert note_anchor(CellRef.parse("C3"), columns, rows) == ((3, 15, 1, 30, 4, 14, 6, 1), 155.25, 37.5)
 
 

@@ -3279,9 +3279,6 @@ Public Function Build(ByVal Target As String) As String
     For i = 0 To UBound(kinds)
         Dress Page(wb, kinds(i))
     Next i
-    ' Column widths move the destination's note out from under its box,
-    ' which Excel keeps where it was drawn; that is not a paste's doing.
-    wb.Worksheets("Widths").Range("F1").Comment.Delete
 
     ' Values: a blank over formats, text a formula gives, rich text, and
     ' an empty text skipped blanks do not skip.
@@ -3583,6 +3580,8 @@ Public Function Build(ByVal Target As String) As String
         ws.Range("A1").Borders.LineStyle = 1
         ws.Range("A6").Value = 9
         ws.Rows(6).RowHeight = 40
+        ' A note below the rows pasted over, whose box stays where it is.
+        ws.Range("C9").AddComment "below"
     Next kinds
     For Each kinds In Array("ColumnsValues", "ColumnsFormats", "ColumnsWidths")
         Set ws = Page(wb, kinds)
@@ -3592,6 +3591,8 @@ Public Function Build(ByVal Target As String) As String
         ws.Columns(2).Hidden = True
         ws.Columns(6).ColumnWidth = 30
         ws.Columns(5).Interior.Color = RGB(0, 0, 200)
+        ' A note right of the columns pasted over, whose box stays too.
+        ws.Range("H2").AddComment "right"
     Next kinds
     Set ws = Page(wb, "ColumnFormatCells")
     ws.Columns(2).Interior.Color = RGB(0, 200, 0)
@@ -3948,6 +3949,132 @@ End Function
 '''
 
 
+#: Notes whose grid changes under them, each case a sheet of its own: a
+#: column's width changed left of a note's box, under it and right of it,
+#: made narrower, and several at once; a column hidden under the box, at
+#: its first column, left of it, and hidden and shown again; a row's height
+#: changed above the box, under it, below it and made small; a row hidden
+#: above it and under it; a filter and folded groups of rows and of
+#: columns hiding what lies above and left of it; and a note of each
+#: placement, one shown, under all of it. The workbook is saved as it
+#: stands, then every change made in order and it is saved again as
+#: ``note_boxes_changed.xlsx``. The reply is one line per change: the
+#: sheet, what changed, the first and last column or row, and the size set.
+_BUILD_NOTE_BOXES = r'''
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook, ws As Worksheet, out As String, c As Comment, kinds As Variant
+    Set wb = ActiveWorkbook
+
+    Noted Page(wb, "ColLeft"), "A1", 0
+    Noted Page(wb, "ColUnder"), "B2", 0
+    Noted Page(wb, "ColRight"), "E5", 0
+    Set ws = Page(wb, "ColNarrow")
+    Noted ws, "E5", 0
+    Noted ws, "B2", 0
+    Noted Page(wb, "ColHide"), "E5", 0
+    Noted Page(wb, "ColHideUnder"), "B2", 0
+    Noted Page(wb, "ColHideStart"), "B2", 0
+    Noted Page(wb, "ColHideShow"), "E5", 0
+    Set ws = Page(wb, "ColMany")
+    Noted ws, "E5", 0
+    Noted ws, "B2", 0
+    Noted Page(wb, "RowAbove"), "E5", 0
+    Noted Page(wb, "RowUnder"), "E5", 0
+    Noted Page(wb, "RowBelow"), "E5", 0
+    Noted Page(wb, "RowHide"), "E5", 0
+    Noted Page(wb, "RowHideUnder"), "E5", 0
+    Noted Page(wb, "RowShort"), "E5", 0
+    ' Placements: 2 moves with the cells, 1 moves and sizes, 3 is Excel's own.
+    For Each kinds In Array(Array("PlaceMove", 2), Array("PlaceSize", 1), Array("PlaceFree", 3))
+        Set ws = Page(wb, kinds(0))
+        Noted ws, "E5", kinds(1)
+        Noted ws, "B2", kinds(1)
+    Next kinds
+    Set ws = Page(wb, "Visible")
+    Noted ws, "E5", 0
+    ws.Range("E5").Comment.Visible = True
+    Set ws = Page(wb, "Filter")
+    ws.Range("A1:A6").Value = Application.Transpose(Array("h", 1, 2, 3, 4, 5))
+    Noted ws, "E8", 0
+    Noted Page(wb, "GroupRows"), "E8", 0
+    Noted Page(wb, "GroupColumns"), "F5", 0
+
+    Application.DisplayAlerts = False
+    wb.RemovePersonalInformation = True
+    wb.SaveAs Filename:=Target, FileFormat:=51
+
+    out = out & Change(wb, "ColLeft", "width", 8, 8, 30)
+    out = out & Change(wb, "ColUnder", "width", 4, 4, 30)
+    out = out & Change(wb, "ColRight", "width", 2, 2, 30)
+    out = out & Change(wb, "ColNarrow", "width", 2, 2, 2)
+    out = out & Change(wb, "ColHide", "hide columns", 2, 2)
+    out = out & Change(wb, "ColHideUnder", "hide columns", 4, 4)
+    out = out & Change(wb, "ColHideStart", "hide columns", 3, 3)
+    out = out & Change(wb, "ColHideShow", "hide columns", 2, 2)
+    out = out & Change(wb, "ColHideShow", "show columns", 2, 2)
+    out = out & Change(wb, "ColMany", "width", 2, 2, 20)
+    out = out & Change(wb, "ColMany", "width", 3, 3, 20)
+    out = out & Change(wb, "ColMany", "width", 4, 4, 20)
+    out = out & Change(wb, "RowAbove", "height", 2, 2, 40)
+    out = out & Change(wb, "RowUnder", "height", 6, 6, 40)
+    out = out & Change(wb, "RowBelow", "height", 20, 20, 40)
+    out = out & Change(wb, "RowHide", "hide rows", 2, 2)
+    out = out & Change(wb, "RowHideUnder", "hide rows", 6, 6)
+    out = out & Change(wb, "RowShort", "height", 4, 4, 3)
+    For Each kinds In Array("PlaceMove", "PlaceSize", "PlaceFree")
+        out = out & Change(wb, kinds, "width", 2, 2, 30)
+        out = out & Change(wb, kinds, "height", 2, 2, 40)
+        out = out & Change(wb, kinds, "width", 4, 4, 25)
+    Next kinds
+    out = out & Change(wb, "Visible", "width", 2, 2, 30)
+    out = out & Change(wb, "Filter", "filter", 1, 6)
+    out = out & Change(wb, "GroupRows", "group rows", 2, 4)
+    out = out & Change(wb, "GroupColumns", "group columns", 2, 3)
+
+    wb.SaveAs Filename:=Replace(Target, ".xlsx", "_changed.xlsx"), FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = out
+End Function
+
+Private Function Page(wb As Workbook, ByVal Name As String) As Worksheet
+    Dim ws As Worksheet
+    If wb.Worksheets.Count = 1 And wb.Worksheets(1).Name = "Sheet1" Then
+        Set ws = wb.Worksheets(1)
+    Else
+        Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    End If
+    ws.Name = Name
+    Set Page = ws
+End Function
+
+Private Sub Noted(ws As Worksheet, ByVal Cell As String, ByVal Placement As Long)
+    ws.Range(Cell).AddComment "note " & Cell
+    If Placement <> 0 Then ws.Range(Cell).Comment.Shape.Placement = Placement
+End Sub
+
+Private Function Change(wb As Workbook, ByVal Sheet As String, ByVal Kind As String, ByVal First As Long, _
+                        ByVal Last As Long, Optional ByVal Size As Double = 0) As String
+    Dim ws As Worksheet
+    Set ws = wb.Worksheets(Sheet)
+    Select Case Kind
+        Case "width": ws.Columns(First).ColumnWidth = Size
+        Case "height": ws.Rows(First).RowHeight = Size
+        Case "hide columns": ws.Range(ws.Columns(First), ws.Columns(Last)).EntireColumn.Hidden = True
+        Case "show columns": ws.Range(ws.Columns(First), ws.Columns(Last)).EntireColumn.Hidden = False
+        Case "hide rows": ws.Range(ws.Rows(First), ws.Rows(Last)).EntireRow.Hidden = True
+        Case "filter": ws.Range(ws.Cells(First, 1), ws.Cells(Last, 1)).AutoFilter Field:=1, Criteria1:=">2"
+        Case "group rows"
+            ws.Range(ws.Rows(First), ws.Rows(Last)).Group
+            ws.Outline.ShowLevels RowLevels:=1
+        Case "group columns"
+            ws.Range(ws.Columns(First), ws.Columns(Last)).Group
+            ws.Outline.ShowLevels ColumnLevels:=1
+    End Select
+    Change = Sheet & "|" & Kind & "|" & First & "|" & Last & "|" & Size & vbLf
+End Function
+'''
+
+
 #: What a measured fixture's reply turns into: an entry per thing measured.
 Answers = dict[str, dict[str, object]]
 
@@ -4028,6 +4155,25 @@ def copy_answers(reply: str) -> Answers:
             "onto": onto,
             "target": target,
             "refused": refused,
+        }
+    return answers
+
+
+def note_box_answers(reply: str) -> Answers:
+    """One line per change, in the order Excel made them, numbered from 1:
+    the sheet, what changed, the first and last column or row it changed,
+    and the width in characters or height in points it set, if any."""
+    answers: Answers = {}
+    for line in reply.splitlines():
+        if not line.strip():
+            continue
+        sheet, change, first, last, size = line.split("|")
+        answers[f"{len(answers) + 1:02d}"] = {
+            "sheet": sheet,
+            "change": change,
+            "first": int(first),
+            "last": int(last),
+            "size": float(size),
         }
     return answers
 
@@ -4424,12 +4570,16 @@ def main() -> int:
         ("duplicates.xlsx", _BUILD_DUPLICATES, duplicate_answers),
         ("copies.xlsx", _BUILD_COPIES, copy_answers),
         ("paste_specials.xlsx", _BUILD_PASTE_SPECIALS, paste_answers),
+        ("note_boxes.xlsx", _BUILD_NOTE_BOXES, note_box_answers),
     ]
 
     everything = [name for name, _ in wanted] + [name for name, _, _ in measured]
     everything += [f"{Path(name).stem}_answers.json" for name, _, _ in measured]
     # These recipes save the workbook again once Excel has changed it.
-    everything += ["sorts_sorted.xlsx", "duplicates_removed.xlsx", "copies_pasted.xlsx", "paste_specials_pasted.xlsx"]
+    everything += [
+        "sorts_sorted.xlsx", "duplicates_removed.xlsx", "copies_pasted.xlsx", "paste_specials_pasted.xlsx",
+        "note_boxes_changed.xlsx",
+    ]  # fmt: skip
     if not force and all((FIXTURES / name).exists() for name in everything):
         print("every fixture is already there; nothing to do (pass --force to rebuild)")
         return 0

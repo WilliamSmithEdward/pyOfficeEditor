@@ -1,0 +1,219 @@
+{
+  "01": {
+    "change": "width",
+    "first": 8,
+    "last": 8,
+    "sheet": "ColLeft",
+    "size": 30.0
+  },
+  "02": {
+    "change": "width",
+    "first": 4,
+    "last": 4,
+    "sheet": "ColUnder",
+    "size": 30.0
+  },
+  "03": {
+    "change": "width",
+    "first": 2,
+    "last": 2,
+    "sheet": "ColRight",
+    "size": 30.0
+  },
+  "04": {
+    "change": "width",
+    "first": 2,
+    "last": 2,
+    "sheet": "ColNarrow",
+    "size": 2.0
+  },
+  "05": {
+    "change": "hide columns",
+    "first": 2,
+    "last": 2,
+    "sheet": "ColHide",
+    "size": 0.0
+  },
+  "06": {
+    "change": "hide columns",
+    "first": 4,
+    "last": 4,
+    "sheet": "ColHideUnder",
+    "size": 0.0
+  },
+  "07": {
+    "change": "hide columns",
+    "first": 3,
+    "last": 3,
+    "sheet": "ColHideStart",
+    "size": 0.0
+  },
+  "08": {
+    "change": "hide columns",
+    "first": 2,
+    "last": 2,
+    "sheet": "ColHideShow",
+    "size": 0.0
+  },
+  "09": {
+    "change": "show columns",
+    "first": 2,
+    "last": 2,
+    "sheet": "ColHideShow",
+    "size": 0.0
+  },
+  "10": {
+    "change": "width",
+    "first": 2,
+    "last": 2,
+    "sheet": "ColMany",
+    "size": 20.0
+  },
+  "11": {
+    "change": "width",
+    "first": 3,
+    "last": 3,
+    "sheet": "ColMany",
+    "size": 20.0
+  },
+  "12": {
+    "change": "width",
+    "first": 4,
+    "last": 4,
+    "sheet": "ColMany",
+    "size": 20.0
+  },
+  "13": {
+    "change": "height",
+    "first": 2,
+    "last": 2,
+    "sheet": "RowAbove",
+    "size": 40.0
+  },
+  "14": {
+    "change": "height",
+    "first": 6,
+    "last": 6,
+    "sheet": "RowUnder",
+    "size": 40.0
+  },
+  "15": {
+    "change": "height",
+    "first": 20,
+    "last": 20,
+    "sheet": "RowBelow",
+    "size": 40.0
+  },
+  "16": {
+    "change": "hide rows",
+    "first": 2,
+    "last": 2,
+    "sheet": "RowHide",
+    "size": 0.0
+  },
+  "17": {
+    "change": "hide rows",
+    "first": 6,
+    "last": 6,
+    "sheet": "RowHideUnder",
+    "size": 0.0
+  },
+  "18": {
+    "change": "height",
+    "first": 4,
+    "last": 4,
+    "sheet": "RowShort",
+    "size": 3.0
+  },
+  "19": {
+    "change": "width",
+    "first": 2,
+    "last": 2,
+    "sheet": "PlaceMove",
+    "size": 30.0
+  },
+  "20": {
+    "change": "height",
+    "first": 2,
+    "last": 2,
+    "sheet": "PlaceMove",
+    "size": 40.0
+  },
+  "21": {
+    "change": "width",
+    "first": 4,
+    "last": 4,
+    "sheet": "PlaceMove",
+    "size": 25.0
+  },
+  "22": {
+    "change": "width",
+    "first": 2,
+    "last": 2,
+    "sheet": "PlaceSize",
+    "size": 30.0
+  },
+  "23": {
+    "change": "height",
+    "first": 2,
+    "last": 2,
+    "sheet": "PlaceSize",
+    "size": 40.0
+  },
+  "24": {
+    "change": "width",
+    "first": 4,
+    "last": 4,
+    "sheet": "PlaceSize",
+    "size": 25.0
+  },
+  "25": {
+    "change": "width",
+    "first": 2,
+    "last": 2,
+    "sheet": "PlaceFree",
+    "size": 30.0
+  },
+  "26": {
+    "change": "height",
+    "first": 2,
+    "last": 2,
+    "sheet": "PlaceFree",
+    "size": 40.0
+  },
+  "27": {
+    "change": "width",
+    "first": 4,
+    "last": 4,
+    "sheet": "PlaceFree",
+    "size": 25.0
+  },
+  "28": {
+    "change": "width",
+    "first": 2,
+    "last": 2,
+    "sheet": "Visible",
+    "size": 30.0
+  },
+  "29": {
+    "change": "filter",
+    "first": 1,
+    "last": 6,
+    "sheet": "Filter",
+    "size": 0.0
+  },
+  "30": {
+    "change": "group rows",
+    "first": 2,
+    "last": 4,
+    "sheet": "GroupRows",
+    "size": 0.0
+  },
+  "31": {
+    "change": "group columns",
+    "first": 2,
+    "last": 3,
+    "sheet": "GroupColumns",
+    "size": 0.0
+  }
+}

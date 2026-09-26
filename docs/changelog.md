@@ -276,6 +276,17 @@ anything trailing the file is swept into the oldest release's notes. -->
   one copied. A column's stored width holds its padding already;
   measured, a note's box counts a column set to 15 as 110 pixels.
 
+- **A note's box moved when the columns or rows under it changed size.**
+  Setting a column's width or a row's height, hiding or showing either, a
+  filter hiding rows and a folded group left each note's anchor as it was,
+  so its box slid over the sheet with the cells. Measured for each of
+  those, Excel keeps a note where it was drawn, its anchor naming the
+  columns and rows now under it; a note set to move with its cells keeps
+  its anchor instead, and its box is drawn again from it. A paste of
+  whole columns keeps notes where they were too, and a paste of whole
+  rows, measured, does not. Only a note is kept so: a shape, a picture, a
+  chart or a control keeps its anchor as it was, whatever its placement.
+
 - **Removing a chart left the chart behind.** Its part, its relationship
   and its content-type entry now go, and so do the style and colour parts
   Excel gives every chart it makes.

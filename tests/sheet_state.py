@@ -41,6 +41,10 @@ def rows(sheet: Worksheet) -> dict[int, dict[str, str]]:
         own = {name: value for name, value in row.attributes.items() if name not in ROW_HINTS}
         if own.get("customHeight") not in ("1", "true"):
             own.pop("ht", None)
+        elif "ht" in own:
+            # Excel writes a height to seventeen digits, 39.950000000000003
+            # for 39.95; the number is what counts.
+            own["ht"] = repr(float(own["ht"]))
         if own or next(row.children_named("c"), None) is not None:
             found[number] = own
     return found

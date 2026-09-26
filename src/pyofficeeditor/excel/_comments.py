@@ -32,9 +32,11 @@ placeholder is kept up to date with its replies.
 
 from __future__ import annotations
 
+import bisect
 import datetime as dt
 import re
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from pyofficeeditor._xml import Element, XmlDocument, escape_attribute, escape_text
@@ -490,31 +492,80 @@ def _made(root: Element, name: str) -> Element:
 # ---------------------------------------------------------------------------
 
 
+class PixelAxis:
+    """A sheet's columns, or its rows, as a note's box counts them: each
+    zero-based column or row so many pixels, a hidden one none.
+
+    Measured: a note's anchor counts a column at the standard width as 64
+    pixels, one set to 30 as 215, a row of 40 points as 53, and a hidden
+    column or row as none.
+    """
+
+    def __init__(self, standard: int, sizes: Mapping[int, int], count: int) -> None:
+        #: The size of a column or row the sheet says nothing of its own for.
+        self.standard = standard
+        #: How many columns or rows the sheet has.
+        self.count = count
+        self._indexes = sorted(index for index, size in sizes.items() if size != standard)
+        self._sizes = [sizes[index] for index in self._indexes]
+        self._extra: list[int] = []
+        running = 0
+        for size in self._sizes:
+            self._extra.append(running)
+            running += size - standard
+        self._total = running
+
+    def start(self, index: int) -> int:
+        """Where the zero-based column or row ``index`` starts, in pixels."""
+        before = bisect.bisect_left(self._indexes, index)
+        return index * self.standard + (self._extra[before] if before < len(self._extra) else self._total)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PixelAxis):
+            return NotImplemented
+        return (self.standard, self.count, self._indexes, self._sizes) == (
+            other.standard,
+            other.count,
+            other._indexes,
+            other._sizes,
+        )
+
+    def at(self, position: int) -> tuple[int, int]:
+        """Which zero-based column or row a pixel falls in, and how many
+        pixels into it, a hidden one passed over."""
+        low, high = 0, self.count - 1
+        while low < high:
+            middle = (low + high + 1) // 2
+            if self.start(middle) <= position:
+                low = middle
+            else:
+                high = middle - 1
+        return low, position - self.start(low)
+
+
 def note_anchor(
     cell: CellRef,
-    column_pixels: list[int],
-    row_pixels: list[int],
+    columns: PixelAxis,
+    rows: PixelAxis,
     *,
     size: tuple[int, int] = (NOTE_WIDTH_PIXELS, NOTE_HEIGHT_PIXELS),
 ) -> tuple[tuple[int, int, int, int, int, int, int, int], float, float]:
     """Where Excel puts a new note's box, as the VML anchor's eight numbers
     and the box's top left corner in points; ``size`` is its width and
-    height in pixels.
+    height in pixels, and ``columns`` and ``rows`` the sheet's own.
 
-    ``column_pixels`` and ``row_pixels`` are the widths and heights of the
-    sheet's columns and rows from the first, far enough to hold the box.
     Measured: the box starts 15 pixels right of the cell's right edge and
     10 above its top, 2 below the sheet's top edge on the first row, and
     the anchor names each corner by the zero-based column and row it falls
     in and how many pixels into it. A pasted note's box starts there too,
     at the size it had where it was copied from.
     """
-    left = sum(column_pixels[: cell.column]) + 15
-    top = max(sum(row_pixels[: cell.row - 1]) - 10, 2)
-    first_column, first_x = _cell_at(left, column_pixels)
-    first_row, first_y = _cell_at(top, row_pixels)
-    last_column, last_x = _cell_at(left + size[0], column_pixels)
-    last_row, last_y = _cell_at(top + size[1], row_pixels)
+    left = columns.start(cell.column) + 15
+    top = max(rows.start(cell.row - 1) - 10, 2)
+    first_column, first_x = columns.at(left)
+    first_row, first_y = rows.at(top)
+    last_column, last_x = columns.at(left + size[0])
+    last_row, last_y = rows.at(top + size[1])
     anchor = (first_column, first_x, first_row, first_y, last_column, last_x, last_row, last_y)
     return anchor, left * 0.75, top * 0.75
 
@@ -543,13 +594,13 @@ def note_corners(shape: str) -> tuple[int, int, int, int, int, int, int, int] | 
 
 
 def box_size(
-    corners: tuple[int, int, int, int, int, int, int, int], column_pixels: list[int], row_pixels: list[int]
+    corners: tuple[int, int, int, int, int, int, int, int], columns: PixelAxis, rows: PixelAxis
 ) -> tuple[int, int]:
     """A note box's width and height in pixels, from its anchor over a
-    sheet's column widths and row heights in pixels."""
+    sheet's columns and rows."""
     first_column, first_x, first_row, first_y, last_column, last_x, last_row, last_y = corners
-    width = sum(column_pixels[:last_column]) + last_x - sum(column_pixels[:first_column]) - first_x
-    height = sum(row_pixels[:last_row]) + last_y - sum(row_pixels[:first_row]) - first_y
+    width = columns.start(last_column) + last_x - columns.start(first_column) - first_x
+    height = rows.start(last_row) + last_y - rows.start(first_row) - first_y
     return width, height
 
 
@@ -570,16 +621,6 @@ def rehomed_note(
     shape = _ANCHOR.sub(lambda found: f"{found.group(1)}\r\n    {corners}{found.group(3)}", shape, count=1)
     shape = re.sub(r"(<x:Row>)\s*\d+\s*(</x:Row>)", rf"\g<1>{cell.row - 1}\g<2>", shape, count=1)
     return re.sub(r"(<x:Column>)\s*\d+\s*(</x:Column>)", rf"\g<1>{cell.column - 1}\g<2>", shape, count=1)
-
-
-def _cell_at(position: int, sizes: list[int]) -> tuple[int, int]:
-    """Which column or row a pixel falls in, and how far into it."""
-    start = 0
-    for index, size in enumerate(sizes):
-        if position < start + size:
-            return index, position - start
-        start += size
-    return len(sizes), position - start
 
 
 def note_vml(
@@ -735,6 +776,7 @@ __all__ = [
     "RT_THREADED_COMMENTS",
     "Comment",
     "CopiedNote",
+    "PixelAxis",
     "Reply",
     "ThreadedComment",
     "box_size",

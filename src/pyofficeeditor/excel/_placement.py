@@ -36,6 +36,11 @@ A note is none of these. Its box follows the cell it annotates, by as many
 rows or columns as the cell moves, keeping its size, whatever the rows
 inside the box do, and the note goes when its cell does.
 
+When no row or column comes or goes but their sizes change, a note keeps
+to its own placement: one that does not move with its cells, as Excel
+makes one, stays where it was drawn, and one that does keeps its anchor;
+see :func:`pin_notes`. Only a note is kept so here.
+
 A VML anchor gives its offsets in the pixels of the screen that wrote it,
 which is not always 96 to the inch. Where a far corner is worked out again,
 it is converted at 96; Excel places a control by its record on the sheet,
@@ -57,6 +62,7 @@ from functools import cached_property
 from typing import Literal
 
 from pyofficeeditor._xml import Element, local_name
+from pyofficeeditor.excel._comments import PixelAxis
 from pyofficeeditor.excel._formulas import Deletion, Shift
 from pyofficeeditor.excel._shapes import (
     MAX_ANCHOR_COLUMN,
@@ -78,6 +84,7 @@ _TRANSFORMED = ("sp", "cxnSp", "pic", "grpSp")
 
 _CLIENT_DATA = re.compile(r"<x:ClientData\b[^>]*>.*?</x:ClientData>", re.DOTALL)
 _VML_ANCHOR = re.compile(r"(<x:Anchor>)(.*?)(</x:Anchor>)", re.DOTALL)
+_VML_SHAPE = re.compile(r"<v:shape\b.*?</v:shape>", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -466,6 +473,48 @@ def _move_client_data(block: str, edit: AxisEdit) -> str:
     return block[: anchor.start(2)] + rewritten + block[anchor.end(2) :]
 
 
+def pin_notes(text: str, before: PixelAxis, after: PixelAxis, *, columns: bool) -> str:
+    """A VML part with each note's box where Excel keeps it once the
+    sheet's columns, or its rows, have gone from ``before`` to ``after``:
+    their widths or heights set, or hidden or shown.
+
+    Measured, a column's width or a row's height set, either hidden, by
+    hand, by a filter or by a folded group: a note that does not move with
+    its cells, as Excel makes one, stays where it was drawn, its anchor
+    naming the columns and rows now under it and its style as it was. One
+    that moves with its cells, sized with them or not, keeps its anchor,
+    and its style is drawn again from it: where it now starts, and how wide
+    and high it now is.
+    """
+    return _VML_SHAPE.sub(lambda match: _pin_note(match.group(0), before, after, columns=columns), text)
+
+
+def _pin_note(shape: str, before: PixelAxis, after: PixelAxis, *, columns: bool) -> str:
+    anchor = _VML_ANCHOR.search(shape)
+    if anchor is None or re.search(r'\bObjectType="Note"', shape) is None:
+        return shape
+    numbers = [int(number) for number in re.findall(r"-?\d+", anchor.group(2))]
+    if len(numbers) < 8:
+        return shape
+    first, first_offset, last, last_offset = (0, 1, 4, 5) if columns else (2, 3, 6, 7)
+    if vml_placement(shape) == "free":
+        moved = list(numbers)
+        for index, offset in ((first, first_offset), (last, last_offset)):
+            moved[index], moved[offset] = after.at(before.start(numbers[index]) + numbers[offset])
+        if moved == numbers:
+            return shape
+        return shape[: anchor.start(2)] + _renumber(anchor.group(2), moved) + shape[anchor.end(2) :]
+    start = after.start(numbers[first]) + numbers[first_offset]
+    end = after.start(numbers[last]) + numbers[last_offset]
+    place, extent = ("margin-left", "width") if columns else ("margin-top", "height")
+    return _restyled(_restyled(shape, place, start * 0.75), extent, (end - start) * 0.75)
+
+
+def _restyled(shape: str, name: str, points: float) -> str:
+    """A shape with one measure of its style, in points, written anew."""
+    return re.sub(rf"(?<![\w-]){name}:[^;']*", f"{name}:{points:g}pt", shape, count=1)
+
+
 def _note_owner(block: str, edit: AxisEdit) -> int | None:
     """The zero-based row or column of the cell a note annotates, or
     ``None`` for anything that is not a note."""
@@ -495,6 +544,7 @@ __all__ = [
     "move_drawing",
     "move_record_anchors",
     "move_vml",
+    "pin_notes",
     "record_placement",
     "swallowed_nodes",
     "swallows",

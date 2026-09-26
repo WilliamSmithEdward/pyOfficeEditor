@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import datetime as dt
 import math
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Generator, Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -45,6 +46,7 @@ from pyofficeeditor.excel._comments import (
     RT_THREADED_COMMENTS,
     Comment,
     CopiedNote,
+    PixelAxis,
     ThreadedComment,
     box_size,
     column_pixels,
@@ -125,7 +127,7 @@ from pyofficeeditor.excel._pagesetup import (
 )
 from pyofficeeditor.excel._pictures import RT_IMAGE, image_info, picture_anchor
 from pyofficeeditor.excel._pivots import PivotTable, read_pivot_tables
-from pyofficeeditor.excel._placement import swallowed_nodes
+from pyofficeeditor.excel._placement import pin_notes, swallowed_nodes
 from pyofficeeditor.excel._protection import SheetProtection
 from pyofficeeditor.excel._reference import MAX_COLUMN, MAX_ROW, CellRef, RangeRef, column_index, column_letter
 from pyofficeeditor.excel._richtext import TextRun, completed, read_runs, rich_entry, shown
@@ -149,6 +151,7 @@ from pyofficeeditor.excel._shapes import (
     CT_CONTROL_PROPERTIES,
     CT_DRAWING,
     CT_VML,
+    DEFAULT_COLUMN_POINTS,
     DEFAULT_ROW_POINTS,
     EMPTY_DRAWING,
     EMPTY_VML,
@@ -165,6 +168,7 @@ from pyofficeeditor.excel._shapes import (
     anchor_box,
     anchor_cells,
     anchors_in,
+    characters_to_points,
     check_control_kind,
     control_drawing,
     control_entry,
@@ -395,6 +399,9 @@ class Worksheet:
         self._highest_row = 0
         self.reindex_rows()
         self._masters: dict[str, tuple[CellRef, str]] | None = None
+        #: The axes, columns or rows, whose notes an unfinished
+        #: :meth:`notes_pinned` holds in place.
+        self._pinned_axes: frozenset[str] = frozenset()
 
     # ------------------------------------------------------------------
     # Identity
@@ -999,22 +1006,24 @@ class Worksheet:
         ``customWidth`` goes with a width, as Excel writes it for one set by
         hand. Restoring the standard width drops the column's entry when it
         says nothing else, and otherwise writes the standard width into it:
-        an entry with no width at all is a column of width 0.
+        an entry with no width at all is a column of width 0. Each note's
+        box stays where Excel keeps it; see :meth:`notes_pinned`.
         """
-        container = self._ensure_cols()
-        standard = self._standard_width()
-        entry = isolate_column(container, column, width=standard)
-        if width is None:
-            entry.set("width", format_width(standard))
-            entry.unset("customWidth")
-            entry.unset("bestFit")
-        else:
-            if width < 0:
-                raise ValueError(f"a column width cannot be negative; got {width}.")
-            entry.set("width", _format_dimension(width))
-            entry.set("customWidth", "1")
-        self._tidy_cols(container)
-        self._invalidate()
+        if width is not None and width < 0:
+            raise ValueError(f"a column width cannot be negative; got {width}.")
+        with self.notes_pinned(columns=True):
+            container = self._ensure_cols()
+            standard = self._standard_width()
+            entry = isolate_column(container, column, width=standard)
+            if width is None:
+                entry.set("width", format_width(standard))
+                entry.unset("customWidth")
+                entry.unset("bestFit")
+            else:
+                entry.set("width", _format_dimension(width))
+                entry.set("customWidth", "1")
+            self._tidy_cols(container)
+            self._invalidate()
 
     def column_hidden(self, column: int) -> bool:
         container = self._root.child("cols")
@@ -1024,14 +1033,17 @@ class Worksheet:
         return entry is not None and entry.get("hidden") in ("1", "true")
 
     def set_column_hidden(self, column: int, hidden: bool) -> None:
-        container = self._ensure_cols()
-        entry = isolate_column(container, column, width=self._standard_width())
-        if hidden:
-            entry.set("hidden", "1")
-        else:
-            entry.unset("hidden")
-        self._tidy_cols(container)
-        self._invalidate()
+        """Hide a column or show it. Each note's box stays where Excel keeps
+        it; see :meth:`notes_pinned`."""
+        with self.notes_pinned(columns=True):
+            container = self._ensure_cols()
+            entry = isolate_column(container, column, width=self._standard_width())
+            if hidden:
+                entry.set("hidden", "1")
+            else:
+                entry.unset("hidden")
+            self._tidy_cols(container)
+            self._invalidate()
 
     def column_style_index(self, column: int) -> int | None:
         """A column's ``style``, the index into the workbook's cell formats
@@ -1073,30 +1085,35 @@ class Worksheet:
         """Set a row's height in points, or ``None`` to restore the default.
 
         ``customHeight`` goes with it: without the flag Excel ignores the
-        value, measured, where a width it honours either way.
+        value, measured, where a width it honours either way. Each note's
+        box stays where Excel keeps it; see :meth:`notes_pinned`.
         """
-        element = self._ensure_row(row)
-        if height is None:
-            element.unset("ht")
-            element.unset("customHeight")
-        else:
-            if height < 0:
-                raise ValueError(f"a row height cannot be negative; got {height}.")
-            element.set("ht", _format_dimension(height))
-            element.set("customHeight", "1")
-        self._invalidate()
+        if height is not None and height < 0:
+            raise ValueError(f"a row height cannot be negative; got {height}.")
+        with self.notes_pinned(rows=True):
+            element = self._ensure_row(row)
+            if height is None:
+                element.unset("ht")
+                element.unset("customHeight")
+            else:
+                element.set("ht", _format_dimension(height))
+                element.set("customHeight", "1")
+            self._invalidate()
 
     def row_hidden(self, row: int) -> bool:
         element = self._rows.get(row)
         return element is not None and element.get("hidden") in ("1", "true")
 
     def set_row_hidden(self, row: int, hidden: bool) -> None:
-        element = self._ensure_row(row)
-        if hidden:
-            element.set("hidden", "1")
-        else:
-            element.unset("hidden")
-        self._invalidate()
+        """Hide a row or show it. Each note's box stays where Excel keeps
+        it; see :meth:`notes_pinned`."""
+        with self.notes_pinned(rows=True):
+            element = self._ensure_row(row)
+            if hidden:
+                element.set("hidden", "1")
+            else:
+                element.unset("hidden")
+            self._invalidate()
 
     @property
     def default_row_height(self) -> float | None:
@@ -2084,14 +2101,15 @@ class Worksheet:
         hide = [row for row, verdict in zip(rows, decided, strict=True) if verdict is False]
         show = [row for row, verdict in zip(rows, decided, strict=True) if verdict is True]
         undecided = [row for row, verdict in zip(rows, decided, strict=True) if verdict is None]
-        self._hide_rows(hide)
-        opened = False
-        for number in show:
-            existing = self._rows.get(number)
-            if existing is not None and existing.unset("hidden"):
-                opened = True
-        if opened:
-            self._tidy_collapsed()
+        with self.notes_pinned(rows=True):
+            self._hide_rows(hide)
+            opened = False
+            for number in show:
+                existing = self._rows.get(number)
+                if existing is not None and existing.unset("hidden"):
+                    opened = True
+            if opened:
+                self._tidy_collapsed()
         return FilterOutcome(tuple(hide), tuple(show), tuple(undecided), tuple(unevaluated))
 
     def _show_filtered_rows(self, block: RangeRef) -> tuple[int, ...]:
@@ -2099,13 +2117,14 @@ class Worksheet:
         does, and drop the collapsed mark of any outline group that leaves
         fully open."""
         shown: list[int] = []
-        for number in sorted(n for n in self._rows if block.top < n <= block.bottom):
-            element = self._rows[number]
-            if element.get("hidden") in ("1", "true"):
-                element.unset("hidden")
-                shown.append(number)
-        if shown:
-            self._tidy_collapsed()
+        with self.notes_pinned(rows=True):
+            for number in sorted(n for n in self._rows if block.top < n <= block.bottom):
+                element = self._rows[number]
+                if element.get("hidden") in ("1", "true"):
+                    element.unset("hidden")
+                    shown.append(number)
+            if shown:
+                self._tidy_collapsed()
         return tuple(shown)
 
     def _tidy_collapsed(self) -> None:
@@ -2262,7 +2281,7 @@ class Worksheet:
         vml = package.read(vml_part).decode("utf-8")
         box = note_shapes(vml).get(cell)
         if box is None:
-            anchor, left, top = note_anchor(cell, *self._pixel_grid(cell))
+            anchor, left, top = note_anchor(cell, self._column_axis(), self._row_axis())
             markup = note_vml(
                 self._next_control_id(), cell, anchor, left, top,
                 visible=visible, z_index=shape_count(vml) + 1,
@@ -2292,7 +2311,7 @@ class Worksheet:
             corners = None if shape is None else note_corners(shape)
             if shape is None or corners is None:
                 return None
-            columns, rows = self._pixels(max(corners[0], corners[4]) + 1, max(corners[2], corners[6]) + 1)
+            columns, rows = self._column_axis(), self._row_axis()
             return CopiedNote(element, author, shape, box_size(corners, columns, rows))
         return None
 
@@ -2305,7 +2324,7 @@ class Worksheet:
         package = self._workbook.package
         vml_part = self._vml_part()
         vml = package.read(vml_part).decode("utf-8")
-        anchor, left, top = note_anchor(reference, *self._pixel_grid(reference), size=note.size)
+        anchor, left, top = note_anchor(reference, self._column_axis(), self._row_axis(), size=note.size)
         markup = rehomed_note(note.shape, self._next_control_id(), reference, anchor, left, top)
         package.write(vml_part, with_vml_shape(with_note_shape_type(vml), markup).encode("utf-8"))
         self._invalidate()
@@ -2476,27 +2495,74 @@ class Worksheet:
             return note_shapes(package.read(part).decode("utf-8", errors="replace"))
         return {}
 
-    def _pixel_grid(self, cell: CellRef) -> tuple[list[int], list[int]]:
-        """Column widths and row heights in pixels, from the first to far
-        enough past a cell to hold a note's box, at 96 pixels an inch."""
-        return self._pixels(min(cell.column + 40, MAX_COLUMN), min(cell.row + 40, MAX_ROW))
-
-    def _pixels(self, column_count: int, row_count: int) -> tuple[list[int], list[int]]:
-        """The widths of the first ``column_count`` columns and the heights
-        of the first ``row_count`` rows, in pixels, as a note's box counts
-        them: a hidden column as none, and one with a width of its own as
+    def _column_axis(self) -> PixelAxis:
+        """The sheet's columns as a note's box counts them, at 96 pixels an
+        inch: a hidden one as none, and one with a width of its own as
         :func:`~pyofficeeditor.excel._comments.column_pixels` counts it."""
-        grid = SheetGrid.of(self._root)
-        standard = round(grid.default_column / 0.75)
-        columns: list[int] = []
-        for index in range(column_count):
-            width = self.column_width(index + 1)
-            if self.column_hidden(index + 1):
-                columns.append(0)
-            else:
-                columns.append(standard if width is None else column_pixels(width))
-        rows = [round(grid.row_heights.get(index, grid.default_row) / 0.75) for index in range(row_count)]
-        return columns, rows
+        head = self._root.child("sheetFormatPr")
+        default = None if head is None else _parsed_float(head.get("defaultColWidth"))
+        standard = DEFAULT_COLUMN_POINTS if default is None else characters_to_points(default)
+        sizes: dict[int, int] = {}
+        container = self._root.child("cols")
+        for entry in () if container is None else container.children_named("col"):
+            hidden = entry.get("hidden") in ("1", "true")
+            width = _parsed_float(entry.get("width"))
+            if not hidden and width is None:
+                continue
+            low, high = int(_parsed_float(entry.get("min")) or 1), int(_parsed_float(entry.get("max")) or 1)
+            for column in range(max(low, 1), min(high, MAX_COLUMN) + 1):
+                sizes[column - 1] = 0 if hidden or width is None else column_pixels(width)
+        return PixelAxis(round(standard / 0.75), sizes, MAX_COLUMN)
+
+    def _row_axis(self) -> PixelAxis:
+        """The sheet's rows as a note's box counts them, at 96 pixels an
+        inch: a hidden one as none, and one with a height of its own as that
+        many points."""
+        head = self._root.child("sheetFormatPr")
+        default = None if head is None else _parsed_float(head.get("defaultRowHeight"))
+        sizes: dict[int, int] = {}
+        for number, row in self._rows.items():
+            height = _parsed_float(row.get("ht"))
+            if row.get("hidden") in ("1", "true"):
+                sizes[number - 1] = 0
+            elif height is not None:
+                sizes[number - 1] = round(height / 0.75)
+        return PixelAxis(round((DEFAULT_ROW_POINTS if default is None else default) / 0.75), sizes, MAX_ROW)
+
+    @contextmanager
+    def notes_pinned(self, *, columns: bool = False, rows: bool = False) -> Generator[None, None, None]:
+        """Keep each note's box where Excel keeps it while the block changes
+        the widths of the sheet's columns, if ``columns``, or the heights of
+        its rows, if ``rows``, hiding and showing them among the changes;
+        see :func:`~pyofficeeditor.excel._placement.pin_notes`. Inside
+        another, it leaves the axes the other holds to it, so no change is
+        counted twice. Nothing moves when the block raises."""
+        package = self._workbook.package
+        axes = {"columns": self._column_axis, "rows": self._row_axis}
+        mine = [axis for axis, wanted in (("columns", columns), ("rows", rows)) if wanted and axis not in self._pinned_axes]
+        parts = [
+            part
+            for part in (self._legacy_vml_parts() if mine else [])
+            if 'ObjectType="Note"' in package.read(part).decode("utf-8", errors="replace")
+        ]
+        if not parts:
+            yield
+            return
+        held = self._pinned_axes
+        self._pinned_axes = held | set(mine)
+        try:
+            before = {axis: axes[axis]() for axis in mine}
+            yield
+        finally:
+            self._pinned_axes = held
+        for part in parts:
+            vml = pinned = package.read(part).decode("utf-8")
+            for axis, old in before.items():
+                new = axes[axis]()
+                if new != old:
+                    pinned = pin_notes(pinned, old, new, columns=axis == "columns")
+            if pinned != vml:
+                package.write(part, pinned.encode("utf-8"))
 
     def _legacy_vml_parts(self) -> list[str]:
         """The VML parts that draw on the sheet: its notes and its controls.
@@ -3810,24 +3876,26 @@ class Worksheet:
         ``collapsed`` hides them and marks the summary row as folded, which
         is what the outline's minus button does; the summary row, below the
         group or above it as :attr:`summary_below` says, stays visible. The
-        sheet records how deep its outline goes, as Excel writes it.
+        sheet records how deep its outline goes, as Excel writes it. Each
+        note's box stays where Excel keeps it; see :meth:`notes_pinned`.
         """
         if first < 1 or last < first or last > MAX_ROW:
             raise ValueError(f"rows {first} to {last} are not a range to group.")
         numbers = range(first, last + 1)
         self._check_outline_depth(self._level_of(self._rows[n]) for n in numbers if n in self._rows)
-        self._ensure_rows(numbers)
-        for number in numbers:
-            row = self._rows[number]
-            row.set("outlineLevel", str(self._level_of(row) + 1))
-            if collapsed:
-                row.set("hidden", "1")
-        summary = last + 1 if self.summary_below else first - 1
-        if collapsed and 1 <= summary <= MAX_ROW:
-            self._ensure_rows([summary])
-            self._rows[summary].set("collapsed", "1")
-        self._record_outline_depth()
-        self._invalidate()
+        with self.notes_pinned(rows=True):
+            self._ensure_rows(numbers)
+            for number in numbers:
+                row = self._rows[number]
+                row.set("outlineLevel", str(self._level_of(row) + 1))
+                if collapsed:
+                    row.set("hidden", "1")
+            summary = last + 1 if self.summary_below else first - 1
+            if collapsed and 1 <= summary <= MAX_ROW:
+                self._ensure_rows([summary])
+                self._rows[summary].set("collapsed", "1")
+            self._record_outline_depth()
+            self._invalidate()
 
     def ungroup_rows(self, first: int, last: int) -> None:
         """Take one level of grouping off, and show the rows it leaves
@@ -3836,23 +3904,25 @@ class Worksheet:
         Excel's own Ungroup leaves a folded group's rows hidden, with
         nothing left to unfold them by; they are shown here instead, and
         the summary row loses its folded mark once it has nothing to fold.
+        Each note's box stays where Excel keeps it; see :meth:`notes_pinned`.
         """
-        for number in range(first, last + 1):
-            row = self._rows.get(number)
-            if row is None:
-                continue
-            level = self._level_of(row) - 1
-            if level > 0:
-                row.set("outlineLevel", str(level))
-            else:
-                row.unset("outlineLevel")
-                row.unset("hidden")
-        summary = last + 1 if self.summary_below else first - 1
-        element = self._rows.get(summary)
-        if element is not None and element.get("collapsed") in ("1", "true") and not self._detail_rows(summary):
-            element.unset("collapsed")
-        self._record_outline_depth()
-        self._invalidate()
+        with self.notes_pinned(rows=True):
+            for number in range(first, last + 1):
+                row = self._rows.get(number)
+                if row is None:
+                    continue
+                level = self._level_of(row) - 1
+                if level > 0:
+                    row.set("outlineLevel", str(level))
+                else:
+                    row.unset("outlineLevel")
+                    row.unset("hidden")
+            summary = last + 1 if self.summary_below else first - 1
+            element = self._rows.get(summary)
+            if element is not None and element.get("collapsed") in ("1", "true") and not self._detail_rows(summary):
+                element.unset("collapsed")
+            self._record_outline_depth()
+            self._invalidate()
 
     def row_outline_level(self, number: int) -> int:
         """How deep a row is in the outline. 0 when it is not grouped."""
@@ -3867,39 +3937,41 @@ class Worksheet:
             raise ValueError(f"columns {first} to {last} are not a range to group.")
         numbers = range(first, last + 1)
         self._check_outline_depth(self.column_outline_level(number) for number in numbers)
-        container = self._ensure_cols()
-        standard = self._standard_width()
-        for number in numbers:
-            entry = isolate_column(container, number, width=standard)
-            entry.set("outlineLevel", str(self._level_of(entry) + 1))
-            if collapsed:
-                entry.set("hidden", "1")
-        summary = last + 1 if self.summary_right else first - 1
-        if collapsed and 1 <= summary <= MAX_COLUMN:
-            isolate_column(container, summary, width=standard).set("collapsed", "1")
-        self._record_outline_depth()
-        self._invalidate()
+        with self.notes_pinned(columns=True):
+            container = self._ensure_cols()
+            standard = self._standard_width()
+            for number in numbers:
+                entry = isolate_column(container, number, width=standard)
+                entry.set("outlineLevel", str(self._level_of(entry) + 1))
+                if collapsed:
+                    entry.set("hidden", "1")
+            summary = last + 1 if self.summary_right else first - 1
+            if collapsed and 1 <= summary <= MAX_COLUMN:
+                isolate_column(container, summary, width=standard).set("collapsed", "1")
+            self._record_outline_depth()
+            self._invalidate()
 
     def ungroup_columns(self, first: int, last: int) -> None:
         """Take one level of grouping off; see :meth:`ungroup_rows`."""
-        container = self._ensure_cols()
-        standard = self._standard_width()
-        for number in range(first, last + 1):
-            entry = isolate_column(container, number, width=standard)
-            level = self._level_of(entry) - 1
-            if level > 0:
-                entry.set("outlineLevel", str(level))
-            else:
-                entry.unset("outlineLevel")
-                entry.unset("hidden")
-        summary = last + 1 if self.summary_right else first - 1
-        if 1 <= summary <= MAX_COLUMN:
-            entry = column_entry(container, summary)
-            if entry is not None and entry.get("collapsed") in ("1", "true") and not self._detail_columns(summary):
-                isolate_column(container, summary, width=standard).unset("collapsed")
-        self._tidy_cols(container)
-        self._record_outline_depth()
-        self._invalidate()
+        with self.notes_pinned(columns=True):
+            container = self._ensure_cols()
+            standard = self._standard_width()
+            for number in range(first, last + 1):
+                entry = isolate_column(container, number, width=standard)
+                level = self._level_of(entry) - 1
+                if level > 0:
+                    entry.set("outlineLevel", str(level))
+                else:
+                    entry.unset("outlineLevel")
+                    entry.unset("hidden")
+            summary = last + 1 if self.summary_right else first - 1
+            if 1 <= summary <= MAX_COLUMN:
+                entry = column_entry(container, summary)
+                if entry is not None and entry.get("collapsed") in ("1", "true") and not self._detail_columns(summary):
+                    isolate_column(container, summary, width=standard).unset("collapsed")
+            self._tidy_cols(container)
+            self._record_outline_depth()
+            self._invalidate()
 
     def column_outline_level(self, number: int) -> int:
         """How deep a column is in the outline. 0 when it is not grouped."""
@@ -5077,5 +5149,14 @@ def _as_number(raw: str | None) -> int | None:
         return None
     try:
         return int(raw)
+    except ValueError:
+        return None
+
+
+def _parsed_float(raw: str | None) -> float | None:
+    if raw is None:
+        return None
+    try:
+        return float(raw)
     except ValueError:
         return None

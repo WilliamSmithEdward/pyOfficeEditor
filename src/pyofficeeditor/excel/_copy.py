@@ -1201,7 +1201,12 @@ def _paste_format(
 
 def _paste_settings(taken: _Copy, target: Worksheet, tile: RangeRef) -> None:
     """Whole rows' heights, formats and whether they are hidden, and whole
-    columns' widths, formats and whether they are hidden."""
+    columns' widths, formats and whether they are hidden.
+
+    Measured: a note's box stays where Excel drew it as the columns under
+    it change, as it does when a column's width is set, but keeps its
+    anchor as the rows under it change, and so moves with them.
+    """
     present = target.rows_by_number()
     for place, settings in taken.row_settings:
         number = tile.top + place
@@ -1212,10 +1217,11 @@ def _paste_settings(taken: _Copy, target: Worksheet, tile: RangeRef) -> None:
             row.unset(name)
         for name, value in settings.items():
             row.set(name, value)
-    for place, width, hidden, style in taken.column_settings:
-        target.set_column_width(tile.left + place, width)
-        target.set_column_hidden(tile.left + place, hidden)
-        target.set_column_style_index(tile.left + place, style)
+    with target.notes_pinned(columns=bool(taken.column_settings)):
+        for place, width, hidden, style in taken.column_settings:
+            target.set_column_width(tile.left + place, width)
+            target.set_column_hidden(tile.left + place, hidden)
+            target.set_column_style_index(tile.left + place, style)
 
 
 # ----------------------------------------------------------------------

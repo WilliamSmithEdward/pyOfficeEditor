@@ -410,13 +410,15 @@ tests/
                                 Excel pasted into in copies_pasted.xlsx
   test_excel_paste_special.py   Paste Special, against the sheets Excel
                                 pasted into in paste_specials_pasted.xlsx
+  test_excel_note_boxes.py      a note's box as the grid under it changes,
+                                against note_boxes_changed.xlsx
   test_excel_table_resize.py    a table giving up rows, against the
                                 resizes of table_resizes.json
   test_excel_collate.py         the collation, against what a filter and
                                 a sort answered
   test_excel_live_gate.py       real Excel, opt-in
-  fixtures/excel/               thirty-one Excel-authored packages:
-                                three sourced, twenty-eight scripted, and
+  fixtures/excel/               thirty-three Excel-authored packages:
+                                three sourced, thirty scripted, and
                                 eight measured corpora; see its README
 ```
 
@@ -425,7 +427,7 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against thirty-three committed
+- The suite needs no Office installation. It runs against thirty-five committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as
