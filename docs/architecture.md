@@ -73,7 +73,8 @@ Each layer knows the layer below it and not the layer above.
 |                 the fictional 1900 leap day included      |
 |   _collate      Windows word sort, the order and the      |
 |                 equality a filter compares text by        |
-|   _sort         a range's rows sorted as Excel's Sort     |
+|   _sort         rows sorted as Excel's Sort sorts a       |
+|                 range, a table or a filter                |
 |   _shapes       shapes, and the grid a form control needs |
 |   _comments     notes and threads, and the box each gets  |
 |   _pictures     images, sized as Excel sizes them         |

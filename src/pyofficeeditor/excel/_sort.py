@@ -21,6 +21,13 @@ Measured in Excel through the Sort object its dialog drives:
   same; here a refused sort changes nothing.
 - The sort is recorded in the sheet's ``<sortState>``: over the range less
   its header, its right and bottom edges cut back to the sheet's last cell.
+- A table's own Sort, which its header's dropdowns drive, sorts its data
+  rows, and records the sort in the table over those rows as they are,
+  empty ones included. A filter's own Sort sorts the rows below its
+  header and records the sort in the filter. The sheet, its filter and
+  each table keep a sort of their own, and one recorded in one leaves the
+  others alone. A range sort takes a table's rows as any others, its
+  header and totals rows too, and leaves the table as it was.
 """
 
 from __future__ import annotations
@@ -35,11 +42,13 @@ from pyofficeeditor.excel._comments import RT_COMMENTS, RT_THREADED_COMMENTS, mo
 from pyofficeeditor.excel._formulas import sorted_formula
 from pyofficeeditor.excel._reference import CellRef, RangeRef, column_index
 from pyofficeeditor.excel._rowcol import RT_VML, related_parts
-from pyofficeeditor.excel._schema import WORKSHEET_CHILD_ORDER, insert_in_schema_order
+from pyofficeeditor.excel._schema import AUTO_FILTER_CHILD_ORDER, WORKSHEET_CHILD_ORDER, insert_in_schema_order
+from pyofficeeditor.excel._tables import TABLE_CHILD_ORDER
 from pyofficeeditor.excel._values import CellError, CellValue, read_value
 
 if TYPE_CHECKING:
     from pyofficeeditor.excel._sharedstrings import SharedStrings
+    from pyofficeeditor.excel._tables import Table
     from pyofficeeditor.excel.worksheet import Worksheet
 
 #: The order of a value's kind, ascending: numbers, text, logicals, errors.
@@ -53,8 +62,9 @@ MAX_SORT_KEYS = 64
 
 @dataclass(frozen=True)
 class SortKey:
-    """One key of a sort: a column of the range, named by its letter, and
-    whether it runs down from the largest."""
+    """One key of a sort: a column, named by its letter in a range or a
+    filter and by its name in a table, and whether it runs down from the
+    largest."""
 
     column: str
     descending: bool = False
@@ -104,17 +114,77 @@ def order(rows: Sequence[Sequence[CellValue]], descending: Sequence[bool], *, ma
 # ----------------------------------------------------------------------
 
 
+def sort_keys(by: str | SortKey | Sequence[str | SortKey]) -> list[SortKey]:
+    """``by`` as keys, a column named alone running up; 1 to 64 of them."""
+    keys = [SortKey(key) if isinstance(key, str) else key for key in ([by] if isinstance(by, (str, SortKey)) else by)]
+    if not keys or len(keys) > MAX_SORT_KEYS:
+        raise ValueError(f"a sort takes 1 to {MAX_SORT_KEYS} keys; got {len(keys)}.")
+    return keys
+
+
 def sort_rows(sheet: Worksheet, block: RangeRef, keys: Sequence[SortKey], *, header: bool, match_case: bool) -> None:
     """Sort the rows of ``block`` on ``sheet`` by ``keys``, the first row
-    left where it is when it is a header, as Excel's Sort does."""
+    left where it is when it is a header, as Excel's Sort does, and record
+    the sort in the sheet: over the range less its header, its right and
+    bottom edges cut back to the sheet's last cell."""
     top = block.top + (1 if header else 0)
     columns = [column_index(key.column) for key in keys]
-    _refuse(sheet, block)
     last_row, last_column = sheet.max_row, sheet.max_column
+    _arrange(sheet, block, RangeRef(CellRef(top, block.left), CellRef(block.bottom, block.right)), keys, columns, match_case)
+    right = max(min(block.right, last_column), block.left)
+    bottom = max(min(block.bottom, last_row), top)
+    state = _sort_state(RangeRef(CellRef(top, block.left), CellRef(bottom, right)), keys, columns, block.bottom, match_case)
+    _record(sheet.document.root, state, WORKSHEET_CHILD_ORDER)
+    sheet.invalidate()
+
+
+def sort_table(sheet: Worksheet, table: Table, keys: Sequence[SortKey], columns: Sequence[int], *, match_case: bool) -> None:
+    """Sort a table's data rows by ``keys``, the columns at ``columns``, as
+    the table's own Sort does, and record the sort in the table: over its
+    data rows as they are, however many of them are empty."""
+    data = table.data_range
+    if data is None:
+        raise ValueError(f"the table {table.name!r} has no rows to sort.")
+    _arrange(sheet, data, data, keys, columns, match_case)
+    _record(table.document.root, _sort_state(data, keys, columns, data.bottom, match_case), TABLE_CHILD_ORDER)
+    sheet.invalidate()
+
+
+def sort_filter(sheet: Worksheet, keys: Sequence[SortKey], *, match_case: bool) -> None:
+    """Sort the rows the sheet's filter covers below its header by
+    ``keys``, as the filter's own Sort does, and record the sort in the
+    filter."""
+    element = sheet.document.root.child("autoFilter")
+    if element is None:
+        raise ValueError(f"{sheet.name!r} has no filter to sort.")
+    block = RangeRef.parse(element.get("ref") or "").normalized
+    if block.top == block.bottom:
+        raise ValueError(f"the filter over {block.a1} has no rows below its header to sort.")
+    columns = [column_index(key.column) for key in keys]
+    for key, column in zip(keys, columns, strict=True):
+        if not block.left <= column <= block.right:
+            raise ValueError(f"the sort key {key.column!r} is not a column of the filter over {block.a1}.")
+    data = RangeRef(CellRef(block.top + 1, block.left), CellRef(block.bottom, block.right))
+    _arrange(sheet, block, data, keys, columns, match_case)
+    _record(element, _sort_state(data, keys, columns, data.bottom, match_case), AUTO_FILTER_CHILD_ORDER)
+    sheet.invalidate()
+
+
+def _arrange(
+    sheet: Worksheet,
+    block: RangeRef,
+    data: RangeRef,
+    keys: Sequence[SortKey],
+    columns: Sequence[int],
+    match_case: bool,
+) -> None:
+    """Put the shown rows of ``data`` in order, refusing what Excel refuses
+    in ``block``, the range the sort was asked over."""
+    _refuse(sheet, block)
     elements = sheet.rows_by_number()
     # A row past the last that holds a cell is blank in every key, so it
     # sorts after the rest in its place and stays there.
-    rows = [row for row in range(top, min(block.bottom, last_row) + 1) if not sheet.row_hidden(row)]
+    rows = [row for row in range(data.top, min(data.bottom, sheet.max_row) + 1) if not sheet.row_hidden(row)]
     strings = sheet.workbook.shared_strings
     values: list[list[CellValue]] = []
     for row in rows:
@@ -123,12 +193,10 @@ def sort_rows(sheet: Worksheet, block: RangeRef, keys: Sequence[SortKey], *, hea
     permutation = order(values, [key.descending for key in keys], match_case=match_case)
     moves = {rows[source]: rows[target] for target, source in enumerate(permutation) if source != target}
     if moves:
-        _unshare(sheet, moves, block)
-        _move_cells(sheet, moves, block)
-        _move_attached(sheet, moves, block)
+        _unshare(sheet, moves, data)
+        _move_cells(sheet, moves, data)
+        _move_attached(sheet, moves, data)
         sheet.workbook.mark_values_changed()
-    _record(sheet, block, top, keys, columns, match_case, last_row, last_column)
-    sheet.invalidate()
 
 
 def _refuse(sheet: Worksheet, block: RangeRef) -> None:
@@ -311,37 +379,37 @@ def _reading_order(raw: str | None) -> tuple[int, int]:
         return (0, 0)
 
 
-def _record(
-    sheet: Worksheet,
-    block: RangeRef,
-    top: int,
+def _sort_state(
+    ref: RangeRef,
     keys: Sequence[SortKey],
     columns: Sequence[int],
+    bottom: int,
     match_case: bool,
-    last_row: int,
-    last_column: int,
-) -> None:
-    """The sheet's ``<sortState>`` as Excel's Sort writes it: the range less
-    its header, its right and bottom edges cut back to the sheet's last
-    cell, and each key over the range's rows as given."""
-    root = sheet.document.root
-    existing = root.child("sortState")
-    if existing is not None:
-        root.remove(existing)
-    right = max(min(block.right, last_column), block.left)
-    bottom = max(min(block.bottom, last_row), top)
+) -> Element:
+    """A ``<sortState>`` as Excel's Sort writes one, wherever it keeps it:
+    over ``ref``, each key's column from its top down to ``bottom``."""
     state = Element.create("sortState")
     if match_case:
         state.set("caseSensitive", "1")
-    state.set("ref", RangeRef(CellRef(top, block.left), CellRef(bottom, right)).a1)
+    state.set("ref", ref.a1)
     state.set("xmlns:xlrd2", _XLRD2)
     for key, column in zip(keys, columns, strict=True):
         condition = Element.create("sortCondition")
         if key.descending:
             condition.set("descending", "1")
-        condition.set("ref", RangeRef(CellRef(top, column), CellRef(block.bottom, column)).a1)
+        condition.set("ref", RangeRef(CellRef(ref.top, column), CellRef(bottom, column)).a1)
         state.append(condition)
-    insert_in_schema_order(root, state, WORKSHEET_CHILD_ORDER)
+    return state
 
 
-__all__ = ["MAX_SORT_KEYS", "Rank", "SortKey", "order", "rank", "sort_rows"]
+def _record(parent: Element, state: Element, child_order: tuple[str, ...]) -> None:
+    """Put ``state`` in place of the sort ``parent`` recorded before.
+    Measured, a sheet, its filter and each table keep one each, and a sort
+    recorded in one leaves the others alone."""
+    existing = parent.child("sortState")
+    if existing is not None:
+        parent.remove(existing)
+    insert_in_schema_order(parent, state, child_order)
+
+
+__all__ = ["MAX_SORT_KEYS", "Rank", "SortKey", "order", "rank", "sort_filter", "sort_keys", "sort_rows", "sort_table"]

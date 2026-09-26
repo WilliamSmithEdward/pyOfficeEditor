@@ -1,14 +1,15 @@
-"""Sorting a range's rows, held to Excel's Sort.
+"""Sorting a range's rows, a table's and a filter's, held to Excel's Sort.
 
 ``sorts.xlsx`` is authored by ``scripts/build_excel_fixtures.py``, one sort
-to a sheet and saved unsorted. Excel then sorted every sheet through its
-Sort object and saved the result as ``sorts_sorted.xlsx``, and
-``sorts_answers.json`` records each sort and the error Excel refused it
-with. The library sorts ``sorts.xlsx`` the same way, and each sheet has to
-come out as Excel's did: every cell's formula, value and style, the rows,
-notes, links, validation, conditional formats, the filter and the sort
-recorded. Values are compared once the library has calculated, since a
-sort changes what formulas read.
+to a sheet and saved unsorted. Excel then sorted every sheet, through the
+Sort object of the range, the table or the sheet's filter, and saved the
+result as ``sorts_sorted.xlsx``; ``sorts_answers.json`` records each sort
+and the error Excel refused it with. The library sorts ``sorts.xlsx`` the
+same way, and each sheet has to come out as Excel's did: every cell's
+formula, value and style, the rows, notes, links, validation, conditional
+formats, the filter, the tables and the sort each records. Values are
+compared once the library has calculated, since a sort changes what
+formulas read.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from pyofficeeditor.excel import CellValue, SortKey, Workbook, Worksheet
+from pyofficeeditor.excel import CellValue, SortKey, Table, Workbook, Worksheet
 from pyofficeeditor.excel._formulas import sorted_formula
 from pyofficeeditor.excel._rowcol import RT_VML, related_parts
 
@@ -42,7 +43,10 @@ needs_workbook = pytest.mark.skipif(
 class _Sort:
     """One sort Excel made, as the answers record it."""
 
+    #: Whose Sort made it: a range's, a table's or the sheet's filter's.
+    kind: str
     cells: str
+    table: str
     keys: tuple[SortKey, ...]
     header: bool
     match_case: bool
@@ -50,7 +54,12 @@ class _Sort:
     refused: str
 
     def apply(self, sheet: Worksheet) -> None:
-        sheet.sort(self.cells, self.keys, header=self.header, match_case=self.match_case)
+        if self.kind == "table":
+            sheet.sort_table(self.table, self.keys, match_case=self.match_case)
+        elif self.kind == "filter":
+            sheet.sort_auto_filter(self.keys, match_case=self.match_case)
+        else:
+            sheet.sort(self.cells, self.keys, header=self.header, match_case=self.match_case)
 
 
 def _sorts() -> dict[str, _Sort]:
@@ -59,7 +68,9 @@ def _sorts() -> dict[str, _Sort]:
     answers = json.loads(ANSWERS.read_text(encoding="utf-8"))
     return {
         name: _Sort(
+            str(entry["kind"]),
             str(entry["range"]),
+            str(entry["table"]),
             tuple(SortKey(str(column), bool(descending)) for column, descending in entry["keys"]),
             bool(entry["header"]),
             bool(entry["matchCase"]),
@@ -127,7 +138,19 @@ def _attached(sheet: Worksheet) -> dict[str, object]:
         "conditional formats": [[block.a1 for block in rule.ranges] for rule in sheet.conditional_formats],
         "merged": [block.a1 for block in sheet.merged_ranges],
         "filter": None if filtered is None else filtered.to_xml(),
+        "tables": {table.name: _table_state(table) for table in sheet.tables},
     }
+
+
+def _table_state(table: Table) -> tuple[str, str | None, str | None]:
+    """Where a table is, its filter and the sort it records."""
+    root = table.document.root
+    filtered, state = root.child("autoFilter"), root.child("sortState")
+    return (
+        table.ref.a1,
+        None if filtered is None else filtered.to_xml(),
+        None if state is None else state.to_xml(),
+    )
 
 
 def _sort_state(sheet: Worksheet) -> str | None:
@@ -163,8 +186,10 @@ def test_what_excel_refuses_to_sort_is_refused_and_left_alone(name: str) -> None
 
 @needs_workbook
 def test_the_measured_sorts_cover_what_the_sort_has_to_get_right() -> None:
-    """Refusals, both directions, several keys, case, and no header."""
+    """Refusals, both directions, several keys, case, no header, and each
+    Sort: a range's, a table's and a filter's."""
     assert {name for name, sort in SORTS.items() if sort.refused} == {"Array", "Merged", "Spill"}
+    assert {sort.kind for sort in SORTS.values()} == {"range", "table", "filter"}
     assert any(key.descending for sort in SORTS.values() for key in sort.keys)
     assert any(len(sort.keys) > 1 for sort in SORTS.values())
     assert any(sort.match_case for sort in SORTS.values())
@@ -267,7 +292,21 @@ def test_a_sort_needs_keys_in_its_range_and_rows_to_sort(
     assert sheet.document.root.to_xml() == before
 
 
-def test_a_table_is_not_sorted_yet(sheet: Worksheet) -> None:
+def test_a_table_is_sorted_by_its_columns_names(sheet: Worksheet) -> None:
     sheet.add_table("Amounts", "A1:B4")
-    with pytest.raises(ValueError, match="sorting a table is not supported yet"):
-        sheet.sort("A1:B4", "B", header=True)
+    with pytest.raises(KeyError, match="has no column 'x'"):
+        sheet.sort_table("Amounts", "x")
+    sheet.sort_table("Amounts", ["AMOUNT", SortKey("n", descending=True)])
+    assert [sheet[f"A{row}"].value for row in range(1, 5)] == ["n", "b", "a", "c"]
+    assert sheet.document.root.child("sortState") is None
+
+
+def test_a_filter_sorts_the_rows_below_its_header(sheet: Worksheet) -> None:
+    with pytest.raises(ValueError, match="no filter to sort"):
+        sheet.sort_auto_filter("A")
+    sheet.set_auto_filter("A1:B4")
+    with pytest.raises(ValueError, match="not a column of the filter"):
+        sheet.sort_auto_filter("C")
+    sheet.sort_auto_filter("A")
+    assert [sheet[f"A{row}"].value for row in range(1, 5)] == ["n", "a", "b", "c"]
+    assert sheet.document.root.child("sortState") is None

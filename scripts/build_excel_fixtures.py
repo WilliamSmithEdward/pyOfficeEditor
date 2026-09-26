@@ -2065,11 +2065,13 @@ End Function
 #: every kind, words a collation and case decide between, ties settled by a
 #: second key, a row's formulas, formats, note and link, hidden and
 #: filtered rows, blanks, a range past the data, shared formulas, and the
-#: merged cells and arrays Excel refuses. The workbook is saved unsorted,
-#: then sorted through the Sort object and saved again as
+#: merged cells and arrays Excel refuses; then tables sorted by their own
+#: Sort, as their dropdowns sort them, and a sheet's filter by its own. The
+#: workbook is saved unsorted, then sorted and saved again as
 #: ``sorts_sorted.xlsx``, which the library's own sort of the first is held
-#: to. The reply is one line per sort: the sheet, range, keys, header and
-#: case flags, and the error Excel refused it with, if it did.
+#: to. The reply is one line per sort: the sheet, which Sort made it, the
+#: range and table, keys, header and case flags, and the error Excel
+#: refused it with, if it did.
 _BUILD_SORTS = r'''
 Public Function Build(ByVal Target As String) As String
     Dim wb As Workbook, out As String
@@ -2101,15 +2103,16 @@ Public Function Build(ByVal Target As String) As String
     FillPlain Page(wb), "Spill", True
     wb.Worksheets("Spill").Range("D2").Formula2 = "=SEQUENCE(3)"
     FillKinds Page(wb)
+    FillTables wb
     wb.Worksheets(1).Activate
     Application.DisplayAlerts = False
     wb.RemovePersonalInformation = True
     wb.SaveAs Filename:=Target, FileFormat:=51
     out = out & Arrange(wb, "Values", "A1:B45", "B", True, False)
     out = out & Arrange(wb, "Down", "A1:B45", "-B", True, False)
-    out = out & Arrange(wb, "Case", "A1:B44", "B", True, True)
-    out = out & Arrange(wb, "CaseDown", "A1:B44", "-B", True, True)
-    out = out & Arrange(wb, "Words", "A1:B44", "B", True, False)
+    out = out & Arrange(wb, "Case", "A1:B52", "B", True, True)
+    out = out & Arrange(wb, "CaseDown", "A1:B52", "-B", True, True)
+    out = out & Arrange(wb, "Words", "A1:B52", "B", True, False)
     out = out & Arrange(wb, "Keys", "A1:C10", "B,-C", True, False)
     out = out & Arrange(wb, "Moves", "A1:G6", "B", True, False)
     out = out & Arrange(wb, "Inner", "B1:C7", "B", True, False)
@@ -2124,6 +2127,12 @@ Public Function Build(ByVal Target As String) As String
     out = out & Arrange(wb, "ArrayRow", "A1:D7", "B", True, False)
     out = out & Arrange(wb, "Spill", "A1:D7", "B", True, False)
     out = out & Arrange(wb, "Kinds", "A1:C12", "-B", True, False)
+    out = out & ArrangeTable(wb, "Table", "Sales", "-k", False)
+    out = out & ArrangeTable(wb, "TableKeys", "Grid", "k,-c", True)
+    out = out & ArrangeTable(wb, "TableFiltered", "Seen", "-k", False)
+    out = out & ArrangeTable(wb, "TableHeadless", "Bare", "k", False)
+    out = out & Arrange(wb, "TableRange", "A1:C8", "-B", True, False)
+    out = out & ArrangeFilter(wb, "Filter", "-B", False)
     wb.SaveAs Filename:=Replace(Target, ".xlsx", "_sorted.xlsx"), FileFormat:=51
     Application.DisplayAlerts = True
     Build = out
@@ -2141,7 +2150,7 @@ Private Function Arrange(wb As Workbook, ByVal Name As String, ByVal Area As Str
     Set block = ws.Range(Area)
     first = block.Row + IIf(Header, 1, 0)
     last = block.Row + block.Rows.Count - 1
-    Arrange = Name & "|" & Area & "|" & Keys & "|" & IIf(Header, "1", "0") & "|" & IIf(MatchCase, "1", "0") & "|"
+    Arrange = Name & "|range|" & Area & "||" & Keys & "|" & IIf(Header, "1", "0") & "|" & IIf(MatchCase, "1", "0") & "|"
     On Error GoTo Refused
     With ws.Sort
         .SortFields.Clear
@@ -2165,6 +2174,71 @@ Private Function Arrange(wb As Workbook, ByVal Name As String, ByVal Area As Str
     Exit Function
 Refused:
     Arrange = Arrange & Err.Description & vbLf
+End Function
+
+' A table sorted through its own Sort, as its header's dropdowns sort it,
+' each key a column's name. A table without a header row takes no Header.
+Private Function ArrangeTable(wb As Workbook, ByVal Name As String, ByVal TableName As String, ByVal Keys As String, _
+                              ByVal MatchCase As Boolean) As String
+    Dim lo As ListObject, parts() As String, i As Long, column As String, direction As Long
+    Set lo = wb.Worksheets(Name).ListObjects(TableName)
+    ArrangeTable = Name & "|table|" & lo.Range.Address(False, False) & "|" & TableName & "|" & Keys & "|1|" & _
+        IIf(MatchCase, "1", "0") & "|"
+    On Error GoTo Refused
+    With lo.Sort
+        .SortFields.Clear
+        parts = Split(Keys, ",")
+        For i = 0 To UBound(parts)
+            column = parts(i)
+            direction = 1
+            If Left$(column, 1) = "-" Then
+                column = Mid$(column, 2)
+                direction = 2
+            End If
+            .SortFields.Add Key:=lo.ListColumns(column).DataBodyRange, SortOn:=0, Order:=direction
+        Next i
+        If lo.ShowHeaders Then .Header = 1
+        .MatchCase = MatchCase
+        .Orientation = 1
+        .Apply
+    End With
+    ArrangeTable = ArrangeTable & vbLf
+    Exit Function
+Refused:
+    ArrangeTable = ArrangeTable & Err.Description & vbLf
+End Function
+
+' A sheet's filter sorted through its own Sort, as its dropdowns sort it,
+' each key a column over the rows below the filter's header.
+Private Function ArrangeFilter(wb As Workbook, ByVal Name As String, ByVal Keys As String, _
+                               ByVal MatchCase As Boolean) As String
+    Dim ws As Worksheet, block As Range, parts() As String, i As Long, column As String, direction As Long
+    Set ws = wb.Worksheets(Name)
+    Set block = ws.AutoFilter.Range
+    ArrangeFilter = Name & "|filter|" & block.Address(False, False) & "||" & Keys & "|1|" & IIf(MatchCase, "1", "0") & "|"
+    On Error GoTo Refused
+    With ws.AutoFilter.Sort
+        .SortFields.Clear
+        parts = Split(Keys, ",")
+        For i = 0 To UBound(parts)
+            column = parts(i)
+            direction = 1
+            If Left$(column, 1) = "-" Then
+                column = Mid$(column, 2)
+                direction = 2
+            End If
+            .SortFields.Add Key:=ws.Range(column & (block.Row + 1) & ":" & column & (block.Row + block.Rows.Count - 1)), _
+                SortOn:=0, Order:=direction
+        Next i
+        .Header = 1
+        .MatchCase = MatchCase
+        .Orientation = 1
+        .Apply
+    End With
+    ArrangeFilter = ArrangeFilter & vbLf
+    Exit Function
+Refused:
+    ArrangeFilter = ArrangeFilter & Err.Description & vbLf
 End Function
 
 Private Sub WriteDown(ws As Worksheet, ByVal col As Long, ByVal texts As String, Optional ByVal start As Long = 1)
@@ -2193,15 +2267,17 @@ Private Sub FillValues(ws As Worksheet, ByVal Name As String)
 End Sub
 
 Private Sub FillWords(ws As Worksheet, ByVal Name As String)
-    ' Words a collation decides between, case and hyphens among them.
+    ' Words a collation decides between, case and hyphens among them, and
+    ' digits full width and raised, a zero-width space, and final sigma.
     ws.Name = Name
-    Numbered ws, 44
+    Numbered ws, 52
     ws.Range("B1").Value = "w"
-    ws.Range("B2:B44").NumberFormat = "@"
+    ws.Range("B2:B52").NumberFormat = "@"
     WriteDown ws, 2, "aB|Ab|ab|AB|a-b|A-b|a-B|resume|Resume|r" & ChrW(233) & "sum" & ChrW(233) & "|R" & ChrW(233) & _
         "sum" & ChrW(233) & "|RESUME|r" & ChrW(233) & "sume|coop|co-op|Coop|Co-op|b|B|bb|Bb|bB|BB|a|A|" & ChrW(225) & "|" & _
         ChrW(193) & "|" & ChrW(228) & "|" & ChrW(196) & "|stra" & ChrW(223) & "e|Strasse|STRASSE|strasse|x1|X1|x10|" & _
-        "X2|" & ChrW(453) & "|" & ChrW(454) & "|" & ChrW(452) & "|" & ChrW(64257) & "|fi|FI", 2
+        "X2|" & ChrW(453) & "|" & ChrW(454) & "|" & ChrW(452) & "|" & ChrW(64257) & "|fi|FI|" & ChrW(65297) & "|1|" & _
+        ChrW(178) & "|2|a" & ChrW(8203) & "b|" & ChrW(962) & "|" & ChrW(931) & "|" & ChrW(963), 2
 End Sub
 
 Private Sub FillKeys(ws As Worksheet)
@@ -2300,6 +2376,61 @@ Private Sub FillPlainRows(ws As Worksheet)
     Next r
 End Sub
 
+Private Sub FillTables(wb As Workbook)
+    ' Tables for their own Sort: one with a totals row, a calculated column
+    ' and a note, read from outside; one away from A1, for two keys with
+    ' case matched; one whose filter hides rows; one with no header row;
+    ' one a range sort takes whole, totals row and all; and a sheet's own
+    ' filter, hiding a row, for the filter's Sort.
+    Dim ws As Worksheet, lo As ListObject, r As Long, keys As Variant, texts As Variant
+    Set ws = Page(wb)
+    FillPlain ws, "Table", True
+    ws.Range("D1").Value = "calc"
+    Set lo = ws.ListObjects.Add(1, ws.Range("A1:D7"), , 1)
+    lo.Name = "Sales"
+    lo.ListColumns("calc").DataBodyRange.Formula = "=[@k]*2"
+    lo.ShowTotals = True
+    lo.ListColumns("k").TotalsCalculation = 1
+    ws.Range("C3").AddComment "note on C3"
+    ws.Range("F2").Formula = "=B3"
+
+    Set ws = Page(wb)
+    ws.Name = "TableKeys"
+    keys = Array(10, 10, 20, 10, 20)
+    texts = Array("b", "B", "a", "A", "b")
+    ws.Range("C3:E3").Value = Array("i", "k", "c")
+    For r = 0 To 4
+        ws.Cells(4 + r, 3).Value = r
+        ws.Cells(4 + r, 4).Value = keys(r)
+        ws.Cells(4 + r, 5).Value = texts(r)
+    Next r
+    Set lo = ws.ListObjects.Add(1, ws.Range("C3:E8"), , 1)
+    lo.Name = "Grid"
+
+    Set ws = Page(wb)
+    FillPlain ws, "TableFiltered", True
+    Set lo = ws.ListObjects.Add(1, ws.Range("A1:C7"), , 1)
+    lo.Name = "Seen"
+    lo.Range.AutoFilter Field:=2, Criteria1:=">25"
+
+    Set ws = Page(wb)
+    FillPlain ws, "TableHeadless", True
+    Set lo = ws.ListObjects.Add(1, ws.Range("A1:C7"), , 1)
+    lo.Name = "Bare"
+    lo.ShowHeaders = False
+
+    Set ws = Page(wb)
+    FillPlain ws, "TableRange", True
+    Set lo = ws.ListObjects.Add(1, ws.Range("A1:C7"), , 1)
+    lo.Name = "Whole"
+    lo.ShowTotals = True
+    lo.ListColumns("k").TotalsCalculation = 1
+
+    Set ws = Page(wb)
+    FillPlain ws, "Filter", True
+    ws.Range("A1:C7").AutoFilter Field:=2, Criteria1:=">15"
+End Sub
+
 Private Sub FillKinds(ws As Worksheet)
     ' Dates, times, logicals, errors and numbers written as text.
     ws.Name = "Kinds"
@@ -2376,16 +2507,20 @@ def error_check_answers(reply: str) -> Answers:
 
 
 def sort_answers(reply: str) -> Answers:
-    """One line per sheet: its name, the range, the keys (a leading ``-``
-    for descending), whether the first row is a header, whether case
-    matters, and the error Excel refused the sort with, if it did."""
+    """One line per sheet: its name; which Sort made it, a range's, a
+    table's or a filter's; the range, and the table's name; the keys, a
+    leading ``-`` for descending; whether the first row is a header;
+    whether case matters; and the error Excel refused the sort with, if it
+    did."""
     answers: Answers = {}
     for line in reply.splitlines():
         if not line.strip():
             continue
-        name, area, keys, header, match_case, refused = line.split("|", 5)
+        name, kind, area, table, keys, header, match_case, refused = line.split("|", 7)
         answers[name] = {
+            "kind": kind,
             "range": area,
+            "table": table,
             "keys": [[key.lstrip("-"), key.startswith("-")] for key in keys.split(",")],
             "header": header == "1",
             "matchCase": match_case == "1",

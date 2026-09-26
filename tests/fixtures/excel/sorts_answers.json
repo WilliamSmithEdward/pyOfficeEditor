@@ -7,9 +7,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:D7",
-    "refused": "You can't change part of an array."
+    "refused": "You can't change part of an array.",
+    "table": ""
   },
   "ArrayRow": {
     "header": true,
@@ -19,9 +21,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:D7",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "Blanks": {
     "header": true,
@@ -31,9 +35,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:C9",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "Case": {
     "header": true,
@@ -43,9 +49,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": true,
-    "range": "A1:B44",
-    "refused": ""
+    "range": "A1:B52",
+    "refused": "",
+    "table": ""
   },
   "CaseDown": {
     "header": true,
@@ -55,9 +63,11 @@
         true
       ]
     ],
+    "kind": "range",
     "matchCase": true,
-    "range": "A1:B44",
-    "refused": ""
+    "range": "A1:B52",
+    "refused": "",
+    "table": ""
   },
   "Down": {
     "header": true,
@@ -67,9 +77,25 @@
         true
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:B45",
-    "refused": ""
+    "refused": "",
+    "table": ""
+  },
+  "Filter": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        true
+      ]
+    ],
+    "kind": "filter",
+    "matchCase": false,
+    "range": "A1:C7",
+    "refused": "",
+    "table": ""
   },
   "Filtered": {
     "header": true,
@@ -79,9 +105,11 @@
         true
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:C7",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "Hidden": {
     "header": true,
@@ -91,9 +119,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:C7",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "Inner": {
     "header": true,
@@ -103,9 +133,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "B1:C7",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "Keys": {
     "header": true,
@@ -119,9 +151,11 @@
         true
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:C10",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "Kinds": {
     "header": true,
@@ -131,9 +165,11 @@
         true
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:C12",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "Merged": {
     "header": true,
@@ -143,9 +179,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:D7",
-    "refused": "To do this, all the merged cells need to be the same size."
+    "refused": "To do this, all the merged cells need to be the same size.",
+    "table": ""
   },
   "Moves": {
     "header": true,
@@ -155,9 +193,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:G6",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "NoHeader": {
     "header": false,
@@ -167,9 +207,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:C6",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "Shared": {
     "header": true,
@@ -179,9 +221,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:D6",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "Spill": {
     "header": true,
@@ -191,9 +235,85 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:D7",
-    "refused": "You can't change part of an array."
+    "refused": "You can't change part of an array.",
+    "table": ""
+  },
+  "Table": {
+    "header": true,
+    "keys": [
+      [
+        "k",
+        true
+      ]
+    ],
+    "kind": "table",
+    "matchCase": false,
+    "range": "A1:D8",
+    "refused": "",
+    "table": "Sales"
+  },
+  "TableFiltered": {
+    "header": true,
+    "keys": [
+      [
+        "k",
+        true
+      ]
+    ],
+    "kind": "table",
+    "matchCase": false,
+    "range": "A1:C7",
+    "refused": "",
+    "table": "Seen"
+  },
+  "TableHeadless": {
+    "header": true,
+    "keys": [
+      [
+        "k",
+        false
+      ]
+    ],
+    "kind": "table",
+    "matchCase": false,
+    "range": "A2:C7",
+    "refused": "",
+    "table": "Bare"
+  },
+  "TableKeys": {
+    "header": true,
+    "keys": [
+      [
+        "k",
+        false
+      ],
+      [
+        "c",
+        true
+      ]
+    ],
+    "kind": "table",
+    "matchCase": true,
+    "range": "C3:E8",
+    "refused": "",
+    "table": "Grid"
+  },
+  "TableRange": {
+    "header": true,
+    "keys": [
+      [
+        "B",
+        true
+      ]
+    ],
+    "kind": "range",
+    "matchCase": false,
+    "range": "A1:C8",
+    "refused": "",
+    "table": ""
   },
   "Trim": {
     "header": true,
@@ -203,9 +323,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:H20",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "Values": {
     "header": true,
@@ -215,9 +337,11 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
     "range": "A1:B45",
-    "refused": ""
+    "refused": "",
+    "table": ""
   },
   "Words": {
     "header": true,
@@ -227,8 +351,10 @@
         false
       ]
     ],
+    "kind": "range",
     "matchCase": false,
-    "range": "A1:B44",
-    "refused": ""
+    "range": "A1:B52",
+    "refused": "",
+    "table": ""
   }
 }

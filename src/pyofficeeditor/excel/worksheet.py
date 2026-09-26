@@ -183,7 +183,7 @@ from pyofficeeditor.excel._shapes import (
     with_vml_shape,
     without_vml_shape,
 )
-from pyofficeeditor.excel._sort import MAX_SORT_KEYS, SortKey, sort_rows
+from pyofficeeditor.excel._sort import SortKey, sort_filter, sort_keys, sort_rows, sort_table
 from pyofficeeditor.excel._tables import (
     CT_TABLE,
     RT_TABLE,
@@ -1626,21 +1626,49 @@ class Worksheet:
         or an array formula the sort would split, are refused with a
         ``ValueError`` and nothing changed, as Excel refuses them. The sort
         is recorded in the sheet's sort state.
+
+        A table's rows sort here as any others, its header and totals rows
+        too when the range takes them in, as Excel's Sort sorts them;
+        :meth:`sort_table` sorts a table's data as the table does.
         """
         block = (RangeRef.parse(cells) if isinstance(cells, str) else cells).normalized
-        keys = [SortKey(key) if isinstance(key, str) else key for key in ([by] if isinstance(by, (str, SortKey)) else by)]
-        if not keys or len(keys) > MAX_SORT_KEYS:
-            raise ValueError(f"a sort takes 1 to {MAX_SORT_KEYS} keys; got {len(keys)}.")
+        keys = sort_keys(by)
         if header and block.top == block.bottom:
             raise ValueError(f"{block.a1} is one row, so there is nothing below its header to sort.")
         for key in keys:
             column = column_index(key.column)
             if not block.left <= column <= block.right:
                 raise ValueError(f"the sort key {key.column!r} is not a column of {block.a1}.")
-        for table in self.tables:
-            if table.ref.intersects(block):
-                raise ValueError(f"{block.a1} meets the table {table.name!r}; sorting a table is not supported yet.")
         sort_rows(self, block, keys, header=header, match_case=match_case)
+
+    def sort_table(self, name: str, by: str | SortKey | Sequence[str | SortKey], *, match_case: bool = False) -> None:
+        """Sort a table's data rows by the columns ``by`` names, as the
+        table's own Sort does, which its header's dropdowns drive. A key
+        names a column of the table, as its header does, or is a
+        :class:`SortKey` naming one; the rows order as :meth:`sort` orders
+        them. The header and totals rows stay where they are, and the sort
+        is recorded in the table, where Excel records it, rather than in the
+        sheet.
+        """
+        table = self.table(name)
+        keys = sort_keys(by)
+        names = [column.casefold() for column in table.column_names]
+        columns: list[int] = []
+        for key in keys:
+            if key.column.casefold() not in names:
+                raise KeyError(f"table {table.name!r} has no column {key.column!r}. It has: {', '.join(table.column_names)}")
+            columns.append(table.ref.left + names.index(key.column.casefold()))
+        sort_table(self, table, keys, columns, match_case=match_case)
+
+    def sort_auto_filter(self, by: str | SortKey | Sequence[str | SortKey], *, match_case: bool = False) -> None:
+        """Sort the rows the sheet's filter covers, below its header, by the
+        columns ``by`` names, as the filter's own Sort does, which its
+        dropdowns drive. A key is a column's letter or a :class:`SortKey`,
+        and the rows order as :meth:`sort` orders them; a row the filter
+        hides keeps its place. The sort is recorded in the filter, where
+        Excel records it, rather than in the sheet.
+        """
+        sort_filter(self, sort_keys(by), match_case=match_case)
 
     def clear_auto_filter(self, *, show_rows: bool = True) -> None:
         """Take the filter off, and show the rows it was hiding.
