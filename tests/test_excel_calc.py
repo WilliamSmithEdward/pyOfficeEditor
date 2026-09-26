@@ -261,13 +261,29 @@ def test_a_literal_keeps_fifteen_digits_cut_off() -> None:
         ("12:30", 0.5208333333333334),
         ("Jan 15, 2020", 43845.0),
         ("1/15", 46037.0),
+        # Measured: a group after the first may be longer than three digits,
+        # the first may be any length, and a fraction may follow them.
+        ("1,0000", 10000.0),
+        ("12,34567,890", 1234567890.0),
+        ("0010,000", 10000.0),
+        ("-1,000 1/2", -1000.5),
+        ("1 32767/1", 32768.0),
     ],
 )
 def test_text_that_reads_as_a_number(text: str, number: float) -> None:
     assert text_to_number(text, TODAY) == number
 
 
-@pytest.mark.parametrize("text", ["", "TRUE", "1,00", "(-5)", "5-", "12:30PM", "1e308", "\t1"])
+@pytest.mark.parametrize(
+    "text",
+    [
+        *("", "TRUE", "1,00", "(-5)", "5-", "12:30PM", "1e308", "\t1"),
+        # Measured: a first group of zeros, a currency sign with a percent
+        # sign, a fraction after a decimal point, and a fraction's part past
+        # 32767 are not numbers.
+        *("0,123", "1,000,00", "$5%", "%$5", "($5%)", "1.5 1/2", "1 1/32768", "1 32768/1"),
+    ],
+)
 def test_text_that_is_not_a_number(text: str) -> None:
     assert text_to_number(text, TODAY) is None
 

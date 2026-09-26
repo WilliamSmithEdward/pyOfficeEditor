@@ -256,9 +256,14 @@ class Lambda(CellError):  # noqa: N818 - an error value, not an exception
 # ----------------------------------------------------------------------
 
 _CURRENCY = "$\u20ac"
-_MANTISSA = re.compile(r"(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)?(?:\.[0-9]*)?")
+#: Measured: digits may be grouped by commas when the first group is not
+#: all zeros and every later group has three digits or more, so
+#: ``1,0000`` is 10000 and ``0,123`` is not a number.
+_MANTISSA = re.compile(r"(?:0*[1-9][0-9]*(?:,[0-9]{3,})+|[0-9]+)?(?:\.[0-9]*)?")
 _EXPONENT = re.compile(r"[eE][+-]?[0-9]+")
 _FRACTION = re.compile(r" ([0-9]+)/([0-9]+)")
+#: The largest numerator or denominator a fraction may have, measured.
+_FRACTION_PART = 32767
 
 
 def text_to_number(text: str, today: dt.date, *, epoch_1904: bool = False) -> float | None:
@@ -280,7 +285,8 @@ def _skip(text: str, index: int) -> int:
 
 
 def _plain_number(text: str) -> float | None:
-    """A number with its sign, currency, percent and parentheses."""
+    """A number with its sign, currency or percent, and parentheses.
+    Measured: a currency sign and a percent sign together are not one."""
     index = 0
     sign = ""
     currency = percent = parenthesis = False
@@ -291,11 +297,11 @@ def _plain_number(text: str) -> float | None:
         char = text[index]
         if char in "+-" and not sign and not parenthesis:
             sign = char
-        elif char in _CURRENCY and not currency:
+        elif char in _CURRENCY and not currency and not percent:
             currency = True
         elif char == "(" and not parenthesis and not sign:
             parenthesis = True
-        elif char == "%" and not percent:
+        elif char == "%" and not percent and not currency:
             percent = True
         else:
             break
@@ -310,7 +316,8 @@ def _plain_number(text: str) -> float | None:
     fraction = None
     if exponent:
         index = exponent.end()
-    elif "," not in digits and "." not in digits:
+    elif "." not in digits:
+        # Measured: a fraction may follow digits grouped by thousands.
         fraction = _FRACTION.match(text, index)
         if fraction:
             index = fraction.end()
@@ -319,17 +326,17 @@ def _plain_number(text: str) -> float | None:
         return None
     value = found
     if fraction:
-        denominator = int(fraction.group(2))
-        if denominator == 0:
+        numerator, denominator = int(fraction.group(1)), int(fraction.group(2))
+        if denominator == 0 or numerator > _FRACTION_PART or denominator > _FRACTION_PART:
             return None
-        value = value + int(fraction.group(1)) / denominator
+        value = value + numerator / denominator
 
     while True:
         index = _skip(text, index)
         if index >= len(text):
             break
         char = text[index]
-        if char == "%" and not percent:
+        if char == "%" and not percent and not currency:
             percent = True
         elif char == ")" and parenthesis:
             parenthesis = False

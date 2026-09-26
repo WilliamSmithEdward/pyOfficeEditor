@@ -256,6 +256,17 @@ anything trailing the file is swept into the oldest release's notes. -->
   in row 5 is `#VALUE!`. In a dynamic-array formula it still takes the
   range whole.
 
+- **Text read as a number misread thousands separators, fractions and a
+  currency sign beside a percent sign.** VALUE, and text in arithmetic,
+  took only groups of exactly three digits after a comma, so `1,0000`
+  was not a number, and took `0,123` and `$5%`, which Excel refuses.
+  Measured on 957 strings, which now match Excel but for `1 -1/2`, a
+  date to Excel: every group after the first has three digits or more
+  and the first is not all zeros, a fraction may follow grouped digits,
+  as in `1,000 1/2`, but not a decimal point, its numerator and
+  denominator are at most 32767, and a currency sign and a percent sign
+  together are not a number.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added
