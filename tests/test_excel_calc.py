@@ -10,6 +10,7 @@ formulas reading one another, and what calculating writes back.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import math
 import os
 from decimal import Decimal
@@ -28,6 +29,7 @@ from pyofficeeditor.excel import (
     criteria,
 )
 from pyofficeeditor.excel._calc import parse, special
+from pyofficeeditor.excel._calc.dates import parse_date_time
 from pyofficeeditor.excel._calc.functions.distributions import normal_inverse
 from pyofficeeditor.excel._calc.nodes import (
     AreaReference,
@@ -56,6 +58,7 @@ from pyofficeeditor.excel._reference import AxisRef, CellRef
 from pyofficeeditor.exceptions import UnsupportedFormulaError
 
 TODAY = dt.date(2026, 9, 22)
+DATE_TEXTS = Path(__file__).parent / "fixtures" / "excel" / "date_texts.json"
 
 # ----------------------------------------------------------------------
 # Parsing
@@ -286,6 +289,50 @@ def test_text_that_reads_as_a_number(text: str, number: float) -> None:
 )
 def test_text_that_is_not_a_number(text: str) -> None:
     assert text_to_number(text, TODAY) is None
+
+
+def test_text_reads_as_a_date_or_a_time_as_excel_reads_it() -> None:
+    # Strings measured in Excel by scripts/measure_date_texts.py, each with
+    # VALUE of it and whether DATEVALUE and TIMEVALUE read it, which they do
+    # as VALUE's days and the rest.
+    record = json.loads(DATE_TEXTS.read_text(encoding="utf-8"))
+    measured = dt.date.fromisoformat(record["measured"])
+    wrong: list[str] = []
+    for key, epoch_1904 in (("cases", False), ("cases_1904", True)):
+        for text, value, read in record[key]:
+            found = parse_date_time(text, measured, epoch_1904=epoch_1904)
+            as_measured = found == value if read else found is None
+            if text_to_number(text, measured, epoch_1904=epoch_1904) != value or not as_measured:
+                wrong.append(text)
+    assert len(record["cases"]) > 18000
+    assert wrong == []
+
+
+@pytest.mark.parametrize(
+    ("formula", "value"),
+    [
+        # Measured: a number that is no day of the month is a year.
+        ('DATEVALUE("1/2020")', 43831.0),
+        ('DATEVALUE("2/29")', 47150.0),
+        ('DATEVALUE("Jan/99")', 36161.0),
+        # A name, a day and a year take a comma.
+        ('ISERROR(DATEVALUE("Jan 1 99"))', True),
+        # One separator may trail a time, a comma with a space after it.
+        ('TIMEVALUE("12:30, ")', 0.5208333333333334),
+        ('ISERROR(TIMEVALUE("12:30,"))', True),
+        # Minutes and seconds, and a field past its range.
+        ('VALUE("93:22.15")', 0.06483969907407407),
+        ('VALUE("25:00")', 1.0416666666666667),
+        ('ISERROR(VALUE("24:60"))', True),
+        # A month's name as a field is the negative of its number, unsigned.
+        ('VALUE("Jan:5")', 178956970.6284722),
+        # Numbers after a date and a time are dropped.
+        ('VALUE("1/1/2020 12:00 4")', 43831.5),
+        ('VALUE("12:00 PM1/1/2020")', 43831.5),
+    ],
+)
+def test_a_formula_reads_a_date_or_a_time_from_text(book: Workbook, formula: str, value: CellValue) -> None:
+    assert book["Data"].evaluate(formula, today=dt.date(2026, 9, 26)) == value
 
 
 # ----------------------------------------------------------------------

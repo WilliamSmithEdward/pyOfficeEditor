@@ -272,8 +272,7 @@ def text_to_number(text: str, today: dt.date, *, epoch_1904: bool = False) -> fl
     number = plain_number(text)
     if number is not None:
         return number
-    body = text.strip(" ")
-    return parse_date_time(body, today, epoch_1904=epoch_1904) if body else None
+    return parse_date_time(text, today, epoch_1904=epoch_1904)
 
 
 def plain_number(text: str) -> float | None:

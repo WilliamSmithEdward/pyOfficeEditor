@@ -49,7 +49,7 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from pyofficeeditor.excel._calc.dates import days_in_month
+from pyofficeeditor.excel._calc.dates import days_in_month, month_named
 from pyofficeeditor.excel._calc.evaluator import Context
 from pyofficeeditor.excel._calc.lexer import FormulaSyntaxError
 from pyofficeeditor.excel._calc.nodes import (
@@ -141,12 +141,6 @@ class IgnoredError:
 # Text that reads as a date with a two-digit year
 # ----------------------------------------------------------------------
 
-_MONTH_NAMES = (
-    "january", "february", "march", "april", "may", "june",
-    "july", "august", "september", "october", "november", "december",
-)  # fmt: skip
-
-
 @dataclass(frozen=True)
 class _DatePart:
     """A run of digits, or a month's name as its number."""
@@ -161,17 +155,6 @@ class _DatePart:
     @property
     def two_digit(self) -> bool:
         return self.month is None and len(self.digits) <= 2
-
-
-def _month_named(word: str) -> int | None:
-    """A month named by three letters or more of its English name."""
-    lowered = word.lower()
-    if len(lowered) < 3:
-        return None
-    for number, name in enumerate(_MONTH_NAMES, start=1):
-        if name.startswith(lowered):
-            return number
-    return None
 
 
 def _date_parts(text: str) -> list[_DatePart] | None:
@@ -192,7 +175,7 @@ def _date_parts(text: str) -> list[_DatePart] | None:
         elif index < len(text) and text[index].isalpha():
             while index < len(text) and text[index].isalpha():
                 index += 1
-            month = _month_named(text[start:index])
+            month = month_named(text[start:index])
             if month is None:
                 return None
             parts.append(_DatePart(month=month))

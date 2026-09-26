@@ -277,12 +277,30 @@ anything trailing the file is swept into the oldest release's notes. -->
   currency sign beside a percent sign.** VALUE, and text in arithmetic,
   took only groups of exactly three digits after a comma, so `1,0000`
   was not a number, and took `0,123` and `$5%`, which Excel refuses.
-  Measured on 957 strings, which now match Excel but for `1 -1/2`, a
-  date to Excel: every group after the first has three digits or more
-  and the first is not all zeros, a fraction may follow grouped digits,
-  as in `1,000 1/2`, but not a decimal point, its numerator and
-  denominator are at most 32767, and a currency sign and a percent sign
-  together are not a number.
+  Measured on 957 strings, which now all match Excel: every group after
+  the first has three digits or more and the first is not all zeros, a
+  fraction may follow grouped digits, as in `1,000 1/2`, but not a
+  decimal point, its numerator and denominator are at most 32767, and a
+  currency sign and a percent sign together are not a number.
+
+- **Text read as a date or a time missed much of what Excel reads.**
+  VALUE, DATEVALUE, TIMEVALUE and text in arithmetic knew a few patterns,
+  so `1/2020`, `Jan/99`, `13/Jan/99`, `1Jan99`, `12:00 1/1/2020` and
+  `93:22.15` were not dates or times, and `Jan 1 99`, `24:60` and
+  `1:60 AM` were, which Excel refuses. Measured, a number after a month is
+  a year when it is no day of that month, so `2/29` is February 2029 in
+  2026. Parts may be apart by a slash or a dash with spaces around it, or
+  by nothing between a number and a name, and a name, a day and a year
+  take a comma. A time's field may pass its range when no field before
+  it did, so `25:00` and `0:99` are times and `24:60` is not, and seconds
+  are kept to the millisecond. A date and then a time are apart by
+  spaces, and numbers after them are dropped; a time and then a date may
+  also be apart by a comma, a slash, a dash or nothing. Excel's oddities
+  are kept too: a month's name where a time's field would be counts as
+  the negative of its number read as an unsigned 32-bit integer, so
+  `Jan:5` is some 179 million days. Held to 18,899 strings measured with
+  all three functions, 4,945 of them random ones measured only after the
+  rules were found, and 35 more in the 1904 date system.
 
 ## [0.3.0] - 2026-09-23
 

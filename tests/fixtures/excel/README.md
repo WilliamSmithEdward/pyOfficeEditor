@@ -72,10 +72,10 @@ spelled three ways, and the off state is -4146 rather than 0.
 
 ## Measured by script
 
-Four corpora record what Excel did rather than what it wrote, and each case
-in them is a test. All four came from Excel 16.0 build 20326 in en-US. The
+Five corpora record what Excel did rather than what it wrote, and each case
+in them is a test. All five came from Excel 16.0 build 20326 in en-US. The
 first two scripts run beside other harness sessions, since they only run
-hidden macros; the other two wait for the lock like the fixture builder.
+hidden macros; the other three wait for the lock like the fixture builder.
 
 | File | Built by | What it records |
 |------|----------|-----------------|
@@ -83,13 +83,15 @@ hidden macros; the other two wait for the lock like the fixture builder.
 | `number_formats.json` | `scripts/measure_number_formats.py` | The text Excel showed for 503 format codes, each under 21 to 73 values, 27,898 texts in all across both date systems, and the nine codes it refused; the code of all 164 built-in ids with its text for five sample values; and the text of 782 cells of the committed fixtures. `test_excel_numfmt.py` renders every one. |
 | `filter_semantics.json` | `scripts/measure_filters.py` | 358 criteria, each applied by Excel to one of 31 columns built to trip it, with the rows it hid and the markup it stored. 261 went through the object model; 93 were written straight into a package and applied from the file, for markup the object model will not write; 4 are special cases, such as rows hidden by hand. `test_excel_filter_semantics.py` evaluates every one. |
 | `text_checks.json` | `scripts/measure_text_checks.py` | 6,683 strings, each typed into a cell after an apostrophe, and whether error checking called it a number stored as text or a date with a two-digit year: a grid of numbers and month names joined every way, the separators, digit counts and spellings that settle a borderline case, and random strings made from the same pieces with a fixed seed. `test_excel_errorchecks.py` judges every one. |
+| `date_texts.json` | `scripts/measure_date_texts.py` | 18,899 strings, each put in a cell as text, with VALUE of it as the exact double Excel calculated or an error, and whether DATEVALUE and TIMEVALUE read it, which they do as VALUE's whole days and the rest: times with fields of every width and AM or PM, numbers and month names joined by every separator, dates and times joined either way and what may trail them, and random strings made with fixed seeds, the last 4,945 measured only after the rules were found; and 35 more in a workbook using the 1904 date system. `test_excel_calc.py` reads every one. |
 
 Rebuilding any of them replaces it, since a corpus has no content to keep:
 what it holds is whatever Excel answers. The dates in
 `filter_semantics.json` are relative to the day it was built, which it
 records, and its tests measure "today" from that day; `formulas.xlsx` does
-the same for the texts in it that name a day without a year, and
-`text_checks.json` for `2/29`, a day only in a leap year.
+the same for the texts in it that name a day without a year,
+`text_checks.json` for `2/29`, a day only in a leap year, and
+`date_texts.json` for every date it reads without a year.
 
 A fixture that already exists is left alone, because Excel stamps every part
 with a fresh revision GUID and so never produces the same bytes twice.

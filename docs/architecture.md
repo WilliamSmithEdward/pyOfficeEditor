@@ -377,7 +377,9 @@ tests/
                                 wrote for the same charts
   test_excel_dxf.py             differential formats and the dxfs table
   test_excel_calc.py            the formula parser, Excel's arithmetic,
-                                and calculating a whole workbook
+                                text read as a date against
+                                date_texts.json, and calculating a whole
+                                workbook
   test_excel_formula_corpus.py  every formula in formulas.xlsx,
                                 calculated and held to Excel's result
   test_excel_errorchecks.py     error checking, against errorchecks.xlsx
@@ -385,7 +387,7 @@ tests/
   test_excel_live_gate.py       real Excel, opt-in
   fixtures/excel/               twenty-three Excel-authored packages:
                                 three sourced, twenty scripted, and
-                                four measured corpora; see its README
+                                five measured corpora; see its README
 ```
 
 - **Always** run pytest with `-p no:randomly` to keep ordering reproducible.
@@ -393,17 +395,18 @@ tests/
   merge: `pyright src tests`.
 - **Ruff** must pass: `ruff check src tests scripts`.
 - New behavior lands with its test in the same commit.
-- The suite needs no Office installation. It runs against twenty-one committed
+- The suite needs no Office installation. It runs against twenty-five committed
   Excel-authored packages, an `.xlsb` among them, and against
   openpyxl-authored ones generated during the run, because a reader that
   only ever sees one producer's output encodes that producer's habits as
   rules.
 - Richer Excel-authored fixtures come from
   `scripts/build_excel_fixtures.py`, which drives real Excel through
-  `pyvbaharness`. Tests needing them skip when they are absent. The three
+  `pyvbaharness`. Tests needing them skip when they are absent. The five
   measured corpora come from `scripts/measure_number_formats.py`,
-  `scripts/measure_filters.py` and `scripts/measure_formulas.py` the same
-  way.
+  `scripts/measure_filters.py`, `scripts/measure_formulas.py`,
+  `scripts/measure_text_checks.py` and `scripts/measure_date_texts.py` the
+  same way.
 
 ### 8.1 The fidelity gate
 
