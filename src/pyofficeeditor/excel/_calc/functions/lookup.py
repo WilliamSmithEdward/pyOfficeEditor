@@ -23,7 +23,7 @@ from pyofficeeditor.excel._calc.functions.common import matrix
 from pyofficeeditor.excel._calc.lexer import FormulaSyntaxError
 from pyofficeeditor.excel._calc.nodes import AreaReference, AxisReference, CellReference, Missing, NameReference, Node
 from pyofficeeditor.excel._calc.parser import parse
-from pyofficeeditor.excel._calc.registry import LAZY, REF, A, R, V, function
+from pyofficeeditor.excel._calc.registry import LAZY, REF, R, V, function
 from pyofficeeditor.excel._calc.values import (
     NA,
     VALUE,
@@ -383,8 +383,13 @@ def ADDRESS(
     return text
 
 
-@function("TRANSPOSE", A)
+@function("TRANSPOSE", R)
 def TRANSPOSE(context: Context, array: Value) -> Value:
+    """Measured: in a formula written before dynamic arrays, a range is cut
+    to the formula's own row or column first, as a single value would be,
+    so ``=SUM(TRANSPOSE(A1:A3))`` in row 5 is ``#VALUE!``."""
+    if isinstance(array, Reference) and not context.array:
+        array = context.implicit(array)
     grid = matrix(context, array)
     return Array([list(column) for column in zip(*grid.rows, strict=True)])
 

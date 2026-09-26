@@ -250,6 +250,12 @@ anything trailing the file is swept into the oldest release's notes. -->
 - **VSTACK and HSTACK given an error on its own gave that error.** The
   error is one item of the stack, as a function given on its own is.
 
+- **TRANSPOSE took a whole range in a formula written before dynamic
+  arrays.** Measured, Excel cuts the range to the formula's own row or
+  column first, as it does a single value, so `=SUM(TRANSPOSE(A1:A3))`
+  in row 5 is `#VALUE!`. In a dynamic-array formula it still takes the
+  range whole.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added

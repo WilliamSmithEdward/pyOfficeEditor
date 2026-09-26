@@ -1154,6 +1154,20 @@ def test_trimrange_trims_an_array_of_its_blank_edges(book: Workbook) -> None:
     assert sheet.evaluate("TRIMRANGE(VSTACK(Z1,Z2))") == CellError("#VALUE!")
 
 
+def test_transpose_in_a_formula_before_dynamic_arrays_cuts_its_range_to_the_row(book: Workbook) -> None:
+    sheet = book["Data"]
+    for row in (1, 2, 3):
+        sheet[f"A{row}"] = row
+    # Measured with the formulas entered as Excel before dynamic arrays
+    # took them: the range is cut to the formula's row, as a single value.
+    sheet["C1"].formula = "TRANSPOSE(A1:A2)"
+    sheet["C2"].formula = "TRANSPOSE(A1:A3)"
+    sheet["C5"].formula = "SUM(TRANSPOSE(A1:A3))"
+    sheet["C6"].formula = "INDEX(TRANSPOSE(A1:A3),1,2)"
+    book.calculate()
+    assert [sheet[f"C{row}"].value for row in (1, 2, 5, 6)] == [1, 2, CellError("#VALUE!"), CellError("#VALUE!")]
+
+
 def test_bahttext_spells_an_amount_as_excel_does(book: Workbook) -> None:
     sheet = book["Data"]
     # A 1 in the ones is "et" after any other digit, those before a
