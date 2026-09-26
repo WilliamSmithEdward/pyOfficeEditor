@@ -1643,6 +1643,97 @@ Public Function Build(ByVal Target As String) As String
 End Function
 '''
 
+#: What-if data tables made by Range.Table over a small loan model: rates
+#: down a column against two formulas, years along a row, both at once, a
+#: chain through another sheet and back, a formula for an input cell, a
+#: branch the input decides, and a blank, an error, text and a formula
+#: among the values tried. The model is built twice, on Model with Side
+#: beside it and on Moved with Beside, the second with other years and
+#: principal: set Model's to Moved's and recalculate, and every table has
+#: to come to what Excel cached on Moved. Excel removes personal
+#: information as it saves.
+_BUILD_DATA_TABLES = r'''
+Private Sub Model(ByVal ws As Worksheet, ByVal sd As Worksheet, ByVal years As Double, ByVal principal As Double)
+    Dim i As Long
+
+    ws.Range("A1").Value = "Rate"
+    ws.Range("B1").Value = 0.05
+    ws.Range("A2").Value = "Years"
+    ws.Range("B2").Value = years
+    ws.Range("A3").Value = "Principal"
+    ws.Range("B3").Value = principal
+    ws.Range("A4").Value = "Double rate"
+    ws.Range("B4").Formula = "=B1*2"
+    ws.Range("A5").Value = "Payment"
+    ws.Range("B5").Formula = "=PMT(B1/12,B2*12,-B3)"
+    ws.Range("B6").Formula = "=B5*B2*12"
+    ws.Range("B7").Formula = "=B6-B3"
+    ws.Range("B8").Formula = "=" & sd.Name & "!A1+1"
+    ws.Range("B9").Formula = "=B4*1000+B3/1000"
+    ws.Range("B10").Formula = "=IF(B1>0.06,B6,B7)"
+    sd.Range("A1").Formula = "=" & ws.Name & "!B7/2"
+
+    ws.Range("E2").Formula = "=B5"
+    ws.Range("F2").Formula = "=B6"
+    For i = 0 To 5
+        ws.Cells(3 + i, 4).Value = 0.03 + i * 0.01
+    Next i
+    ws.Range("D2:F8").Table ColumnInput:=ws.Range("B1")
+
+    ws.Range("H3").Formula = "=B5"
+    For i = 0 To 4
+        ws.Cells(2, 9 + i).Value = 10 + i * 5
+    Next i
+    ws.Range("H2:M3").Table RowInput:=ws.Range("B2")
+
+    ws.Range("D11").Formula = "=B5"
+    For i = 0 To 4
+        ws.Cells(12 + i, 4).Value = 0.03 + i * 0.01
+        ws.Cells(11, 5 + i).Value = 10 + i * 5
+    Next i
+    ws.Range("D11:I16").Table RowInput:=ws.Range("B2"), ColumnInput:=ws.Range("B1")
+
+    ws.Range("L11").Formula = "=B8"
+    ws.Range("M11").Formula = "=B9"
+    ws.Range("N11").Formula = "=B10"
+    For i = 0 To 4
+        ws.Cells(12 + i, 11).Value = 0.04 + i * 0.01
+    Next i
+    ws.Range("K11:N16").Table ColumnInput:=ws.Range("B1")
+    ws.Range("Q11").Formula = "=B9"
+    ws.Range("P12").Value = 0.1
+    ws.Range("P13").Value = 0.2
+    ws.Range("P11:Q13").Table ColumnInput:=ws.Range("B4")
+
+    ws.Range("E20").Formula = "=B5"
+    ws.Range("D21").Value = 0.04
+    ws.Range("D23").Formula = "=NA()"
+    ws.Range("D24").Value = "text"
+    ws.Range("D25").Formula = "=0.01*ROW()/5"
+    ws.Range("D20:E25").Table ColumnInput:=ws.Range("B1")
+End Sub
+
+Public Function Build(ByVal Target As String) As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+
+    Set wb = ActiveWorkbook
+    Set ws = wb.Worksheets(1)
+    ws.Name = "Model"
+    wb.Worksheets.Add(After:=ws).Name = "Side"
+    wb.Worksheets.Add(After:=wb.Worksheets("Side")).Name = "Moved"
+    wb.Worksheets.Add(After:=wb.Worksheets("Moved")).Name = "Beside"
+    Model wb.Worksheets("Model"), wb.Worksheets("Side"), 30, 250000
+    Model wb.Worksheets("Moved"), wb.Worksheets("Beside"), 25, 300000
+    Application.CalculateFull
+    wb.RemovePersonalInformation = True
+    Application.DisplayAlerts = False
+    wb.SaveAs Filename:=Target, FileFormat:=51
+    Application.DisplayAlerts = True
+    Build = ""
+End Function
+'''
+
 #: The recipe, each formula written into Q's column A a row at a time.
 _BUILD_PIVOT_DATA = _PIVOT_DATA_TEMPLATE.replace(
     "    ' GETPIVOTDATA formulas\n",
@@ -2071,6 +2162,7 @@ def main() -> int:
         ("links.xlsx", _BUILD_LINKS),
         ("geometry.xlsx", _BUILD_GEOMETRY),
         ("pivotdata.xlsx", _BUILD_PIVOT_DATA),
+        ("datatables.xlsx", _BUILD_DATA_TABLES),
     ]
     #: Fixtures whose measurements are recorded beside them, each with what
     #: reads its reply back.

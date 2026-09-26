@@ -74,6 +74,16 @@ anything trailing the file is swept into the oldest release's notes. -->
   Excel puts them in, which are the wrong ones, by the rule measured for
   where each lands.
 
+- **What-if data tables calculate.** A table Excel's Data Table makes, in
+  one variable down a column or along a row or in two, used to keep the
+  values Excel cached. Each cell is now calculated as Excel calculates
+  it: the value tried is put in the input cell, and the table's formula
+  calculated again with everything that reads that cell, whatever sheet
+  it is on; the rest of the model is calculated once. Held to a fixture
+  Excel authored, where changing the model's inputs and recalculating
+  gives, on all 64 cells, what Excel gave for those inputs. A table whose
+  input cell was deleted keeps its values.
+
 - **GETPIVOTDATA**, which reads a value from a pivot table's report, held
   to Excel by 147 formulas in a fixture Excel authored, over pivot tables
   in each layout it offers. The report is read from the pivot table's

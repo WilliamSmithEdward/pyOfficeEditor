@@ -14,6 +14,10 @@ keeps the value the file cached for it, and so does every formula that
 reads it: its value is only as good as that cache. :class:`Calculation`
 lists both. A circular reference keeps its cached values too, as Excel,
 with iteration off, leaves them.
+
+A what-if data table is calculated as Excel calculates one: each value it
+tries is put in its input cell, and its formula calculated with it, by a
+view of the workbook that calculates again only what reads that cell.
 """
 
 from __future__ import annotations
@@ -50,6 +54,19 @@ if TYPE_CHECKING:
     from pyofficeeditor.excel.worksheet import Worksheet
 
 
+@dataclass(frozen=True)
+class _DataTable:
+    """What a data table puts in its input cells: the values along the row
+    above its block when ``along_row``, else those down the column left of
+    it, into ``first``; or, for two variables, the row's into ``first`` and
+    the column's into ``second``, trying the formula at the corner."""
+
+    two_way: bool
+    along_row: bool
+    first: CellKey
+    second: CellKey | None = None
+
+
 @dataclass
 class _Formula:
     key: CellKey
@@ -59,8 +76,16 @@ class _Formula:
     node: Node | None = None
     #: What stops it being calculated, when something does.
     problem: str | None = None
-    #: The block an array formula fills.
+    #: The block an array formula or a data table fills.
     area: Area | None = None
+    table: _DataTable | None = None
+
+
+@dataclass(frozen=True)
+class _Override:
+    """A value a data table puts in one of its input cells."""
+
+    value: Scalar
 
 
 @dataclass(frozen=True)
@@ -72,7 +97,7 @@ class _Part:
     column: int
 
 
-Content = Scalar | _Formula | _Part
+Content = Scalar | _Formula | _Part | _Override
 
 #: The functions whose cells SUBTOTAL and AGGREGATE leave out.
 _SUBTOTALS = frozenset({"SUBTOTAL", "AGGREGATE"})
@@ -194,7 +219,9 @@ class Engine:
             kind = formula.get("t") or "normal"
             entry = _Formula(key, "", element, _scalar(stored))
             if kind == "dataTable":
-                entry.problem = "a data table"
+                entry.table = _data_table(formula, sheet.name)
+                if entry.table is None:
+                    entry.problem = "a data table whose input cell is gone"
             else:
                 text = sheet.formula_of(element, reference)
                 if text is None:
@@ -205,7 +232,7 @@ class Engine:
                         entry.node = parse(text)
                     except FormulaSyntaxError as error:
                         entry.problem = f"a formula that does not parse: {error}"
-            if kind == "array":
+            if kind in ("array", "dataTable"):
                 block = _block(formula.get("ref"), reference)
                 entry.area = Area(sheet.name, block.top, block.left, block.bottom, block.right)
                 arrays.append(entry)
@@ -295,6 +322,8 @@ class Engine:
 
     def _resolve(self, content: Content) -> tuple[Scalar, CellKey | None]:
         """A cell's value, or the formula cell to calculate first."""
+        if isinstance(content, _Override):
+            return content.value, None
         if isinstance(content, _Formula):
             key = content.key
             if key not in self._results:
@@ -483,6 +512,8 @@ class Engine:
         return Array(rows)
 
     def _evaluate(self, formula: _Formula) -> Value:
+        if formula.table is not None:
+            return self._tried(formula, formula.table)
         if formula.node is None:
             raise UnsupportedFormulaError(formula.problem or "a formula this engine cannot read")
         sheet, row, column = formula.key
@@ -495,6 +526,34 @@ class Engine:
         return Array(
             [[_cell_value(grid.at(row, column)) for column in range(area.width)] for row in range(area.height)]
         )
+
+    def _tried(self, formula: _Formula, table: _DataTable) -> Array:
+        """A data table's block: its formula, or each of its formulas,
+        calculated with each value it tries in its input cells, the values
+        read as they are in the row above the block or the column left of
+        it."""
+        area = formula.area
+        assert area is not None
+        sheet = area.sheet
+        what_if = _WhatIf(self, [table.first] if table.second is None else [table.first, table.second])
+        rows: list[list[Scalar]] = []
+        for row in range(area.top, area.bottom + 1):
+            line: list[Scalar] = []
+            for column in range(area.left, area.right + 1):
+                if table.two_way:
+                    target = (sheet, area.top - 1, area.left - 1)
+                    values = [self.cell(sheet, area.top - 1, column), self.cell(sheet, row, area.left - 1)]
+                elif table.along_row:
+                    target = (sheet, row, area.left - 1)
+                    values = [self.cell(sheet, area.top - 1, column)]
+                else:
+                    target = (sheet, area.top - 1, column)
+                    values = [self.cell(sheet, row, area.left - 1)]
+                line.append(what_if.value(target, values))
+            rows.append(line)
+        if what_if.tainted:
+            self._reading_tainted = True
+        return Array(rows)
 
     def evaluate(self, formula: str, sheet: str, row: int, column: int) -> Scalar:
         """What ``formula`` gives in a cell, calculating what it reads."""
@@ -542,6 +601,98 @@ class Engine:
 
     def result(self, key: CellKey) -> Value | None:
         return self._results.get(key)
+
+
+class _WhatIf(Engine):
+    """The workbook with values put in some of its cells, as a data table
+    tries them. What reads those cells, however indirectly, is calculated
+    again for each set of values; a formula that read none of it once
+    never will, so it keeps what it came to the first time.
+
+    It shares the workbook as the engine read it, and keeps results of its
+    own; the rows holding its input cells are copied, so the values it
+    puts there reach no one else.
+    """
+
+    def __init__(self, base: Engine, inputs: list[CellKey]) -> None:
+        self.__dict__.update(base.__dict__)
+        self._inputs = inputs
+        self._grid = dict(base._grid)
+        self._rows = dict(base._rows)
+        self._used = dict(base._used)
+        for sheet, row, column in inputs:
+            rows = self._grid[sheet] = dict(self._grid[sheet])
+            rows[row] = dict(rows.get(row, {}))
+            if row not in self._rows[sheet]:
+                self._rows[sheet] = sorted({*self._rows[sheet], row})
+            last_row, last_column = self._used.get(sheet, (0, 0))
+            self._used[sheet] = (max(last_row, row), max(last_column, column))
+        self._results = {}
+        self._failed = {}
+        self._tainted = set()
+        self._circular = set()
+        #: Formulas that read nothing the table tries.
+        self._independent: set[CellKey] = set()
+        self._reading_tried = False
+        #: Whether a value came from a cell that keeps its cached value.
+        self.tainted = False
+
+    def value(self, target: CellKey, values: list[Scalar]) -> Scalar:
+        """What a cell comes to with ``values`` in the input cells."""
+        for (sheet, row, column), value in zip(self._inputs, values, strict=True):
+            self._grid[sheet][row][column] = _Override(value)
+        keep = self._independent
+        self._results = {key: found for key, found in self._results.items() if key in keep}
+        self._failed = {key: reason for key, reason in self._failed.items() if key in keep}
+        self._tainted &= keep
+        self._circular &= keep
+        while True:
+            try:
+                found = _cell_value(self.cell(*target))
+                break
+            except PendingCellsError as need:
+                self.calculate(need.cells)
+        if target in self._failed or target in self._tainted:
+            self.tainted = True
+        return found
+
+    def _resolve(self, content: Content) -> tuple[Scalar, CellKey | None]:
+        if isinstance(content, _Override):
+            self._reading_tried = True
+        found = super()._resolve(content)
+        key = content.key if isinstance(content, _Formula) else content.master if isinstance(content, _Part) else None
+        if key is not None and found[1] is None and key not in self._independent:
+            self._reading_tried = True
+        return found
+
+    def _evaluate(self, formula: _Formula) -> Value:
+        if formula.table is not None:
+            raise UnsupportedFormulaError("a data table reading cells another data table tries")
+        self._reading_tried = False
+        value = super()._evaluate(formula)
+        if not self._reading_tried:
+            self._independent.add(formula.key)
+        return value
+
+
+def _data_table(formula: Element, sheet: str) -> _DataTable | None:
+    """A data table's input cells, from its ``<f t="dataTable">``, or
+    ``None`` when one was deleted, which the file marks ``del1`` or
+    ``del2``."""
+    if any(formula.get(flag) in ("1", "true") for flag in ("del1", "del2")):
+        return None
+    two_way = formula.get("dt2D") in ("1", "true")
+    try:
+        first = CellRef.parse(formula.get("r1") or "")
+        second = CellRef.parse(formula.get("r2") or "") if two_way else None
+    except ValueError:
+        return None
+    return _DataTable(
+        two_way,
+        formula.get("dtr") in ("1", "true"),
+        (sheet, first.row, first.column),
+        None if second is None else (sheet, second.row, second.column),
+    )
 
 
 def _block(ref: str | None, master: CellRef) -> RangeRef:
