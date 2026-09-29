@@ -1,6 +1,6 @@
 """Pin the newest YARA Forge release that is at least a week old.
 
-The Security workflow's YARA-X scan runs the rule set named in
+The Malware scan workflow's YARA-X job runs the rule set named in
 ``.github/security/yara-forge.json``: a dated release, the package in it
 (``full``, the widest of YARA Forge's three), the archive, and the
 archive's SHA-256.  This rewrites that pin to the newest stable release
@@ -9,8 +9,8 @@ or tampered releases to be caught and pulled first.  The digest comes
 from the one GitHub records for the release asset, and the download has
 to match it before anything is written.
 
-The weekly YARA Forge workflow runs this, opens a pull request when the
-pin moves, and starts the Security workflow on that pull request's
+The weekly Update YARA rules workflow runs this, opens a pull request when the
+pin moves, and starts the Malware scan workflow on that pull request's
 branch, so the new rules scan the repository before anyone merges them.
 
 Usage::

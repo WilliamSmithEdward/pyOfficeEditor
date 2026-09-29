@@ -37,27 +37,29 @@ caches for that link, as Excel does while the linked workbook is closed.
 
 ## How the code is checked
 
-The package has no runtime dependencies. The Security workflow runs on
-every push to main, every pull request, every day, and before every
-release:
+The package has no runtime dependencies. The Security and Malware scan
+workflows run on every push to main, every pull request, every day, and
+before every release:
 
-- CodeQL and Semgrep scan the package, the workflows that build and
-  publish it, and the scripts that check the scans.
-- ClamAV and YARA-X scan every tracked file, the Excel test fixtures
-  among them, and the built wheel and sdist. ClamAV fetches the current
-  official signatures on every run and reports any file that holds a VBA
-  project. YARA-X runs YARA Forge's full rule set, which gathers the
-  public YARA rule collections into one.
+- Security: CodeQL and Semgrep scan the package, the workflows that
+  build and publish it, and the scripts that check the scans.
+- Malware scan: ClamAV and YARA-X scan every tracked file, the Excel
+  test fixtures among them, and the built wheel and sdist. ClamAV
+  fetches the current official signatures on every run and reports any
+  file that holds a VBA project. YARA-X runs YARA Forge's full rule set,
+  which gathers the public YARA rule collections into one.
 
 A finding fails the scan unless
-[.github/security/accepted.toml](.github/security/accepted.toml) lists it
-with the reason it is accepted, and an entry there that no longer
-matches fails it too. So does a warning a scanner raises about its own
-run.
+[.github/security/accepted.toml](.github/security/accepted.toml), or
+[.github/security/malware-accepted.toml](.github/security/malware-accepted.toml)
+for a malware match, lists it with the reason it is accepted, and an
+entry there that no longer matches fails it too. So does a warning a
+scanner raises about its own run.
 
-A release is published only after its commit passes the scan, and it
-carries the report as `pyofficeeditor-<version>-security-report.md`,
-beside the SARIF the report was made from.
+A release is published only after its commit passes both scans, and it
+carries the reports as `pyofficeeditor-<version>-security-report.md` and
+`pyofficeeditor-<version>-malware-report.md`, beside the SARIF they were
+made from.
 
 Everything the workflows run is pinned. Each action is pinned to a
 commit, the ClamAV image to a digest, and the YARA-X engine and the
@@ -65,5 +67,5 @@ YARA Forge rules to a release and its SHA-256. Semgrep and the build
 tools are hash-locked, and each runner is a named OS release. Dependabot
 proposes updates to the actions, the image and the locked tools. A weekly
 workflow proposes each new YARA Forge release in a pull request, and the
-Security workflow scans that branch before it is merged. Nothing is
+Malware scan workflow scans that branch before it is merged. Nothing is
 proposed until it is a week old.

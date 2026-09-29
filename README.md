@@ -4,6 +4,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/pyOfficeEditor.svg)](https://pypi.org/project/pyOfficeEditor/)
 [![CI](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/ci.yml)
 [![Security](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/security.yml/badge.svg)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/security.yml)
+[![Malware scan](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/malware-scan.yml/badge.svg)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/malware-scan.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/WilliamSmithEdward/pyOfficeEditor/blob/main/LICENSE.md)
 [![Downloads](https://static.pepy.tech/badge/pyOfficeEditor/month)](https://pepy.tech/project/pyOfficeEditor)
 

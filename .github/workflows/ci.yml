@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   test:
-    name: test (py${{ matrix.python-version }} / ${{ matrix.os }})
+    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -57,7 +57,7 @@ jobs:
         run: pytest -p no:randomly -q
 
   build:
-    name: build sdist + wheel
+    name: Build sdist and wheel
     runs-on: ubuntu-24.04
     needs: test
     steps:
@@ -82,3 +82,22 @@ jobs:
           name: dist
           path: dist/
           if-no-files-found: error
+
+  # The one check the main ruleset requires. The matrix jobs are named
+  # after their Python and runner, which change; this name does not. It
+  # fails unless every job above passed, a skipped one included.
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [test, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check every CI job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || exit 1
+          done

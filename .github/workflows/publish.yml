@@ -1,4 +1,4 @@
-name: Publish to PyPI
+name: Publish
 
 on:
   push:
@@ -33,7 +33,7 @@ jobs:
       - name: Install build tooling
         run: python -m pip install --require-hashes -r .github/requirements/build.txt
 
-      - name: Build sdist + wheel
+      - name: Build sdist and wheel
         run: python -m build --no-isolation
 
       - name: Validate metadata
@@ -46,8 +46,8 @@ jobs:
           path: dist/
           if-no-files-found: error
 
-  # The tagged commit's scans. A finding the accepted list does not account
-  # for fails this job, and nothing is published.
+  # The tagged commit's scans. A finding or match the accepted lists do not
+  # account for fails its job, and nothing is published.
   security:
     name: Security scans
     uses: ./.github/workflows/security.yml
@@ -55,9 +55,15 @@ jobs:
       contents: read
       security-events: write
 
+  malware:
+    name: Malware scans
+    uses: ./.github/workflows/malware-scan.yml
+    permissions:
+      contents: read
+
   publish:
     name: Publish to PyPI
-    needs: [build, security]
+    needs: [build, security, malware]
     runs-on: ubuntu-24.04
     environment:
       name: pypi
@@ -76,8 +82,8 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   github-release:
-    name: Create GitHub Release
-    needs: [publish, security]
+    name: Create GitHub release
+    needs: [publish, security, malware]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -96,9 +102,16 @@ jobs:
           name: security-report
           path: security-report/
 
-      # The report and the SARIF it was made from, named for the release:
-      # pyofficeeditor-6.4.0-security-report.md, pyofficeeditor-6.4.0-semgrep.sarif.
-      - name: Name the security report after the release
+      - name: Download the malware report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: malware-report
+          path: security-report/
+
+      # The reports and the SARIF they were made from, named for the release:
+      # pyofficeeditor-6.4.0-security-report.md, pyofficeeditor-6.4.0-malware-report.md,
+      # pyofficeeditor-6.4.0-semgrep.sarif.
+      - name: Name the reports after the release
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           for file in security-report/*; do
@@ -121,7 +134,7 @@ jobs:
           fi
           echo "notes_file=release_notes.md" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
+      - name: Create GitHub release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           name: ${{ github.ref_name }}

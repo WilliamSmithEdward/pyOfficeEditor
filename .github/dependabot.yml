@@ -4,7 +4,7 @@
 # the malware scan runs, pinned by digest. The package itself depends on
 # nothing, and its development tools are minimum versions that CI installs
 # at their latest. The YARA-X engine is a release download no updater
-# follows (the Security workflow says how to move it), and the YARA Forge
+# follows (the Malware scan workflow says how to move it), and the YARA Forge
 # rules have their own weekly workflow.
 #
 # A release waits a week before it is proposed, long enough for most
