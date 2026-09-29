@@ -22,7 +22,18 @@ anything trailing the file is swept into the oldest release's notes. -->
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Every release carries a security report,
+  `pyofficeeditor-<version>-security-report.md`, with the SARIF it was
+  made from. CodeQL and Semgrep scan the package and the workflows that
+  build and publish it on every push to main, every pull request, every
+  week and before each release. A finding that
+  `.github/security/accepted.toml` does not account for fails the scan
+  and stops the release, and so does any warning a scanner raises. The
+  workflows' actions are pinned to commits, and Dependabot proposes
+  their updates. SECURITY.md says how to report a vulnerability
+  privately.
 
 ## [0.4.0] - 2026-09-26
 

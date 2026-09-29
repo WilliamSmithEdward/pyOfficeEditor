@@ -1,5 +1,12 @@
 # pyOfficeEditor
 
+[![PyPI version](https://img.shields.io/pypi/v/pyOfficeEditor.svg)](https://pypi.org/project/pyOfficeEditor/)
+[![Python versions](https://img.shields.io/pypi/pyversions/pyOfficeEditor.svg)](https://pypi.org/project/pyOfficeEditor/)
+[![CI](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/ci.yml)
+[![Security](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/security.yml/badge.svg)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/WilliamSmithEdward/pyOfficeEditor/blob/main/LICENSE.md)
+[![Downloads](https://static.pepy.tech/badge/pyOfficeEditor/month)](https://pepy.tech/project/pyOfficeEditor)
+
 Edit the document surface of Microsoft Office files in pure Python. No Office
 installation, no COM, no dependencies.
 
@@ -367,6 +374,17 @@ RUN_LIVE_EXCEL=1 python -m pytest -m live -p no:randomly
 ```
 
 Windows and Excel only. Everything else in the suite runs anywhere.
+
+## Security
+
+Please report a vulnerability privately with
+[Report a vulnerability](https://github.com/WilliamSmithEdward/pyOfficeEditor/security/advisories/new),
+not in a public issue.
+[SECURITY.md](https://github.com/WilliamSmithEdward/pyOfficeEditor/blob/main/SECURITY.md)
+says what to report, which versions get fixes and how the code is
+checked. CodeQL and Semgrep scan every push to main and every pull
+request, a release is published only when its commit passes, and every
+release carries its security report.
 
 ## Built with this
 
