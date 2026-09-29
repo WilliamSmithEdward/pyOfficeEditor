@@ -1,0 +1,8 @@
+# Build and upload tooling for CI, the publish workflow and the malware
+# scan. Compiled with pip-compile --generate-hashes into build.txt, which
+# the workflows install with --require-hashes; Dependabot proposes each
+# update. hatchling is here because the workflows build with
+# --no-isolation, so the build backend comes from this lock too.
+build==1.6.1
+hatchling==1.32.4
+twine==7.0.0

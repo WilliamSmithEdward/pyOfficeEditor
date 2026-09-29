@@ -211,5 +211,8 @@ def test_the_repository_s_list_names_lines_the_source_holds() -> None:
     for entry in findings:
         assert entry.reason
         for place in entry.where:
+            assert (ROOT / place.path).is_file(), f"no file {place.path}"
+            if not place.line:
+                continue  # a malware scanner matches the whole file
             lines = [line.strip() for line in (ROOT / place.path).read_text(encoding="utf-8").splitlines()]
             assert place.line in lines, f"{place.path} has no line {place.line!r}"

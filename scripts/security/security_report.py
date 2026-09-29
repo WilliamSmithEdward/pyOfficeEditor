@@ -304,7 +304,7 @@ def report(outcome: Outcome, provenance: str) -> str:
     problems = [
         *(f"- No SARIF from the `{name}` scan, which is required." for name in outcome.missing),
         *(
-            f"- {f.scan}: `{f.rule}` ({f.level}) at {f.path}:{f.line}: `{f.text}`. {f.message}"
+            f"- {f.scan}: `{f.rule}` ({f.level}) at {_where(f)}. {f.message}"
             for f in outcome.unexpected
         ),
         *(f"- {n.scan}: {n.level} `{n.ident}`: {n.message}" for n in outcome.unexpected_notices),
@@ -317,12 +317,20 @@ def report(outcome: Outcome, provenance: str) -> str:
     for entry, found in outcome.accepted.items():
         lines.append(f"**{entry.rule}** ({entry.tool})")
         lines.append("")
-        lines += [f"- {f.path}:{f.line}: `{f.text}`" for f in found]
+        lines += [f"- {_where(f)}" for f in found]
         lines += ["", entry.reason, ""]
     for entry, noticed in outcome.accepted_notices.items():
         lines += [f"**{entry.ident}** ({entry.tool}), {len(noticed)} notices mentioning `{entry.contains}`", ""]
         lines += [entry.reason, ""]
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _where(finding: Finding) -> str:
+    """Where a finding points: a file and the line it flags, or the file
+    alone for a malware scanner, which matches a whole file."""
+    if finding.line == 0:
+        return finding.path
+    return f"{finding.path}:{finding.line}: `{finding.text}`"
 
 
 def provenance(now: dt.datetime) -> str:

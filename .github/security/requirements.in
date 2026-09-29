@@ -1,0 +1,5 @@
+# Semgrep for the Security workflow, pinned so a scan is repeatable.
+# Compiled with pip-compile --generate-hashes into requirements.txt,
+# which the workflow installs with --require-hashes; Dependabot proposes
+# each new release.
+semgrep==1.178.0

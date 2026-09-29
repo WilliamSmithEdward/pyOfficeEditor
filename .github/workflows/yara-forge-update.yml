@@ -1,0 +1,70 @@
+name: YARA Forge update
+
+# Weekly: pin the newest YARA Forge release that is a week old, with the
+# SHA-256 GitHub records for it, and propose the change in a draft pull
+# request. A pull request this workflow's token opens starts no workflow
+# of its own, so this starts the Security workflow on the pull request's
+# branch; its ClamAV and YARA-X job scans the repository with the new
+# rules before anyone merges them. Opening the pull request needs the
+# repository setting "Allow GitHub Actions to create and approve pull
+# requests".
+
+on:
+  schedule:
+    - cron: "41 6 * * 1" # Mondays at 06:41 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yara-forge-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Propose the newest YARA Forge rules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write # to start the Security workflow on the new branch
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.14"
+
+      - name: Pin the newest week-old release and its checksum
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/security/update_yara_forge.py
+
+      - name: Propose the pin
+        id: pr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          add-paths: .github/security/yara-forge.json
+          branch: yara-forge-update
+          delete-branch: true
+          draft: true
+          commit-message: Pin the newest YARA Forge rules
+          title: Pin the newest YARA Forge rules
+          body: |
+            Moves `.github/security/yara-forge.json` to the newest YARA Forge
+            release that is at least a week old, with the SHA-256 GitHub
+            records for its archive. The download matched it.
+
+            The Security workflow runs on this branch; its ClamAV and YARA-X
+            job scans the repository with the new rules. Check that run
+            before marking this ready. A new match needs a fix, or an entry
+            in `.github/security/accepted.toml` with its reason.
+
+      - name: Scan the pull request's branch
+        if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.pr.outputs.pull-request-branch }}
+        run: gh workflow run security.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"

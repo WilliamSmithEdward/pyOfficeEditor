@@ -382,9 +382,10 @@ Please report a vulnerability privately with
 not in a public issue.
 [SECURITY.md](https://github.com/WilliamSmithEdward/pyOfficeEditor/blob/main/SECURITY.md)
 says what to report, which versions get fixes and how the code is
-checked. CodeQL and Semgrep scan every push to main and every pull
-request, a release is published only when its commit passes, and every
-release carries its security report.
+checked. CodeQL and Semgrep scan the code, and ClamAV and YARA-X scan
+every file and the built packages, on every push to main, every pull
+request and every day. A release is published only when its commit
+passes, and every release carries its security report.
 
 ## Built with this
 

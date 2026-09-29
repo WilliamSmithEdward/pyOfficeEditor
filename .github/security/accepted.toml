@@ -36,3 +36,39 @@ to span every control from U+000E to U+001F. The filter code refuses a
 criterion that holds one, and _xstring.py replaces one with U+FFFD
 before it is written.
 """
+
+[[finding]]
+tool = "ClamAV"
+rule = "Heuristics.OLE2.ContainsMacros.VBA"
+where = [
+    { path = "tests/fixtures/excel/controls.xlsm", line = "" },
+    { path = "tests/fixtures/excel/excel_authored_binary.xlsb", line = "" },
+]
+reason = """
+The scan runs ClamAV with --alert-macros, which reports every file that
+holds a VBA project, whatever the code does. These two test fixtures
+hold one on purpose, as Excel saved it, since the tests prove the
+library keeps a VBA project intact. controls.xlsm holds the modules
+pyVBAharness drove Excel with to build it and the builder's own code,
+which reads the Forms controls' properties and writes a progress line
+to a file its caller names. excel_authored_binary.xlsb holds a module
+whose one macro shows "Hello world". Neither has code that runs when
+the workbook opens, and neither calls Shell, CreateObject, a DLL or the
+network. The built packages hold no fixture.
+"""
+
+[[finding]]
+tool = "Semgrep"
+rule = "python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected"
+where = [
+    { path = "scripts/security/update_yara_forge.py", line = "with urllib.request.urlopen(request, timeout=120) as response:" },
+]
+reason = """
+The rule flags urlopen on any URL that is not a literal, since urllib
+also opens file: and ftp: URLs. The YARA Forge updater fetches only two
+kinds of URL: GitHub's API for YARA Forge's releases, a constant, and a
+release asset on github.com, built from a constant, a tag checked to be
+eight digits and the asset name the pin file holds. Both are https, and
+the asset's URL must equal the one GitHub's API gives for it. The
+updater runs in its own weekly workflow, not in the package.
+"""

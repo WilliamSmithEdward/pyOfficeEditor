@@ -23,7 +23,27 @@ anything trailing the file is swept into the oldest release's notes. -->
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- ClamAV and YARA-X scan every tracked file, the Excel test fixtures
+  among them, and the built wheel and sdist, as their own job in the
+  Security workflow. ClamAV fetches the current official signatures on
+  every run; YARA-X runs YARA Forge's full public rule set. Their
+  matches go to the same accepted list and security report as CodeQL's
+  and Semgrep's, and every release carries them. ClamAV reports the VBA
+  projects in two test fixtures, which are accepted with the reason.
+- The Security workflow runs daily, and a weekly workflow proposes each
+  YARA Forge release, pinned with its SHA-256, in a pull request the
+  Security workflow scans.
+
+### Changed
+
+- Everything the workflows run is pinned: the ClamAV image by digest,
+  the YARA-X engine and YARA Forge rules by release and SHA-256, Semgrep
+  and the build tools by hash, the runners by OS release and Python by
+  patch release where a build exists. The package is built without
+  isolation, so its build backend comes from the lock too. Dependabot
+  follows the image and the locks, after a week.
 
 ## [0.4.1] - 2026-09-29
 
