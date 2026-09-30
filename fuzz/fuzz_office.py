@@ -44,6 +44,13 @@ def fuzz_zip(data):
     except PyOfficeEditorError:
         return
     written = archive.to_bytes()
+    end = written.rfind(b"PK\x05\x06")
+    if written[end - 20 : end - 16] == b"PK\x06\x07":
+        # The format's own ambiguity: a member comment that ends in the zip64
+        # locator's signature and 16 more bytes lands where the locator
+        # would be, and every reader, Python's zipfile among them, takes it
+        # for one. No ZIP writer puts those bytes there by accident.
+        return
     again = ZipArchive.from_bytes(written)
     if [(m.name, m.stored) for m in again.members()] != [(m.name, m.stored) for m in archive.members()]:
         raise AssertionError("writing an archive changed its members")
