@@ -1,0 +1,1 @@
+_xlfn.NORM.S.INV(0.02425)

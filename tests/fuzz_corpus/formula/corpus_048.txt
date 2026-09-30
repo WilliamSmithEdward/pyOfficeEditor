@@ -1,0 +1,1 @@
+SUM(Pairs!B228,-Pairs!A228)

@@ -1,0 +1,1 @@
+NPV(0.07,Samples!J2:J13)

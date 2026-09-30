@@ -1,0 +1,1 @@
+INDEX(_xlfn.SCAN(0,{1,2,3},_xlfn.LAMBDA(_xlpm.a,_xlpm.b,_xlpm.a+_xlpm.b)),3)

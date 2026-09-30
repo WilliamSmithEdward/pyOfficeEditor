@@ -1,0 +1,1 @@
+SKEW(Samples!A2:A13)
