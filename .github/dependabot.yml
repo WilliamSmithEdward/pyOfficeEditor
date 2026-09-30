@@ -3,9 +3,9 @@
 # build tooling the workflows install; and the Semgrep and ClamAV images
 # the scans run, each pinned by digest in a one-line Dockerfile. The package itself depends on
 # nothing, and its development tools are minimum versions that CI installs
-# at their latest. The YARA-X engine is a release download no updater
-# follows (the Malware scan workflow says how to move it), and the YARA Forge
-# rules have their own weekly workflow.
+# at their latest. The YARA-X engine and the YARA Forge rules are release
+# downloads pinned in .github/security/yara.json; update-yara-rules.yml
+# moves them.
 #
 # A release waits a week before it is proposed, long enough for most
 # hijacked or broken releases to be found and pulled first. Security

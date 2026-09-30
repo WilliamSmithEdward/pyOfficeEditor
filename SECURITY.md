@@ -65,7 +65,8 @@ Everything the workflows run is pinned. Each action is pinned to a
 commit, the Semgrep and ClamAV images to a digest, and the YARA-X engine
 and the YARA Forge rules to a release and its SHA-256. The build tools
 are hash-locked, and each runner is a named OS release. Dependabot
-proposes updates to the actions, the images and the locked tools. A weekly
-workflow proposes each new YARA Forge release in a pull request, and the
-Malware scan workflow scans that branch before it is merged. Nothing is
-proposed until it is a week old.
+proposes updates to the actions, the images and the locked tools, each a
+week after its release. A weekly workflow moves the YARA pins in
+.github/security/yara.json: YARA Forge's newest release at once, since the
+pull request it opens is scanned before it is merged, and a YARA-X release
+once it is a week old.
