@@ -47,6 +47,7 @@ _DATA_DESCRIPTOR_SIG = b"PK\x07\x08"
 _LOCAL_FIXED = 30
 _CENTRAL_FIXED = 46
 _EOCD_FIXED = 22
+_ZIP64_LOCATOR_SIZE = 20
 
 #: Sentinel the spec uses in a 32-bit size field to mean "read the zip64
 #: extra field instead".
@@ -204,7 +205,11 @@ class ZipArchive:
             eocd + _EOCD_FIXED <= len(data),
             "truncated ZIP archive: the end-of-central-directory record runs past the file.",
         )
-        if data.rfind(_ZIP64_EOCD_LOCATOR_SIG, 0, eocd) >= 0:
+        # The zip64 locator, when there is one, is the 20 bytes right before
+        # the end record. Its signature anywhere else is member data or a
+        # comment, and an archive holding those bytes is an ordinary one.
+        locator = eocd - _ZIP64_LOCATOR_SIZE
+        if locator >= 0 and data[locator : locator + 4] == _ZIP64_EOCD_LOCATOR_SIG:
             raise UnsupportedFormatError(
                 "zip64 archives are not supported; this package is larger than the ZIP "
                 "format's 32-bit fields allow."

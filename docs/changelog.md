@@ -25,6 +25,10 @@ anything trailing the file is swept into the oldest release's notes. -->
 
 ### Fixed
 
+- An ordinary archive whose data held the zip64 locator's four-byte
+  signature anywhere before the end record, as a binary part can, was
+  refused as zip64. The locator is now looked for only where the format
+  puts it, right before the end record, as Python's `zipfile` does.
 - A ZIP entry whose name is flagged UTF-8 but is not raised
   `UnicodeDecodeError`; it now raises `ZipError`.
 - In formulas, a number whose exponent is too long for Python's decimal
