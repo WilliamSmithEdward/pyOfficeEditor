@@ -70,3 +70,18 @@ week after its release. A weekly workflow moves the YARA pins in
 .github/security/yara.json: YARA Forge's newest release at once, since the
 pull request it opens is scanned before it is merged, and a YARA-X release
 once it is a week old.
+
+## Verifying a download
+
+Every file on PyPI carries PyPI's own provenance, which names this
+repository's `publish.yml` as the publisher; the file's page on PyPI shows it.
+Releases published after 2026-09-30 also carry a GitHub build provenance
+attestation, which you can check against any copy of the file, from PyPI or
+from the GitHub release:
+
+```
+pip download pyofficeeditor --no-deps -d check
+gh attestation verify check/<file> --owner WilliamSmithEdward
+```
+
+The output names the commit and workflow run that built the file.
