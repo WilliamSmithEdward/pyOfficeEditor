@@ -20,35 +20,3 @@
 # reason = """
 # Why the finding does not apply here.
 # """
-
-[[finding]]
-tool = "CodeQL"
-rule = "py/overly-large-range"
-where = [
-    { path = "src/pyofficeeditor/excel/_filters.py", line = '_NOT_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")' },
-    { path = "src/pyofficeeditor/excel/_xstring.py", line = '_NOT_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")' },
-]
-reason = """
-Each class is the set of characters XML 1.0 cannot hold: the C0 controls
-other than tab, line feed and carriage return, and U+FFFE and U+FFFF,
-with the lone surrogates in _xstring.py. The range \\x0e-\\x1f is meant
-to span every control from U+000E to U+001F. The filter code refuses a
-criterion that holds one, and _xstring.py replaces one with U+FFFD
-before it is written.
-"""
-
-[[finding]]
-tool = "Semgrep"
-rule = "python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected"
-where = [
-    { path = "scripts/security/update_yara_forge.py", line = "with urllib.request.urlopen(request, timeout=120) as response:" },
-]
-reason = """
-The rule flags urlopen on any URL that is not a literal, since urllib
-also opens file: and ftp: URLs. The YARA Forge updater fetches only two
-kinds of URL: GitHub's API for YARA Forge's releases, a constant, and a
-release asset on github.com, built from a constant, a tag checked to be
-eight digits and the asset name the pin file holds. Both are https, and
-the asset's URL must equal the one GitHub's API gives for it. The
-updater runs in its own weekly workflow, not in the package.
-"""

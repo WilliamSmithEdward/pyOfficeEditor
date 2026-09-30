@@ -115,7 +115,7 @@ MAX_TOP_PERCENT = 100
 ComparisonValue = str | int | float | dt.date | dt.datetime | dt.time
 
 _NUMBER = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$")
-_NOT_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
+_NOT_XML = re.compile("(?!\r)[\x00-\x08\x0b-\x1f\ufffe\uffff]")
 
 
 def _check_text(value: str, what: str) -> None:

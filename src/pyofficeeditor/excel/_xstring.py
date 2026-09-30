@@ -38,7 +38,7 @@ _TEXT_CHANGES = re.compile("_(?=x[0-9A-Fa-f]{4}_)|[\x00-\x08\x0b-\x1f\ud800-\udf
 #: What writing an attribute changes: the same, and a tab and a line feed.
 _ATTRIBUTE_CHANGES = re.compile("_(?=x[0-9A-Fa-f]{4}_)|[\x00-\x1f\ud800-\udfff\ufffe\uffff]")
 #: The characters XML cannot hold at all, even as a reference.
-_NOT_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+_NOT_XML = re.compile("(?!\r)[\x00-\x08\x0b-\x1f\ud800-\udfff\ufffe\uffff]")
 
 
 def decode(text: str) -> str:

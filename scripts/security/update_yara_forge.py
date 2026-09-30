@@ -3,53 +3,41 @@
 The Malware scan workflow's YARA-X job runs the rule set named in
 ``.github/security/yara-forge.json``: a dated release, the package in it
 (``full``, the widest of YARA Forge's three), the archive, and the
-archive's SHA-256.  This rewrites that pin to the newest stable release
-published at least ``COOLDOWN`` ago, a week, long enough for most broken
-or tampered releases to be caught and pulled first.  The digest comes
-from the one GitHub records for the release asset, and the download has
-to match it before anything is written.
+archive's SHA-256.  The weekly Update YARA rules workflow moves that pin in two
+steps, and fetches everything itself, with ``gh api`` and ``curl``, so
+this script never touches the network:
 
-The weekly Update YARA rules workflow runs this, opens a pull request when the
-pin moves, and starts the Malware scan workflow on that pull request's
-branch, so the new rules scan the repository before anyone merges them.
+``choose RELEASES_JSON``
+    Reads YARA Forge's release list, as ``gh api`` returns it, and prints
+    the download URL, the release and the SHA-256 GitHub records for the
+    archive of the newest stable release published at least ``COOLDOWN``
+    ago, a week, long enough for most broken or tampered releases to be
+    caught and pulled first.  It prints nothing when that release is the
+    one already pinned.
 
-Usage::
+``pin RELEASE SHA256 ARCHIVE``
+    Checks the downloaded archive against that SHA-256 and for the
+    package's rule file, and only then rewrites the pin.
 
-    python scripts/security/update_yara_forge.py
-
-The exit status is 0 whether or not the pin moved, and 1 on anything
-that cannot be verified.  ``GITHUB_TOKEN``, when set, authenticates the
-API request.
+The workflow then opens a pull request and starts the Malware scan workflow
+on its branch, so the new rules scan the repository before anyone merges
+them.  The exit status is 1 on anything that cannot be verified.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import hashlib
-import io
 import json
-import os
 import re
 import sys
-import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Any
 
 PIN = Path(__file__).parents[2] / ".github" / "security" / "yara-forge.json"
-RELEASES = "https://api.github.com/repos/YARAHQ/yara-forge/releases?per_page=30"
 DOWNLOAD = "https://github.com/YARAHQ/yara-forge/releases/download/{release}/{asset}"
 COOLDOWN = dt.timedelta(days=7)
-
-
-def fetch(url: str) -> bytes:
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "pyOfficeEditor-security"}
-    token = os.environ.get("GITHUB_TOKEN")
-    if token and url.startswith("https://api.github.com/"):
-        headers["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=120) as response:
-        return response.read()
 
 
 def choose(releases: list[dict[str, Any]], asset: str, now: dt.datetime) -> tuple[str, str]:
@@ -74,36 +62,53 @@ def choose(releases: list[dict[str, Any]], asset: str, now: dt.datetime) -> tupl
     raise ValueError("no YARA Forge release is a week old")
 
 
-def verify(archive: bytes, sha256: str, package: str) -> None:
+def candidate(releases: list[dict[str, Any]], pin: dict[str, str], now: dt.datetime) -> tuple[str, str] | None:
+    """The release and digest to move the pin to, or None to stay."""
+    release, sha256 = choose(releases, pin["asset"], now)
+    if release == pin["release"]:
+        if sha256 != pin["sha256"]:
+            raise ValueError(f"the digest of pinned YARA Forge {release} changed")
+        return None
+    if release < pin["release"]:
+        raise ValueError(f"the newest week-old release, {release}, predates the pinned {pin['release']}")
+    return release, sha256
+
+
+def verify(archive: Path, sha256: str, package: str) -> None:
     """The archive matches its digest and holds the package's rule file."""
-    if hashlib.sha256(archive).hexdigest() != sha256:
+    if hashlib.sha256(archive.read_bytes()).hexdigest() != sha256:
         raise ValueError("the downloaded archive does not match its SHA-256")
-    with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
+    with zipfile.ZipFile(archive) as zipped:
         wanted = f"packages/{package}/yara-rules-{package}.yar"
         if not any(name.endswith(wanted) for name in zipped.namelist()):
             raise ValueError(f"the archive holds no {wanted}")
 
 
-def main(now: dt.datetime | None = None) -> int:
+def main(argv: list[str], now: dt.datetime | None = None) -> int:
     pin: dict[str, str] = json.loads(PIN.read_text(encoding="utf-8"))
-    releases: list[dict[str, Any]] = json.loads(fetch(RELEASES))
-    release, sha256 = choose(releases, pin["asset"], now or dt.datetime.now(dt.timezone.utc))
-    if release == pin["release"]:
-        if sha256 != pin["sha256"]:
-            raise ValueError(f"the digest of pinned YARA Forge {release} changed")
-        print(f"YARA Forge {release} is already pinned")
+    if len(argv) == 2 and argv[0] == "choose":
+        releases: list[dict[str, Any]] = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
+        moved = candidate(releases, pin, now or dt.datetime.now(dt.timezone.utc))
+        if moved is None:
+            print(f"YARA Forge {pin['release']} is already pinned", file=sys.stderr)
+        else:
+            release, sha256 = moved
+            print(DOWNLOAD.format(release=release, asset=pin["asset"]), release, sha256)
         return 0
-    if release < pin["release"]:
-        raise ValueError(f"the newest week-old release, {release}, predates the pinned {pin['release']}")
-    verify(fetch(DOWNLOAD.format(release=release, asset=pin["asset"])), sha256, pin["package"])
-    PIN.write_text(json.dumps({**pin, "release": release, "sha256": sha256}, indent=2) + "\n", encoding="utf-8")
-    print(f"Pinned YARA Forge {release}, SHA-256 {sha256}")
-    return 0
+    if len(argv) == 4 and argv[0] == "pin":
+        release, sha256, archive = argv[1], argv[2], Path(argv[3])
+        if not re.fullmatch(r"\d{8}", release) or not re.fullmatch(r"[0-9a-f]{64}", sha256):
+            raise ValueError("pin takes a dated release and a SHA-256")
+        verify(archive, sha256, pin["package"])
+        PIN.write_text(json.dumps({**pin, "release": release, "sha256": sha256}, indent=2) + "\n", encoding="utf-8")
+        print(f"Pinned YARA Forge {release}, SHA-256 {sha256}")
+        return 0
+    raise ValueError("usage: update_yara_forge.py choose RELEASES_JSON | pin RELEASE SHA256 ARCHIVE")
 
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        sys.exit(main(sys.argv[1:]))
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
         sys.exit(1)

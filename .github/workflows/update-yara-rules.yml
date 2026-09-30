@@ -39,8 +39,15 @@ jobs:
 
       - name: Pin the newest week-old release and its checksum
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/security/update_yara_forge.py
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api 'repos/YARAHQ/yara-forge/releases?per_page=30' > "$RUNNER_TEMP/releases.json"
+          next=$(python scripts/security/update_yara_forge.py choose "$RUNNER_TEMP/releases.json")
+          if [ -n "$next" ]; then
+            read -r url release sha256 <<< "$next"
+            curl -fsSL --proto '=https' -o "$RUNNER_TEMP/rules.zip" "$url"
+            python scripts/security/update_yara_forge.py pin "$release" "$sha256" "$RUNNER_TEMP/rules.zip"
+          fi
 
       - name: Propose the pin
         id: pr

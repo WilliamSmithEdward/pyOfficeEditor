@@ -44,6 +44,12 @@ anything trailing the file is swept into the oldest release's notes. -->
   patch release where a build exists. The package is built without
   isolation, so its build backend comes from the lock too. Dependabot
   follows the image and the locks, after a week.
+- The three code scanning alerts are fixed rather than accepted. The
+  character classes that list what XML cannot hold exclude a carriage
+  return with a lookahead instead of splitting a range around it, and
+  match the same characters. The YARA Forge updater no longer reaches
+  the network itself: the workflow fetches with `gh api` and `curl`, and
+  the script chooses the release and checks the download.
 
 ## [0.4.1] - 2026-09-29
 
