@@ -178,11 +178,31 @@ def test_a_lambda_called_where_it_is_made() -> None:
         "",
         "#NOTANERROR",
         "Table1[#Nothing]",
+        # Found by fuzzing: a column range with no column raised IndexError,
+        # and nesting past Python's recursion limit raised RecursionError.
+        "Table1[[#All],:]",
+        "SUM(" * 3000 + "1" + ")" * 3000,
     ],
 )
 def test_text_excel_would_refuse(formula: str) -> None:
     with pytest.raises(FormulaSyntaxError):
         parse(formula)
+
+
+@pytest.mark.parametrize(
+    ("digits", "value"),
+    [
+        ("1E999999", math.inf),
+        # Found by fuzzing: exponents too long for Decimal raised
+        # decimal.InvalidOperation. They read as any number past a double does.
+        ("1E2012019", math.inf),
+        ("61E" + "9" * 68, math.inf),
+        ("1E-" + "9" * 68, 0.0),
+        ("0E" + "9" * 68, 0.0),
+    ],
+)
+def test_a_literal_far_past_a_double(digits: str, value: float) -> None:
+    assert literal_value(digits) == value
 
 
 @pytest.mark.parametrize(

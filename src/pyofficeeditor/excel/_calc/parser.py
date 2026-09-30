@@ -56,7 +56,13 @@ def parse(formula: str) -> Node:
     :class:`FormulaSyntaxError` for text Excel would refuse.
     """
     text = formula[1:] if formula.startswith("=") else formula
-    return _Parser(text, tokenize(text)).run()
+    try:
+        return _Parser(text, tokenize(text)).run()
+    except RecursionError:
+        # The parser descends once per nesting level. Excel refuses a formula
+        # nested past 64 functions long before Python's recursion limit, so
+        # one that reaches it, as a hostile file can hold, is refused too.
+        raise FormulaSyntaxError("the formula nests too deeply", formula, 0) from None
 
 
 class _Parser:

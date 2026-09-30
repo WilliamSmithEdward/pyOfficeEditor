@@ -432,6 +432,8 @@ def _item(text: str) -> str:
 def _columns(part: str) -> tuple[str, str]:
     """``[Qty]`` or ``[Qty]:[Price]``, as its first and last column."""
     pieces = _split_parts(part, separator=":")
+    if not pieces:
+        raise ValueError(f"{part!r} names no column")
     names = [_unescape(piece.strip()[1:-1]) for piece in pieces]
     return names[0], names[-1]
 
