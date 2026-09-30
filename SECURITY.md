@@ -62,10 +62,10 @@ carries the reports as `pyofficeeditor-<version>-security-report.md` and
 made from.
 
 Everything the workflows run is pinned. Each action is pinned to a
-commit, the ClamAV image to a digest, and the YARA-X engine and the
-YARA Forge rules to a release and its SHA-256. Semgrep and the build
-tools are hash-locked, and each runner is a named OS release. Dependabot
-proposes updates to the actions, the image and the locked tools. A weekly
+commit, the Semgrep and ClamAV images to a digest, and the YARA-X engine
+and the YARA Forge rules to a release and its SHA-256. The build tools
+are hash-locked, and each runner is a named OS release. Dependabot
+proposes updates to the actions, the images and the locked tools. A weekly
 workflow proposes each new YARA Forge release in a pull request, and the
 Malware scan workflow scans that branch before it is merged. Nothing is
 proposed until it is a week old.
