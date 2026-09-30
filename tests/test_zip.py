@@ -206,6 +206,17 @@ class TestMalformedInput:
         with pytest.raises(ZipError, match="not UTF-8"):
             ZipArchive.from_bytes(bytes(data))
 
+    def test_member_data_that_looks_like_a_zip64_locator_is_read(self) -> None:
+        """Found by fuzzing: the zip64 locator's signature inside a member
+        made an ordinary archive refused as zip64. The locator has a fixed
+        place, right before the end record, and only there does it count."""
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("a.bin", b"data PK\x06\x07 more data")
+        data = buffer.getvalue()
+        assert ZipArchive.from_bytes(data).read("a.bin") == b"data PK\x06\x07 more data"
+        assert ZipArchive.from_bytes(data).to_bytes() == data
+
     def test_zip64_is_refused_rather_than_misread(self) -> None:
         """A zip64 archive is refused by name.  Silently reading the 32-bit
         fields would produce a plausible, wrong package."""
