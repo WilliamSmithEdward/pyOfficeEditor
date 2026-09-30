@@ -1,6 +1,6 @@
 # Agent working files. Local only: they point at absolute paths on the
 # author's machine, so they mean nothing to anyone who clones this.
-AGENTS.md
+# AGENTS.md is tracked; it holds the repo-standards block.
 CLAUDE.md
 .claude/
 
