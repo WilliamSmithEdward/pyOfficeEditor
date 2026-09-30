@@ -194,6 +194,18 @@ class TestMalformedInput:
         with pytest.raises(UnsupportedFormatError):
             member.replace(b"x", method=14)
 
+    def test_a_name_flagged_utf8_that_is_not_is_refused(self) -> None:
+        """Found by fuzzing: this raised UnicodeDecodeError, not ZipError."""
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("a.xml", b"<a/>")
+        data = bytearray(buffer.getvalue())
+        central = data.rfind(b"PK\x01\x02")
+        data[central + 9] |= 0x08  # general purpose flags, bit 11: UTF-8 name
+        data[central + 46] = 0x94  # the name's first byte, invalid as UTF-8
+        with pytest.raises(ZipError, match="not UTF-8"):
+            ZipArchive.from_bytes(bytes(data))
+
     def test_zip64_is_refused_rather_than_misread(self) -> None:
         """A zip64 archive is refused by name.  Silently reading the 32-bit
         fields would produce a plausible, wrong package."""

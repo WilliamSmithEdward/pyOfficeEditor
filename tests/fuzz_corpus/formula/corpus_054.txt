@@ -1,0 +1,1 @@
+TRUNC(Rounding!A73,Rounding!B73)

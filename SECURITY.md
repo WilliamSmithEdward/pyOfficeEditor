@@ -48,6 +48,13 @@ before every release:
   fetches the current official signatures on every run and reports any
   file that holds a VBA project. YARA-X runs YARA Forge's full rule set,
   which gathers the public YARA rule collections into one.
+- Fuzz: Atheris feeds generated input to the ZIP reader, the XML parser,
+  the workbook reader and the formula parser, in
+  [fuzz.yml](.github/workflows/fuzz.yml), daily and on every change to
+  them. A reader must read the input or refuse it with the library's own
+  error, and an unchanged part must write back its exact bytes. It is not
+  a gate: a finding fails that workflow and becomes a regression seed in
+  `tests/fuzz_corpus`, which the test suite replays.
 
 A finding fails the scan unless
 [.github/security/accepted.toml](.github/security/accepted.toml), or
@@ -71,6 +78,12 @@ week after its release. A weekly workflow moves the YARA pins in
 pull request it opens is scanned before it is merged, and a YARA-X release
 once it is a week old.
 
+[OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/WilliamSmithEdward/pyOfficeEditor)
+rates these practices on every change to main and weekly, and publishes
+the result the README badge shows. Some of its checks assume more than one
+maintainer, such as a second person approving every change, so a
+single-maintainer project cannot score full marks on them.
+
 ## Verifying a download
 
 Every file on PyPI carries PyPI's own provenance, which names this
@@ -84,4 +97,7 @@ pip download pyofficeeditor --no-deps -d check
 gh attestation verify check/<file> --owner WilliamSmithEdward
 ```
 
-The output names the commit and workflow run that built the file.
+The output names the commit and workflow run that built the file. The
+signed bundle is also attached to the GitHub release as
+`pyofficeeditor-<version>.sigstore.json`, so the check works without asking
+GitHub for it: add `--bundle pyofficeeditor-<version>.sigstore.json`.

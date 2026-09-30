@@ -23,8 +23,33 @@ anything trailing the file is swept into the oldest release's notes. -->
 
 ## [Unreleased]
 
+### Fixed
+
+- A ZIP entry whose name is flagged UTF-8 but is not raised
+  `UnicodeDecodeError`; it now raises `ZipError`.
+- In formulas, a number whose exponent is too long for Python's decimal
+  arithmetic, such as `1E2012019`, raised `decimal.InvalidOperation`; it
+  reads like any other number past a double's range. A structured reference
+  whose column range names no column, such as `Table1[[#All],:]`, raised
+  `IndexError`, and a formula nested past Python's recursion limit raised
+  `RecursionError`; both now raise `FormulaSyntaxError`.
+- The byte-fidelity contract, stated precisely: an unchanged archive writes
+  back its exact bytes when its members are laid out as ZIP writers lay them
+  out, one after another in the central directory's order. An archive laid
+  out any other way is written in that order, with every member unchanged.
+
 ### Added
 
+- Coverage-guided fuzzing with Atheris of the ZIP reader, the XML parser,
+  the workbook reader and the formula parser (`fuzz/fuzz_office.py`), which
+  found every fix above. The Fuzz workflow runs them daily and on every
+  change to the readers, and the test suite replays the seed corpus.
+- Releases carry signed build provenance: the Publish workflow signs each
+  wheel and sdist with GitHub's artifact attestations before uploading to
+  PyPI, and attaches the signed bundle to the GitHub release as
+  `pyofficeeditor-<version>.sigstore.json`.
+- OpenSSF Scorecard rates the repository's security practices on every
+  change to main and weekly, and the README shows its badge.
 - ClamAV and YARA-X scan every tracked file, the Excel test fixtures
   among them, and the built wheel and sdist, as their own job in the
   Security workflow. ClamAV fetches the current official signatures on
@@ -50,6 +75,8 @@ anything trailing the file is swept into the oldest release's notes. -->
   match the same characters. The YARA Forge updater no longer reaches
   the network itself: the workflow fetches with `gh api` and `curl`, and
   the script chooses the release and checks the download.
+- CI installs its test tools from a hash-locked lock
+  (`.github/requirements/test.txt`) instead of the unpinned dev extra.
 
 ## [0.4.1] - 2026-09-29
 

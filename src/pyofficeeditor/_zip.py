@@ -261,7 +261,10 @@ class ZipArchive:
             ]
             pos = base + name_len + extra_len + comment_len2
 
-            name = raw_name.decode("utf-8" if flags & _FLAG_UTF8_NAME else "cp437")
+            try:
+                name = raw_name.decode("utf-8" if flags & _FLAG_UTF8_NAME else "cp437")
+            except UnicodeDecodeError as exc:
+                raise ZipError(f"entry {index}: a name flagged UTF-8 is not UTF-8: {exc}") from exc
 
             _require(
                 local_offset + _LOCAL_FIXED <= len(data),
@@ -339,7 +342,11 @@ class ZipArchive:
         """Serialize the archive.
 
         With no member changed this reproduces the bytes
-        :meth:`from_bytes` was given.
+        :meth:`from_bytes` was given when the archive is laid out as Office
+        and other ZIP writers lay it out: each member after the last, in the
+        central directory's order, with nothing between them.  Any other
+        layout is written that way, with every member's name, data and
+        metadata unchanged.
         """
         out = bytearray()
         for member in self._members:

@@ -39,7 +39,7 @@ from __future__ import annotations
 import math
 import sys
 from collections.abc import Iterable
-from decimal import ROUND_DOWN, ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
+from decimal import ROUND_DOWN, ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 
 from pyofficeeditor.excel._calc.precise import add
 
@@ -153,14 +153,30 @@ def total(values: Iterable[float]) -> float:
 
 def _cut(exact: Decimal) -> Decimal:
     """Fifteen significant digits, the rest cut off."""
+    # Far past a double's range the cut changes nothing a double can hold,
+    # and quantizing an exponent that large overflows decimal's context:
+    # 1E2012019 is simply too large, as 1E400 is.
+    if not -400 < exact.adjusted() < 400:
+        return exact
     return exact.quantize(Decimal(1).scaleb(exact.adjusted() - 14), rounding=ROUND_DOWN)
+
+
+def _exact(digits: str) -> Decimal:
+    """``digits`` as a decimal. An exponent too long for :class:`Decimal`
+    to hold is clamped to one it can: either way the number is far outside
+    a double's range, which is all that matters to the callers."""
+    try:
+        return Decimal(digits)
+    except InvalidOperation:
+        mantissa, _, exponent = digits.upper().partition("E")
+        return Decimal(f"{mantissa}E{'-' if exponent.startswith('-') else ''}999999")
 
 
 def literal_value(digits: str) -> float:
     """What a number written in a formula stands for: fifteen significant
     digits of it, the rest cut off, and nothing below the smallest normal
     double."""
-    exact = Decimal(digits)
+    exact = _exact(digits)
     if exact == 0:
         return 0.0
     return normal(float(_cut(exact)))
@@ -177,7 +193,7 @@ def text_value(digits: str) -> float | None:
     literal's, or ``None`` for a number too large or too small to be one:
     ``"9.999999999999995e307"`` is ``9.99999999999999E+307`` and
     ``"1e308"`` no number."""
-    exact = Decimal(digits)
+    exact = _exact(digits)
     if exact == 0:
         return 0.0
     cut = _cut(exact)

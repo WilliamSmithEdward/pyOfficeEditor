@@ -1,0 +1,1 @@
+QUOTIENT(Divisions!A3,Divisions!B3)
