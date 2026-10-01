@@ -1,13 +1,13 @@
 # pyOfficeEditor
 
-[![PyPI version](https://img.shields.io/pypi/v/pyOfficeEditor.svg)](https://pypi.org/project/pyOfficeEditor/)
-[![Python versions](https://img.shields.io/pypi/pyversions/pyOfficeEditor.svg)](https://pypi.org/project/pyOfficeEditor/)
-[![CI](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/ci.yml)
-[![Security](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/security.yml/badge.svg)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/security.yml)
-[![Malware scan](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/malware-scan.yml/badge.svg)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/malware-scan.yml)
+[![PyPI version](https://img.shields.io/pypi/v/pyOfficeEditor)](https://pypi.org/project/pyOfficeEditor/)
+[![Python versions](https://img.shields.io/pypi/pyversions/pyOfficeEditor)](https://pypi.org/project/pyOfficeEditor/)
+[![Downloads](https://img.shields.io/pypi/dm/pyOfficeEditor)](https://pypistats.org/packages/pyofficeeditor)
+[![CI](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/ci.yml)
+[![Security](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/security.yml)
+[![Malware scan](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/malware-scan.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/malware-scan.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/WilliamSmithEdward/pyOfficeEditor/badge)](https://scorecard.dev/viewer/?uri=github.com/WilliamSmithEdward/pyOfficeEditor)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/WilliamSmithEdward/pyOfficeEditor/blob/main/LICENSE.md)
-[![Downloads](https://static.pepy.tech/badge/pyOfficeEditor/month)](https://pepy.tech/project/pyOfficeEditor)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/WilliamSmithEdward/pyOfficeEditor/blob/main/LICENSE.md)
 
 Edit the document surface of Microsoft Office files in pure Python. No Office
 installation, no COM, no dependencies.
