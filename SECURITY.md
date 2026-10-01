@@ -2,25 +2,25 @@
 
 ## Reporting a vulnerability
 
-Please report a vulnerability privately, not in a public issue. Use
-[Report a vulnerability](https://github.com/WilliamSmithEdward/pyOfficeEditor/security/advisories/new)
-on the repository's Security tab. It opens a draft advisory that only
-you and the maintainer can see.
+Report a vulnerability privately, not in a public issue or pull request:
+[open a private report](https://github.com/WilliamSmithEdward/pyOfficeEditor/security/advisories/new).
+Only the maintainer sees it. Include the pyOfficeEditor version, the
+Python version and the operating system, and the smallest file or steps
+that show it, with credentials and private data removed. A crafted file
+is the most direct proof, so attach a minimal one if you can.
 
-A useful report names the pyOfficeEditor version, the Python version
-and the operating system, and includes a file or a short script that
-shows the problem. A crafted file is the most direct proof, so attach a
-minimal one if you can.
+A confirmed vulnerability is fixed in a release on PyPI, and the advisory is
+published with it, crediting you unless you ask otherwise.
 
 ## Supported versions
 
-Only the latest release on PyPI is supported. A fix ships in a new
-release, and earlier versions do not get one.
+Only the latest release on PyPI receives security fixes. Older
+releases are not maintained separately; update when a fix ships.
 
-## What to report
+## Scope
 
 pyOfficeEditor reads and writes Office files that may come from anyone,
-so the input to worry about is a file. For example:
+so the input to worry about is a file. These count as vulnerabilities:
 
 - a file that makes the library hang, run out of memory or crash the
   interpreter;
@@ -30,61 +30,110 @@ so the input to worry about is a file. For example:
 - a file whose reading writes anything, or a save that touches a file
   other than the one it was asked to write.
 
-The formula engine calculates a workbook's formulas in Python. It never
-starts a process, opens a network connection or reads another file. A
-formula that reads another workbook reads the values the file itself
-caches for that link, as Excel does while the linked workbook is closed.
+The package has no runtime dependencies. The formula engine calculates a
+workbook's formulas in Python. It never starts a process, opens a network
+connection or reads another file. A formula that reads another workbook
+reads the values the file itself caches for that link, as Excel does
+while the linked workbook is closed.
 
 ## How the code is checked
 
-The package has no runtime dependencies. The Security and Malware scan
-workflows run on every push to main, every pull request, every day, and
-before every release:
+Three workflows check every pull request and every push to `main`, and
+their gates decide whether a change can merge: **CI passed**,
+**Security passed** and **Malware scan passed**. A gate passes only when
+every job before it did, and any unexpected finding fails it, whatever its
+severity. Security and Malware scan also run daily, so new queries,
+rules and signatures reach code and files that have not changed.
 
-- Security: CodeQL and Semgrep scan the package, the workflows that
-  build and publish it, and the scripts that check the scans.
-- Malware scan: ClamAV and YARA-X scan every tracked file, the Excel
-  test fixtures among them, and the built wheel and sdist. ClamAV
-  fetches the current official signatures on every run and reports any
-  file that holds a VBA project. YARA-X runs YARA Forge's full rule set,
-  which gathers the public YARA rule collections into one.
-- Fuzz: Atheris feeds generated input to the ZIP reader, the XML parser,
-  the workbook reader and the formula parser, in
-  [fuzz.yml](.github/workflows/fuzz.yml), daily and on every change to
-  them. A reader must read the input or refuse it with the library's own
-  error, and an unchanged part must write back its exact bytes. It is not
-  a gate: a finding fails that workflow and becomes a regression seed in
-  `tests/fuzz_corpus`, which the test suite replays.
+- **Code:** CodeQL with GitHub's security-extended queries, for Python and
+  GitHub Actions, and Semgrep with the default, Python, security-audit,
+  secrets and GitHub Actions rule sets. Both scan the package, the
+  workflows that build and publish it, and the scripts in
+  `scripts/security` that judge the scans. A `nosemgrep` comment cannot
+  hide a finding. Results go to the repository's code scanning.
+- **Workflows:** zizmor audits the GitHub Actions workflows; a finding fails
+  Security.
+- **Dependencies:** there is no dependency audit, because the package has
+  no runtime dependencies. The tools the workflows install come from
+  hash-locked files (see Pinning and updates).
+- **Malware:** ClamAV, with signatures freshclam fetches and verifies on
+  every run, and YARA-X, with the YARA Forge rules pinned to a release and
+  its SHA-256, scan every tracked file, the Excel test fixtures among
+  them, and the built wheel and sdist. ClamAV runs with `--alert-macros`,
+  so it reports any file that holds a VBA project. YARA-X runs YARA
+  Forge's full rule set, which gathers the public YARA rule collections
+  into one.
+- **Fuzzing:** Atheris drives the readers that take untrusted Office
+  files, four targets in `fuzz/fuzz_office.py`: the ZIP reader, the XML
+  parser, the workbook reader and the formula parser. Each starts from
+  its seeds in `tests/fuzz_corpus`. A reader must read the input or
+  refuse it with the library's own error, an XML part it reads must write
+  back its exact bytes, and a ZIP archive it writes must read back with
+  the same members. The Fuzz workflow runs on every change to the
+  package, the fuzz targets or the corpus, and daily. It is not a gate: a
+  finding becomes a regression test with its fix, a seed that
+  `tests/test_fuzz_corpus.py` replays on every CI run.
+- **OpenSSF Scorecard** rates the repository's security practices on every
+  change to `main` and weekly, and the README badge shows the result.
+  Its Code-Review and Contributors checks assume more than one
+  maintainer, such as a second person approving every change, so a
+  single-maintainer project cannot score full marks on them.
 
-A finding fails the scan unless
-[.github/security/accepted.toml](.github/security/accepted.toml), or
+## Accepted findings
+
+A finding is fixed, or accepted with a written reason in
+[.github/security/accepted.toml](.github/security/accepted.toml) for
+CodeQL and Semgrep, or
 [.github/security/malware-accepted.toml](.github/security/malware-accepted.toml)
-for a malware match, lists it with the reason it is accepted, and an
-entry there that no longer matches fails it too. So does a warning a
-scanner raises about its own run.
+for ClamAV and YARA-X. An entry matches on the tool, the rule, the file
+and the text of the flagged line (empty for a malware match, since neither
+scanner names a line), so an edited line needs another review, and an
+entry that no longer matches fails the report. A warning a scanner raises
+about its own run fails it too unless it is listed. zizmor keeps its
+exceptions in `.github/zizmor.yml` or inline beside the line they excuse,
+each with its reason.
 
-A release is published only after its commit passes both scans, and it
-carries the reports as `pyofficeeditor-<version>-security-report.md` and
-`pyofficeeditor-<version>-malware-report.md`, beside the SARIF they were
-made from.
+The current entries:
 
-Everything the workflows run is pinned. Each action is pinned to a
-commit, the Semgrep and ClamAV images to a digest, and the YARA-X engine
-and the YARA Forge rules to a release and its SHA-256. The build tools
-are hash-locked, and each runner is a named OS release. Dependabot
-proposes updates to the actions, the images and the locked tools, each a
-week after its release. A weekly workflow moves the YARA pins in
-.github/security/yara.json: YARA Forge's newest release at once, since the
-pull request it opens is scanned before it is merged, and a YARA-X release
-once it is a week old.
+- accepted.toml has none.
+- ClamAV `Heuristics.OLE2.ContainsMacros.VBA`, on the test fixtures
+  `controls.xlsm` and `excel_authored_binary.xlsb`, which hold a VBA
+  project on purpose so the tests can prove the library keeps it intact.
+  Neither runs code when the workbook opens, and the built packages hold
+  no fixture.
+- zizmor's `self-repository` and `superfluous-actions` rules are turned
+  off in `.github/zizmor.yml`, each with its reason and when it comes back.
 
-[OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/WilliamSmithEdward/pyOfficeEditor)
-rates these practices on every change to main and weekly, and publishes
-the result the README badge shows. Some of its checks assume more than one
-maintainer, such as a second person approving every change, so a
-single-maintainer project cannot score full marks on them.
+## Pinning and updates
 
-## Verifying a download
+Everything the workflows run is pinned: actions to full commit SHAs,
+runners to named OS releases, scanner images to digests, Python tools to
+hash-locked lock files, and the YARA-X engine and YARA Forge rules to a
+release and its SHA-256. The package has no dependencies of its own.
+ClamAV's signatures change too often to pin, so freshclam fetches and
+verifies them on every run.
+
+Dependabot proposes updates to the GitHub Actions, the Semgrep and ClamAV
+images, and the hash-locked tools in `.github/requirements` once a version
+is a week old, and at once for a security advisory. The Update YARA rules
+workflow proposes new YARA pins in `.github/security/yara.json` each week.
+A minor or patch update, and the YARA pull request, merges itself once CI,
+Security and Malware scan pass; a third-party major version waits for
+review.
+
+## Releases
+
+A pushed `v*.*.*` tag builds the sdist and wheel, checks that the tag
+matches the version in `pyproject.toml`, and runs Security and Malware
+scan on the tagged commit. Nothing is published unless both pass. The
+distributions go to PyPI through Trusted Publishing, so no upload token
+exists to leak. The GitHub release carries the distributions,
+`pyofficeeditor-<version>-security-report.md` and
+`pyofficeeditor-<version>-malware-report.md` beside the SARIF they were
+made from, and the provenance bundle. Started by hand, the Publish
+workflow is always a dry run and publishes nothing.
+
+### Verifying a download
 
 Every file on PyPI carries PyPI's own provenance, which names this
 repository's `publish.yml` as the publisher; the file's page on PyPI shows it.
@@ -101,3 +150,19 @@ The output names the commit and workflow run that built the file. The
 signed bundle is also attached to the GitHub release as
 `pyofficeeditor-<version>.sigstore.json`, so the check works without asking
 GitHub for it: add `--bundle pyofficeeditor-<version>.sigstore.json`.
+
+## Repository settings
+
+<!-- repo-standards:begin security-settings. Copied from WilliamSmithEdward/repo-standards, templates/security/settings-block.md. Change it there; the weekly rescan fails a copy that differs. -->
+- `main` accepts changes only through a pull request that passes
+  **CI passed**, **Security passed** and **Malware scan passed**. The
+  ruleset has no bypass, for the owner either, and refuses force-pushes and
+  deleting the branch.
+- A `v*` release tag cannot be moved or deleted once pushed, except by a
+  repository admin.
+- A workflow that uses an action not pinned to a full commit SHA fails to
+  run. Workflow tokens are read-only unless a job is granted more for
+  itself.
+- Secret scanning with push protection, Dependabot alerts and security
+  updates, and private vulnerability reporting are on.
+<!-- repo-standards:end -->
