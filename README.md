@@ -2,7 +2,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/pyOfficeEditor)](https://pypi.org/project/pyOfficeEditor/)
 [![Python versions](https://img.shields.io/pypi/pyversions/pyOfficeEditor)](https://pypi.org/project/pyOfficeEditor/)
-[![Downloads](https://img.shields.io/pypi/dm/pyOfficeEditor)](https://pypistats.org/packages/pyofficeeditor)
+[![Downloads](https://static.pepy.tech/badge/pyOfficeEditor/month)](https://pepy.tech/projects/pyOfficeEditor)
 [![CI](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/ci.yml)
 [![Security](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/security.yml)
 [![Malware scan](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/malware-scan.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/pyOfficeEditor/actions/workflows/malware-scan.yml)
