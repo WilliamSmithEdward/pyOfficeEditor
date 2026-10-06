@@ -8,7 +8,7 @@
 # Dependabot proposes each new release.
 pytest==9.1.1
 pyright==1.1.414
-ruff==0.16.8
+ruff==0.16.9
 openpyxl==3.1.5
 hatchling==1.32.4
 editables==0.6
