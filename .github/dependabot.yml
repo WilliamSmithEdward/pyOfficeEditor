@@ -1,7 +1,7 @@
 # Dependabot keeps the pinned tools current: the workflows' actions, each
 # pinned to a commit with its release named in a comment; the hash-locked
-# build tooling the workflows install; and the Semgrep and ClamAV images
-# the scans run, each pinned by digest in a one-line Dockerfile. The package itself depends on
+# build and scanning tools the workflows install; and the ClamAV image the
+# malware scan runs, pinned by digest in a one-line Dockerfile. The package itself depends on
 # nothing, and its development tools are minimum versions that CI installs
 # at their latest. The YARA-X engine and the YARA Forge rules are release
 # downloads pinned in .github/security/yara.json; update-yara-rules.yml
@@ -41,7 +41,6 @@ updates:
 
   - package-ecosystem: docker
     directories:
-      - /.github/security/semgrep
       - /.github/security/clamav
     schedule:
       interval: weekly
