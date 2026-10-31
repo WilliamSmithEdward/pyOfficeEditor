@@ -1,12 +1,12 @@
 # Dependabot keeps the pinned tools current: the workflows' actions, each
-# pinned to a commit with its release named in a comment; the hash-locked
-# build tooling the workflows install; and the ClamAV image the malware
-# scan runs, pinned by digest in a one-line Dockerfile. GitHub refuses
-# Dependabot's Semgrep image updates, so update-semgrep-image.yml moves
-# that one. The package itself depends on nothing, and its development
-# tools are minimum versions that CI installs at their latest. The YARA-X
-# engine and the YARA Forge rules are release downloads pinned in
-# .github/security/yara.json; update-yara-rules.yml moves them.
+# pinned to a commit with its release named in a comment; and the
+# hash-locked build tooling the workflows install. GitHub refuses
+# Dependabot's image updates, so update-images.yml moves the ClamAV and
+# Semgrep images. The package itself depends on nothing, and its
+# development tools are minimum versions that CI installs at their
+# latest. The YARA-X engine and the YARA Forge rules are release
+# downloads pinned in .github/security/yara.json; update-yara-rules.yml
+# moves them.
 #
 # A release waits a week before it is proposed, long enough for most
 # hijacked or broken releases to be found and pulled first. Security
@@ -33,20 +33,6 @@ updates:
     cooldown:
       default-days: 7
       exclude: [pyopenvba, pyofficeeditor, pyprettyvba, vba-reference, pyvbaanalysis, pyvbaharness, xlide-mcp]
-    commit-message:
-      prefix: ci
-    groups:
-      minor-and-patch:
-        patterns: ["*"]
-        update-types: [minor, patch]
-
-  - package-ecosystem: docker
-    directories:
-      - /.github/security/clamav
-    schedule:
-      interval: weekly
-    cooldown:
-      default-days: 7
     commit-message:
       prefix: ci
     groups:
